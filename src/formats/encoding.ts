@@ -1,0 +1,95 @@
+import { ParseError } from '../utils/errors.js';
+
+const UTF8_BOM = [0xef, 0xbb, 0xbf];
+const UTF16LE_BOM = [0xff, 0xfe];
+const UTF16BE_BOM = [0xfe, 0xff];
+
+export function detectEncoding(data: Uint8Array): string {
+  if (
+    data.length >= 3 &&
+    data[0] === UTF8_BOM[0] &&
+    data[1] === UTF8_BOM[1] &&
+    data[2] === UTF8_BOM[2]
+  ) {
+    return 'utf-8';
+  }
+  if (data.length >= 2 && data[0] === UTF16LE_BOM[0] && data[1] === UTF16LE_BOM[1]) {
+    return 'utf-16le';
+  }
+  if (data.length >= 2 && data[0] === UTF16BE_BOM[0] && data[1] === UTF16BE_BOM[1]) {
+    return 'utf-16be';
+  }
+  const head = Buffer.from(data.subarray(0, Math.min(data.length, 1024))).toString('latin1');
+  const m = /<\?xml[^>]*encoding\s*=\s*["']([^"']+)["']/.exec(head);
+  if (m) {
+    return normalizeEncoding(m[1]!);
+  }
+  return 'utf-8';
+}
+
+export function normalizeEncoding(enc: string): string {
+  const e = enc.trim().toLowerCase().replace(/[_-]/g, '');
+  switch (e) {
+    case 'utf8':
+    case 'utf':
+      return 'utf-8';
+    case 'utf16':
+      return 'utf-16le';
+    case 'windows1251':
+    case 'win1251':
+    case 'cp1251':
+      return 'windows-1251';
+    case 'cp1252':
+      return 'windows-1252';
+    case 'koi8r':
+      return 'koi8-r';
+    case 'iso88591':
+    case 'latin1':
+    case 'latin':
+      return 'iso-8859-1';
+    default:
+      return e;
+  }
+}
+
+export function decodeXmlBuffer(data: Uint8Array): string {
+  const encoding = detectEncoding(data);
+  if (encoding === 'utf-8') {
+    let bytes = data;
+    if (
+      bytes.length >= 3 &&
+      bytes[0] === UTF8_BOM[0] &&
+      bytes[1] === UTF8_BOM[1] &&
+      bytes[2] === UTF8_BOM[2]
+    ) {
+      bytes = bytes.subarray(3);
+    }
+    return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  }
+  try {
+    return new TextDecoder(encoding, { fatal: false }).decode(data);
+  } catch {
+    return new TextDecoder('utf-8', { fatal: false }).decode(data);
+  }
+}
+
+export function tryParseJson<T>(input: string): T | undefined {
+  try {
+    return JSON.parse(input) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+export function fileExtension(name: string): string {
+  const dot = name.lastIndexOf('.');
+  return dot === -1 ? '' : name.slice(dot + 1).toLowerCase();
+}
+
+export function isZipBuffer(data: Uint8Array): boolean {
+  return data.length >= 4 && data[0] === 0x50 && data[1] === 0x4b;
+}
+
+export function zlibRequired(): void {
+  throw new ParseError('This build requires zlib support for reading ZIP archives');
+}

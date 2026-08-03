@@ -1,0 +1,181 @@
+import fs from 'node:fs';
+import TOML from '@iarna/toml';
+import type { Config, DisplayConfig, KeyAction, TypographyConfig } from './defaults.js';
+import { defaultConfig, KEY_ACTIONS } from './defaults.js';
+import { defaultConfigPath } from '../utils/paths.js';
+import { ConfigError } from '../utils/errors.js';
+
+const VALID_THEMES_BASE = [
+  'monokai',
+  'dracula',
+  'ayu-dark',
+  'ayu-light',
+  'github-dark',
+  'github-light',
+];
+
+export class KeybindingConflictError extends ConfigError {
+  readonly key: string;
+  readonly first: KeyAction;
+  readonly second: KeyAction;
+
+  constructor(key: string, first: KeyAction, second: KeyAction) {
+    super(`Keybinding conflict for key "${key}": mapped to both "${first}" and "${second}"`);
+    this.name = 'KeybindingConflictError';
+    this.key = key;
+    this.first = first;
+    this.second = second;
+  }
+}
+
+export interface LoadConfigResult {
+  config: Config;
+  path: string;
+  warnings: string[];
+}
+
+export function parseKey(key: string): string {
+  const trimmed = key.trim().replace(/\s+/g, '');
+  if (trimmed.includes('+')) {
+    const [mod, ...rest] = trimmed.split('+');
+    return `${mod!.toLowerCase()}+${rest.join('+').toLowerCase()}`;
+  }
+  return trimmed;
+}
+
+export function normalizeKeybindings(
+  raw: Record<string, unknown>,
+  base: Config,
+  warnings: string[],
+): Record<string, KeyAction> {
+  const result: Record<string, KeyAction> = { ...base.keybindings };
+  for (const [rawKey, rawAction] of Object.entries(raw)) {
+    const key = parseKey(rawKey);
+    if (key === '') {
+      warnings.push(`Ignoring empty keybinding key "${rawKey}"`);
+      continue;
+    }
+    const action = typeof rawAction === 'string' ? (rawAction as KeyAction) : undefined;
+    if (!action || !KEY_ACTIONS.includes(action)) {
+      warnings.push(`Ignoring keybinding "${rawKey}": unknown action "${String(rawAction)}"`);
+      continue;
+    }
+    const existing = result[key];
+    if (existing !== undefined && existing !== action) {
+      throw new KeybindingConflictError(key, existing, action);
+    }
+    result[key] = action;
+  }
+  return result;
+}
+
+export function parseTomlConfig(text: string, base: Config, warnings: string[]): Config {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = TOML.parse(text) as unknown as Record<string, unknown>;
+  } catch (err) {
+    throw new ConfigError(`Invalid TOML: ${err instanceof Error ? err.message : String(err)}`, {
+      cause: err,
+    });
+  }
+
+  const config = { ...base, keybindings: { ...base.keybindings } };
+
+  if (typeof parsed.theme === 'string') {
+    config.theme = parsed.theme;
+    if (!VALID_THEMES_BASE.includes(parsed.theme) && !parsed.theme.match(/^custom:/)) {
+      warnings.push(
+        `Theme "${parsed.theme}" is not a built-in theme; custom themes can be defined via "custom-themes"`,
+      );
+    }
+  }
+
+  if (typeof parsed.db_path === 'string' && parsed.db_path.trim() !== '') {
+    config.dbPath = parsed.db_path;
+  }
+
+  if (parsed.keybindings && typeof parsed.keybindings === 'object') {
+    config.keybindings = normalizeKeybindings(
+      parsed.keybindings as Record<string, unknown>,
+      config,
+      warnings,
+    );
+  }
+
+  if (parsed.typography && typeof parsed.typography === 'object') {
+    const t = parsed.typography as Record<string, unknown>;
+    const typo = { ...config.typography } as TypographyConfig;
+    if (typeof t.measure === 'number')
+      typo.measure = clampInt(t.measure, 20, 500, warnings, 'measure');
+    if (typeof t.line_spacing === 'number')
+      typo.lineSpacing = clampInt(t.line_spacing, 0, 5, warnings, 'line_spacing');
+    if (typeof t.paragraph_indent === 'number')
+      typo.paragraphIndent = clampInt(t.paragraph_indent, 0, 20, warnings, 'paragraph_indent');
+    if (typeof t.paragraph_spacing === 'number')
+      typo.paragraphSpacing = clampInt(t.paragraph_spacing, 0, 5, warnings, 'paragraph_spacing');
+    if (typeof t.hyphenation === 'boolean') typo.hyphenation = t.hyphenation;
+    if (typeof t.font_family === 'string') typo.fontFamily = t.font_family;
+    if (typeof t.ligatures === 'boolean') typo.ligatures = t.ligatures;
+    config.typography = typo;
+  }
+
+  if (parsed.display && typeof parsed.display === 'object') {
+    const d = parsed.display as Record<string, unknown>;
+    const display = { ...config.display } as DisplayConfig;
+    if (typeof d.simplified_mode === 'boolean') display.simplifiedMode = d.simplified_mode;
+    if (typeof d.respect_publisher_css === 'boolean')
+      display.respectPublisherCss = d.respect_publisher_css;
+    if (typeof d.show_progress_bar === 'boolean') display.showProgressBar = d.show_progress_bar;
+    config.display = display;
+  }
+
+  return config;
+}
+
+function clampInt(
+  value: number,
+  min: number,
+  max: number,
+  warnings: string[],
+  field: string,
+): number {
+  if (!Number.isInteger(value) || value < min || value > max) {
+    warnings.push(`Ignoring typography.${field}: value must be integer in [${min}, ${max}]`);
+    return defaultConfig().typography[field as keyof TypographyConfig] as number;
+  }
+  return value;
+}
+
+export function loadConfig(configPath?: string): LoadConfigResult {
+  const warnings: string[] = [];
+  const path = configPath && configPath.trim() !== '' ? configPath : defaultConfigPath();
+  let config = defaultConfig();
+
+  if (fs.existsSync(path)) {
+    const text = fs.readFileSync(path, 'utf8');
+    config = parseTomlConfig(text, config, warnings);
+  } else if (!configPath) {
+    warnings.push(`Config file not found at ${path}; using defaults`);
+  } else {
+    throw new ConfigError(`Config file not found: ${path}`);
+  }
+
+  return { config, path, warnings };
+}
+
+export function serializeConfig(config: Config): string {
+  const keybindings: Record<string, string> = {};
+  for (const [key, action] of Object.entries(config.keybindings)) {
+    keybindings[key] = action;
+  }
+  const out: {
+    [key: string]: boolean | number | string | { [key: string]: boolean | number | string };
+  } = {
+    theme: config.theme,
+    db_path: config.dbPath,
+    keybindings,
+    typography: { ...config.typography },
+    display: { ...config.display },
+  };
+  return TOML.stringify(out);
+}
