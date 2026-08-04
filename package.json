@@ -37,7 +37,7 @@
   ],
   "dependencies": {
     "@iarna/toml": "^2.2.5",
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.6.0",
     "better-sqlite3": "^13.0.2",
     "commander": "^12.1.0",
     "fast-xml-parser": "^4.5.3",
@@ -45,23 +45,23 @@
     "react": "^18.3.1"
   },
   "devDependencies": {
-    "@types/adm-zip": "^0.5.7",
+    "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.10.5",
     "@types/react": "^18.3.18",
     "@typescript-eslint/eslint-plugin": "^8.19.1",
     "@typescript-eslint/parser": "^8.19.1",
-    "@vitest/coverage-v8": "^2.1.9",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.4.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.10"
   },
-  "allowScripts": {
-    "better-sqlite3@11.10.0": true,
-    "esbuild@0.28.1": true,
-    "esbuild@0.21.5": true
+  "overrides": {
+    "vite": {
+      "esbuild": "^0.25.0"
+    }
   }
 }
