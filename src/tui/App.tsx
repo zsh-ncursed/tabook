@@ -347,6 +347,7 @@ export function App(props: AppProps): React.JSX.Element {
             theme={theme}
             prefix="open: "
             placeholder="path to .fb2 / .fb2.zip / .epub file"
+            historyKey="open"
             onSubmit={(value) => {
               setPromptOpenPath(false);
               const p = value.trim();

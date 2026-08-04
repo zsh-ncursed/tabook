@@ -307,6 +307,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           theme={theme}
           prefix="/"
           placeholder="filter by title, author, series or genre…"
+          historyKey="filter"
           onSubmit={(value) => {
             setFilter(value.trim());
             setCursor(0);
@@ -321,6 +322,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           theme={theme}
           prefix=":"
           placeholder="type a command, e.g. :open book.fb2, :sort author, :group, :theme dracula"
+          historyKey="command"
           onSubmit={(value) => {
             setMode('normal');
             runCommand(value);

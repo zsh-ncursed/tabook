@@ -214,6 +214,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           prefix="/"
           placeholder="search in book…"
           initialValue={session.searchState().query}
+          historyKey="search"
           onSubmit={(value) => {
             session.setQuery(value);
             const st = session.searchState();
@@ -240,6 +241,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           theme={theme}
           prefix=":"
           placeholder="e.g. :goto 42, :simplified, :open book.fb2, :theme nord, :q"
+          historyKey="command"
           onSubmit={(value) => {
             setMode('reading');
             runCommand(value);

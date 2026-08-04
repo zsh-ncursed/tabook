@@ -11,6 +11,23 @@ export interface TextPromptProps {
   onSubmit: (value: string) => void;
   onCancel: () => void;
   onValueChange?: (value: string) => void;
+  historyKey?: string;
+}
+
+const HISTORY_MAX = 50;
+const histories = new Map<string, string[]>();
+
+function getHistory(key: string): string[] {
+  return histories.get(key) ?? [];
+}
+
+function pushHistory(key: string, value: string): void {
+  const arr = getHistory(key);
+  if (arr[arr.length - 1] !== value) {
+    arr.push(value);
+    if (arr.length > HISTORY_MAX) arr.shift();
+  }
+  histories.set(key, arr);
 }
 
 export function TextPrompt(props: TextPromptProps): React.JSX.Element {
@@ -22,6 +39,7 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
     onSubmit,
     onCancel,
     onValueChange,
+    historyKey,
   } = props;
   const [value, setValue] = useState(initialValue);
   const [cursor, setCursor] = useState(initialValue.length);
@@ -29,6 +47,11 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
   valueRef.current = value;
   const cursorRef = useRef(cursor);
   cursorRef.current = cursor;
+  const historyIdxRef = useRef<number>(-1);
+
+  useEffect(() => {
+    historyIdxRef.current = -1;
+  }, [historyKey]);
 
   useEffect(() => {
     onValueChange?.(initialValue);
@@ -41,7 +64,38 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
         onCancel();
         return;
       case 'enter':
+        if (historyKey && valueRef.current.trim() !== '') {
+          pushHistory(historyKey, valueRef.current);
+        }
         onSubmit(valueRef.current);
+        return;
+      case 'up':
+        if (historyKey) {
+          const hist = getHistory(historyKey);
+          if (hist.length > 0) {
+            const nextIdx = historyIdxRef.current === -1 ? hist.length - 1 : Math.max(0, historyIdxRef.current - 1);
+            historyIdxRef.current = nextIdx;
+            setValue(hist[nextIdx]!);
+            setCursor(hist[nextIdx]!.length);
+          }
+        }
+        return;
+      case 'down':
+        if (historyKey) {
+          const hist = getHistory(historyKey);
+          if (hist.length > 0 && historyIdxRef.current !== -1) {
+            const nextIdx = historyIdxRef.current + 1;
+            if (nextIdx >= hist.length) {
+              historyIdxRef.current = -1;
+              setValue('');
+              setCursor(0);
+            } else {
+              historyIdxRef.current = nextIdx;
+              setValue(hist[nextIdx]!);
+              setCursor(hist[nextIdx]!.length);
+            }
+          }
+        }
         return;
       case 'backspace':
       case 'delete':
