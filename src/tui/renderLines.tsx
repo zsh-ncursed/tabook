@@ -53,11 +53,11 @@ export function renderLine(line: TextLine, theme: Theme): React.ReactNode {
       {line.spans.map((span, i) => (
         <Text
           key={i}
-          color={color}
+          color={span.link ? theme.colors.link : color}
           backgroundColor={span.highlight ? theme.colors.searchHighlight : undefined}
           bold={span.bold}
           italic={span.italic}
-          underline={span.underline}
+          underline={span.underline || span.link}
           inverse={!!span.highlight}
         >
           {span.text}
