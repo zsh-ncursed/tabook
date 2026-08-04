@@ -60,17 +60,20 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   } = props;
   const [width, height] = useTerminalSize();
   const [books, setBooks] = useState<BookRecord[]>([]);
+  const [recentBooks, setRecentBooks] = useState<BookRecord[]>([]);
   const [cursor, setCursor] = useState(0);
   const [sortField, setSortField] = useState<SortField>('title');
   const [filter, setFilter] = useState('');
   const [groupBySeries, setGroupBySeries] = useState(false);
   const [mode, setMode] = useState<Mode>('normal');
+  const [view, setView] = useState<'all' | 'recent'>('all');
   const [detailBook, setDetailBook] = useState<BookRecord | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<BookRecord | null>(null);
   const resolver = useMemo(() => createActionResolver(config), [config]);
 
   useEffect(() => {
     setBooks(db.listBooks());
+    setRecentBooks(db.listRecentBooks());
   }, [db, refreshTrigger]);
 
   useEffect(() => {
@@ -79,19 +82,20 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   }, [cmdVersion]);
 
   const bookList = useMemo(() => {
+    const source = view === 'recent' ? recentBooks : books;
     const q = filter.trim().toLowerCase();
     const filtered = q
-      ? books.filter(
+      ? source.filter(
           (b) =>
             b.title.toLowerCase().includes(q) ||
             b.authorsText.toLowerCase().includes(q) ||
             (b.seriesText ?? '').toLowerCase().includes(q) ||
             b.genres.some((g) => g.toLowerCase().includes(q)),
         )
-      : books;
-    const sorted = [...filtered].sort((a, b) => compareBooks(a, b, sortField));
+      : source;
+    const sorted = view === 'recent' ? filtered : [...filtered].sort((a, b) => compareBooks(a, b, sortField));
     return sorted;
-  }, [books, filter, sortField]);
+  }, [books, recentBooks, view, filter, sortField]);
 
   const rows = useMemo<Row[]>(() => {
     if (!groupBySeries) {
@@ -184,6 +188,11 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           (field) => SORT_FIELDS[(SORT_FIELDS.indexOf(field) + 1) % SORT_FIELDS.length]!,
         );
         break;
+      case 'toggle_recent':
+        setView((v) => (v === 'recent' ? 'all' : 'recent'));
+        setCursor(0);
+        setFilter('');
+        break;
       case 'search':
         setMode('filter');
         break;
@@ -224,15 +233,16 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       <Box flexDirection="column" paddingX={1}>
         <Box flexDirection="row">
           <Text color={theme.colors.heading} bold>
-            Library
+            {view === 'recent' ? 'Recent' : 'Library'}
           </Text>
           <Text color={theme.colors.dim}>
             {' '}
             · {bookList.length} book{bookList.length === 1 ? '' : 's'}
           </Text>
-          <Text color={theme.colors.dim}> · sort: {sortField}</Text>
+          {view === 'all' ? <Text color={theme.colors.dim}> · sort: {sortField}</Text> : null}
           {groupBySeries ? <Text color={theme.colors.dim}> · grouped by series</Text> : null}
           {filter ? <Text color={theme.colors.accent}> · filter: "{filter}"</Text> : null}
+          <Text color={theme.colors.dim}> · R recent</Text>
         </Box>
       </Box>
 
@@ -403,6 +413,7 @@ function hintBar(config: Config, view: string): string {
       key('open_file'),
       key('search'),
       key('sort_cycle'),
+      key('toggle_recent'),
       key('delete_from_library'),
       key('command'),
       key('quit'),
@@ -418,6 +429,7 @@ const actionsList: KeyAction[] = [
   'open_file',
   'search',
   'sort_cycle',
+  'toggle_recent',
   'delete_from_library',
   'command',
   'quit',

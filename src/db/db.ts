@@ -397,6 +397,18 @@ export class LibraryDb {
     return rows.map((r) => ({ bookId: r.bookId, openedAt: r.openedAt, title: r.title }));
   }
 
+  listRecentBooks(limit = 20): BookRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT b.*, p.position AS progress_position, p.percent AS progress_percent
+         FROM books b LEFT JOIN reading_progress p ON p.book_id = b.id
+         WHERE b.last_opened_at IS NOT NULL
+         ORDER BY b.last_opened_at DESC LIMIT ?`,
+      )
+      .all(limit) as BookRow[];
+    return rows.map(rowToBook);
+  }
+
   // ---- Reading sessions / stats ----
 
   startSession(bookId: number): number {

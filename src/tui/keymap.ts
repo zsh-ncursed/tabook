@@ -117,8 +117,9 @@ export function actionLabel(action: KeyAction): string {
     search_next: 'Next result',
     search_prev: 'Previous result',
     sort_cycle: 'Cycle sort',
-    toggle_simplified: 'Toggle simplified mode',
-    toggle_respect_css: 'Toggle publisher CSS',
-  };
+  toggle_simplified: 'Toggle simplified mode',
+  toggle_respect_css: 'Toggle publisher CSS',
+  toggle_recent: 'Toggle recent books',
+};
   return labels[action] ?? action;
 }

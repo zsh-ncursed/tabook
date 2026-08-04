@@ -26,7 +26,8 @@ export type KeyAction =
   | 'search_prev'
   | 'sort_cycle'
   | 'toggle_simplified'
-  | 'toggle_respect_css';
+  | 'toggle_respect_css'
+  | 'toggle_recent';
 
 export const KEY_ACTIONS: readonly KeyAction[] = [
   'move_cursor_up',
@@ -57,6 +58,7 @@ export const KEY_ACTIONS: readonly KeyAction[] = [
   'sort_cycle',
   'toggle_simplified',
   'toggle_respect_css',
+  'toggle_recent',
 ];
 
 export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
@@ -72,7 +74,8 @@ export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
   o: 'open_file',
   s: 'save_to_library',
   b: 'add_bookmark',
-  B: 'list_bookmarks',
+  'B': 'list_bookmarks',
+  'R': 'toggle_recent',
   t: 'toc',
   i: 'book_info',
   '?': 'help',
