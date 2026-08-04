@@ -293,6 +293,24 @@ export function App(props: AppProps): React.JSX.Element {
     [screen, session, closeReader, exit, openBookPath, openFileDialog, notify, themeName, persistConfig],
   );
 
+  const completeCommand = useCallback((value: string): string | null => {
+    const trimmed = value.replace(/^:/, '').trim();
+    if (!trimmed) return null;
+    const parts = shellSplit(trimmed);
+    const cmd = (parts[0] ?? '').toLowerCase();
+    const commands = ['q', 'quit', 'exit', 'open', 'o', 'theme', 'themes', 'sort', 'group', 'goto', 'simplified', 'css', 'search', 'help', 'config'];
+    if (parts.length <= 1 && !trimmed.includes(' ')) {
+      const matches = commands.filter((c) => c.startsWith(cmd));
+      if (matches.length === 1) return `:${matches[0]} `;
+    }
+    if (cmd === 'theme' && parts.length === 1) {
+      const prefix = (parts[0] ?? '').toLowerCase();
+      const matches = themeNames().filter((t) => t.startsWith(prefix));
+      if (matches.length === 1) return `:theme ${matches[0]}`;
+    }
+    return null;
+  }, []);
+
   useEffect(() => {
     if (props.initialPath) {
       void openBookPath(props.initialPath);
@@ -321,6 +339,7 @@ export function App(props: AppProps): React.JSX.Element {
           onQuit={() => exit()}
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
+          completeCommand={completeCommand}
           inputDisabled={promptOpenPath}
         />
       ) : session ? (
@@ -335,6 +354,7 @@ export function App(props: AppProps): React.JSX.Element {
           onOpenFile={openFileDialog}
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
+          completeCommand={completeCommand}
           inputDisabled={promptOpenPath}
         />
       ) : null}

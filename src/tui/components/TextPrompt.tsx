@@ -12,6 +12,7 @@ export interface TextPromptProps {
   onCancel: () => void;
   onValueChange?: (value: string) => void;
   historyKey?: string;
+  onTab?: (currentValue: string) => string | null;
 }
 
 const HISTORY_MAX = 50;
@@ -40,6 +41,7 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
     onCancel,
     onValueChange,
     historyKey,
+    onTab,
   } = props;
   const [value, setValue] = useState(initialValue);
   const [cursor, setCursor] = useState(initialValue.length);
@@ -103,6 +105,15 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
           const c = cursorRef.current;
           setValue((v) => v.slice(0, c - 1) + v.slice(c));
           setCursor(c - 1);
+        }
+        return;
+      case 'tab':
+        if (onTab) {
+          const completed = onTab(valueRef.current);
+          if (completed !== null) {
+            setValue(completed);
+            setCursor(completed.length);
+          }
         }
         return;
       case 'left':

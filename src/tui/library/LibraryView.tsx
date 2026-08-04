@@ -28,6 +28,7 @@ export interface LibraryViewProps {
   onQuit: () => void;
   onHelp: () => void;
   runCommand: (text: string) => void;
+  completeCommand?: (value: string) => string | null;
   inputDisabled?: boolean;
 }
 
@@ -56,6 +57,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
     onQuit,
     onHelp,
     runCommand,
+    completeCommand,
     inputDisabled = false,
   } = props;
   const [width, height] = useTerminalSize();
@@ -323,6 +325,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           prefix=":"
           placeholder="type a command, e.g. :open book.fb2, :sort author, :group, :theme dracula"
           historyKey="command"
+          onTab={completeCommand}
           onSubmit={(value) => {
             setMode('normal');
             runCommand(value);

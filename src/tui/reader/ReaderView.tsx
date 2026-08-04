@@ -25,6 +25,7 @@ export interface ReaderViewProps {
   onOpenFile: () => void;
   onHelp: () => void;
   runCommand: (text: string) => void;
+  completeCommand?: (value: string) => string | null;
   inputDisabled?: boolean;
 }
 
@@ -38,7 +39,7 @@ interface BookmarkRow {
 }
 
 export function ReaderView(props: ReaderViewProps): React.JSX.Element {
-  const { session, config, theme, db, notify, onClose, onSave, onOpenFile, onHelp, runCommand, inputDisabled = false } =
+  const { session, config, theme, db, notify, onClose, onSave, onOpenFile, onHelp, runCommand, completeCommand, inputDisabled = false } =
     props;
   const [width, height] = useTerminalSize();
   const [mode, setMode] = useState<Mode>('reading');
@@ -243,6 +244,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           prefix=":"
           placeholder="e.g. :goto 42, :simplified, :open book.fb2, :theme nord, :q"
           historyKey="command"
+          onTab={completeCommand}
           onSubmit={(value) => {
             setMode('reading');
             runCommand(value);
