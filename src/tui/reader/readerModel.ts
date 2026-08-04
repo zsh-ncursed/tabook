@@ -142,6 +142,11 @@ export class ReaderSession {
     this.line = this.clampLine(pageNumber * this.pageHeight());
   }
 
+  goToPercent(pct: number): void {
+    const total = this.exactTotalLines ?? this.layout.estimateLineCount();
+    this.line = this.clampLine(Math.floor((total - 1) * (Math.max(0, Math.min(100, pct)) / 100)));
+  }
+
   setLine(target: number): void {
     this.line = this.clampLine(target);
   }

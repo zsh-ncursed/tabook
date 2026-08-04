@@ -210,12 +210,23 @@ export function App(props: AppProps): React.JSX.Element {
           break;
         case 'goto':
           if (screen === 'reader' && session) {
-            const page = Number(args[0]);
-            if (Number.isFinite(page) && page > 0) {
-              session.goToPage(page - 1);
-              notify(`Page ${page}`);
+            const arg = args[0] ?? '';
+            if (arg.endsWith('%')) {
+              const pct = Number(arg.slice(0, -1));
+              if (Number.isFinite(pct) && pct >= 0 && pct <= 100) {
+                session.goToPercent(pct);
+                notify(`${pct}%`);
+              } else {
+                notify('Usage: :goto <page> | :goto <N>%');
+              }
             } else {
-              notify('Usage: :goto <page>');
+              const page = Number(arg);
+              if (Number.isFinite(page) && page > 0) {
+                session.goToPage(page - 1);
+                notify(`Page ${page}`);
+              } else {
+                notify('Usage: :goto <page> | :goto <N>%');
+              }
             }
           }
           break;
