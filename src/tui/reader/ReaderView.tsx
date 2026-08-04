@@ -173,7 +173,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
 
   const statusLeft = truncate(metadata.title, 30);
   const statusRight = [
-    `${session.percent()}%`,
+    config.display.showProgressBar ? '' : `${session.percent()}%`,
     `p.${session.pageNumber + 1}/${session.totalPages()}`,
     searchState.query ? `search "${truncate(searchState.query, 20)}"` : '',
     'j/k · space · n/N · ?',
@@ -320,7 +320,12 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         <InfoModal session={session} db={db} theme={theme} onClose={() => setMode('reading')} />
       ) : null}
 
-      <StatusBar theme={theme} left={statusLeft} right={statusRight} />
+      <StatusBar
+        theme={theme}
+        left={statusLeft}
+        right={statusRight}
+        progress={config.display.showProgressBar ? session.percent() : undefined}
+      />
     </Box>
   );
 }
