@@ -38,7 +38,7 @@
   "dependencies": {
     "@iarna/toml": "^2.2.5",
     "adm-zip": "^0.5.16",
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^13.0.2",
     "commander": "^12.1.0",
     "fast-xml-parser": "^4.5.3",
     "ink": "^5.2.1",
@@ -58,5 +58,10 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"
+  },
+  "allowScripts": {
+    "better-sqlite3@11.10.0": true,
+    "esbuild@0.28.1": true,
+    "esbuild@0.21.5": true
   }
 }

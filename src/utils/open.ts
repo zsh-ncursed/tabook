@@ -28,16 +28,10 @@ function runPicker(args: string[]): Promise<string | null> {
     child.stderr.on('data', (d: Buffer) => {
       err += d.toString();
     });
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      resolve(null);
-    }, 30000);
     child.on('error', () => {
-      clearTimeout(timer);
       resolve(null);
     });
     child.on('close', (code) => {
-      clearTimeout(timer);
       const trimmed = out.trim();
       if (code === 0 && trimmed !== '') {
         resolve(trimmed);
