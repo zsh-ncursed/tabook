@@ -114,6 +114,93 @@ describe('layoutBlock', () => {
     expect(lines[0]!.role).toBe('listItem');
     expect(lines[0]!.prefix).toBe('1. ');
   });
+
+  it('highlights only the matching item in a list', () => {
+    const block: Block = {
+      type: 'list',
+      ordered: false,
+      items: [
+        { children: [t('alpha beta')], nested: [] },
+        { children: [t('gamma delta')], nested: [] },
+      ],
+    };
+    const lines = layoutBlock(block, 0, {
+      typo,
+      width: 40,
+      getHighlights: () => [{ start: 11, end: 16 }],
+    });
+    const itemLines = lines.filter((l) => l.role === 'listItem');
+    expect(itemLines[0]!.charOffset).toBe(0);
+    expect(itemLines[1]!.charOffset).toBe(11);
+    const firstHighlights = itemLines[0]!.spans.filter((s) => s.highlight);
+    const secondHighlights = itemLines[1]!.spans.filter((s) => s.highlight);
+    expect(firstHighlights.map((s) => s.text).join('')).toBe('');
+    expect(secondHighlights.map((s) => s.text).join('')).toBe('gamma');
+  });
+
+  it('highlights across wrapped list item lines with correct offsets', () => {
+    const block: Block = {
+      type: 'list',
+      ordered: false,
+      items: [{ children: [t('one two three four five')], nested: [] }],
+    };
+    const lines = layoutBlock(block, 0, {
+      typo,
+      width: 12,
+      getHighlights: () => [{ start: 8, end: 13 }],
+    });
+    const itemLines = lines.filter((l) => l.role === 'listItem');
+    expect(itemLines.length).toBeGreaterThan(1);
+    const highlighted = itemLines.flatMap((l) =>
+      l.spans.filter((s) => s.highlight).map((s) => s.text),
+    );
+    expect(highlighted.join('')).toBe('three');
+    let running = 0;
+    for (const line of itemLines) {
+      expect(line.charOffset).toBe(running);
+      running += line.spans.map((s) => s.text).join('').length;
+    }
+  });
+
+  it('highlights a poem verse at the right offset', () => {
+    const block: Block = {
+      type: 'poem',
+      stanzas: [{ lines: [[t('roses')], [t('violets')]] }],
+    };
+    const lines = layoutBlock(block, 0, {
+      typo,
+      width: 40,
+      getHighlights: () => [{ start: 6, end: 10 }],
+    });
+    const poemLines = lines.filter((l) => l.role === 'poemLine');
+    expect(poemLines[0]!.charOffset).toBe(0);
+    expect(poemLines[1]!.charOffset).toBe(6);
+    const highlighted = poemLines.flatMap((l) =>
+      l.spans.filter((s) => s.highlight).map((s) => s.text),
+    );
+    expect(highlighted.join('')).toBe('viol');
+  });
+
+  it('highlights table cells matching their plain-text offset', () => {
+    const block: Block = {
+      type: 'table',
+      headers: [],
+      rows: [[[t('one')], [t('two')]], [[t('three')], [t('four')]]],
+    };
+    const lines = layoutBlock(block, 0, {
+      typo,
+      width: 40,
+      getHighlights: () => [{ start: 4, end: 6 }],
+    });
+    const cellLines = lines.filter((l) => l.role === 'tableCell');
+    expect(cellLines.length).toBe(2);
+    expect(cellLines[0]!.charOffset).toBe(0);
+    expect(cellLines[1]!.charOffset).toBe(8);
+    const highlighted = cellLines.flatMap((l) =>
+      l.spans.filter((s) => s.highlight).map((s) => s.text),
+    );
+    expect(highlighted.join('')).toBe('tw');
+  });
 });
 
 describe('BookLayout', () => {

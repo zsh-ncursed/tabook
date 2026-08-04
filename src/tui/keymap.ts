@@ -69,17 +69,11 @@ export function createActionResolver(config: Config): ActionResolver {
         sequence.length = 0;
         return combo;
       }
-      if (candidate.length >= 2 && direct !== undefined) {
-        sequence.length = 0;
-        sequence.push(keyName);
-        return direct;
-      }
-      if (candidate.length >= 2 && combo === undefined) {
-        sequence.length = 0;
-        sequence.push(keyName);
-        return direct;
-      }
       sequence.length = 0;
+      if (candidate.length >= 2) {
+        sequence.push(keyName);
+        return direct;
+      }
       if (keyName.length > 1) {
         return direct;
       }

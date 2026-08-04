@@ -251,8 +251,51 @@ function findLastSpace(chars: Char[]): number {
   return -1;
 }
 
+function sliceHighlights(
+  highlights: HighlightRange[] | undefined,
+  base: number,
+  length: number,
+): HighlightRange[] {
+  if (!highlights || base < 0) return [];
+  const out: HighlightRange[] = [];
+  for (const h of highlights) {
+    const start = Math.max(0, h.start - base);
+    const end = Math.min(length, h.end - base);
+    if (start < end) out.push({ start, end });
+  }
+  return out;
+}
+
+function partCounter(opts: { skipEmpty?: boolean; separator?: string }): {
+  push(text: string): number;
+} {
+  let offset = 0;
+  let pending = false;
+  return {
+    push(text: string): number {
+      if (opts.skipEmpty && text === '') return -1;
+      if (pending) offset += (opts.separator ?? '\n').length;
+      const start = offset;
+      offset += text.length;
+      pending = true;
+      return start;
+    },
+  };
+}
+
 function spansToPlain(spans: StyledSpan[]): string {
   return spans.map((s) => s.text).join('');
+}
+
+function highlightPlain(text: string, highlights: HighlightRange[]): StyledSpan[] {
+  const chars: Char[] = [];
+  let offset = 0;
+  for (const ch of text) {
+    const inRange = highlights.some((h) => offset >= h.start && offset < h.end);
+    chars.push({ ch, style: { ...EMPTY_STYLE, highlight: inRange }, offset });
+    offset += 1;
+  }
+  return charsToSpans(chars);
 }
 
 function mergeSpanLines(lines: StyledSpan[][]): StyledSpan[] {
@@ -330,29 +373,39 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
     case 'quote': {
       const spans = inlineToSpans(block.children);
       const wrapped = wrapSpans(spans, width - 4, highlights);
+      let running = 0;
       for (const line of wrapped) {
-        emit('quote', line, 4);
+        const text = spansToPlain(line);
+        emit('quote', line, 4, '', running);
+        running += text.length;
       }
       return lines;
     }
     case 'epigraph': {
       const spans = inlineToSpans(block.children);
       const wrapped = wrapSpans(spans, width - 6, highlights);
+      let running = 0;
       for (const line of wrapped) {
-        emit('epigraph', line, 6);
+        const text = spansToPlain(line);
+        emit('epigraph', line, 6, '', running);
+        running += text.length;
       }
       return lines;
     }
     case 'annotation': {
       const spans = inlineToSpans(block.children);
       const wrapped = wrapSpans(spans, width, highlights);
+      let running = 0;
       for (const line of wrapped) {
-        emit('annotation', line, 0);
+        const text = spansToPlain(line);
+        emit('annotation', line, 0, '', running);
+        running += text.length;
       }
       return lines;
     }
     case 'list': {
       let counter = 1;
+      const offsets = partCounter({ skipEmpty: true });
       const walk = (list: Extract<Block, { type: 'list' }>, level: number): void => {
         for (const item of list.items) {
           const marker = list.ordered ? `${counter}.` : '-';
@@ -360,7 +413,10 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
           const indent = 2 + level * 2;
           const markerWidth = marker.length + 1;
           const spans = inlineToSpans(item.children);
-          const wrapped = wrapSpans(spans, width - indent - markerWidth, highlights);
+          const plain = spansToPlain(spans);
+          const start = offsets.push(plain);
+          const hls = sliceHighlights(highlights, start, plain.length);
+          const wrapped = wrapSpans(spans, width - indent - markerWidth, hls);
           if (wrapped.length === 0) {
             lines.push({
               role: 'listItem',
@@ -368,18 +424,21 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
               indent,
               prefix: `${marker} `,
               blockIndex,
-              charOffset: 0,
+              charOffset: Math.max(0, start),
             });
           }
+          let running = 0;
           for (let i = 0; i < wrapped.length; i++) {
+            const text = spansToPlain(wrapped[i]!);
             lines.push({
               role: 'listItem',
               spans: wrapped[i]!,
               indent,
               prefix: i === 0 ? `${marker} ` : ' '.repeat(markerWidth),
               blockIndex,
-              charOffset: 0,
+              charOffset: Math.max(0, start) + running,
             });
+            running += text.length;
           }
           for (const nested of item.nested) {
             if (nested.type === 'list') {
@@ -393,6 +452,7 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
       return lines;
     }
     case 'poem': {
+      const offsets = partCounter({ skipEmpty: false });
       block.stanzas.forEach((stanza, si) => {
         if (si > 0) {
           lines.push({
@@ -406,16 +466,22 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
         }
         for (const verse of stanza.lines) {
           const spans = inlineToSpans(verse);
-          const wrapped = wrapSpans(spans, width - 6, highlights);
+          const plain = spansToPlain(spans);
+          const start = offsets.push(plain);
+          const hls = sliceHighlights(highlights, start, plain.length);
+          const wrapped = wrapSpans(spans, width - 6, hls);
+          let running = 0;
           for (const line of wrapped) {
-            emit('poemLine', line, 6);
+            const text = spansToPlain(line);
+            emit('poemLine', line, 6, '', Math.max(0, start) + running);
+            running += text.length;
           }
         }
       });
       return lines;
     }
     case 'table': {
-      return layoutTable(block, blockIndex, width);
+      return layoutTable(block, blockIndex, width, highlights);
     }
     case 'image': {
       const alt = block.alt || 'image';
@@ -459,6 +525,7 @@ function layoutTable(
   block: Extract<Block, { type: 'table' }>,
   blockIndex: number,
   width: number,
+  highlights: HighlightRange[] | undefined,
 ): TextLine[] {
   const lines: TextLine[] = [];
   const colCount = Math.max(block.headers.length, ...block.rows.map((r) => r.length));
@@ -481,48 +548,56 @@ function layoutTable(
     }
     colWidths.push(Math.min(availPerCol, Math.max(4, maxLen)));
   }
-  for (const row of allRows) {
-    const wrappedCells: string[][] = row.cells.map((cell, c) => {
+
+  let running = 0;
+  for (let ri = 0; ri < allRows.length; ri++) {
+    const row = allRows[ri]!;
+    const cellStartOffsets: number[] = [];
+    if (!row.isHeader) {
+      for (let c = 0; c < colCount; c++) {
+        const cell = row.cells[c] ?? '';
+        cellStartOffsets.push(running);
+        running += cell.length + 1;
+      }
+    }
+    const wrappedCells: StyledSpan[][][] = row.cells.map((cell, c) => {
       const w = colWidths[c]!;
-      return wrapPlain(cell, w);
+      if (row.isHeader) {
+        return wrapSpans([{ text: cell }], w, []);
+      }
+      const hls = sliceHighlights(highlights, cellStartOffsets[c] ?? 0, cell.length);
+      return wrapSpans(highlightPlain(cell, hls), w, []);
     });
     const rowHeight = Math.max(1, ...wrappedCells.map((ws) => ws.length));
     for (let r = 0; r < rowHeight; r++) {
       const spans: StyledSpan[] = [];
+      let lineCharOffset = -1;
       for (let c = 0; c < colCount; c++) {
-        const cell = wrappedCells[c]![r] ?? '';
-        const padded = cell.padEnd(colWidths[c]!);
-        spans.push({ text: padded });
+        const cell = wrappedCells[c]!;
+        const cellLine = cell[r];
+        if (lineCharOffset < 0 && cellLine && spansToPlain(cellLine).trim() !== '') {
+          lineCharOffset = cellStartOffsets[c] ?? 0;
+        }
+        const text = cellLine ? spansToPlain(cellLine) : '';
+        const padded = text.padEnd(colWidths[c]!);
+        if (cellLine) {
+          spans.push(...cellLine);
+          if (padded.length > text.length) spans.push({ text: ' '.repeat(padded.length - text.length) });
+        } else {
+          spans.push({ text: padded });
+        }
         if (c < colCount - 1) spans.push({ text: ' '.repeat(pad) });
       }
+      if (lineCharOffset < 0) lineCharOffset = row.isHeader ? 0 : cellStartOffsets[0] ?? 0;
       lines.push({
         role: row.isHeader ? 'tableHeader' : 'tableCell',
         spans,
         indent: 0,
         prefix: '',
         blockIndex,
-        charOffset: 0,
+        charOffset: lineCharOffset,
       });
     }
-  }
-  return lines;
-}
-
-function wrapPlain(text: string, width: number): string[] {
-  const words = text.split(/(\s+)/);
-  const lines: string[] = [];
-  let current = '';
-  for (const word of words) {
-    if (word === '') continue;
-    if (displayWidth(current) + displayWidth(word) <= width || current === '') {
-      current += word;
-    } else {
-      lines.push(current.trimEnd());
-      current = word.trimStart();
-    }
-  }
-  if (current.trimEnd() !== '' || lines.length === 0) {
-    lines.push(current.trimEnd());
   }
   return lines;
 }

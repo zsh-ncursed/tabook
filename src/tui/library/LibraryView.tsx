@@ -352,8 +352,9 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           theme={theme}
           onConfirm={() => {
             db.removeBook(confirmTarget.id);
-            setBooks(db.listBooks());
-            setCursor((c) => Math.min(Math.max(0, c), Math.max(0, books.length - 2)));
+            const next = db.listBooks();
+            setBooks(next);
+            setCursor((c) => Math.min(Math.max(0, c), Math.max(0, next.length - 1)));
             notify(`Removed from library: ${confirmTarget.title}`);
             setConfirmTarget(null);
             setMode('normal');
