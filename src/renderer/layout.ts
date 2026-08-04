@@ -280,6 +280,11 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
       return;
     }
     lines.push({ role, spans, indent, prefix, blockIndex, charOffset });
+    if (typo.lineSpacing > 0 && role !== 'empty') {
+      for (let i = 0; i < typo.lineSpacing; i++) {
+        lines.push({ role: 'empty', spans: [], indent: 0, prefix: '', blockIndex, charOffset });
+      }
+    }
   };
 
   switch (block.type) {
