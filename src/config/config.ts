@@ -4,15 +4,7 @@ import type { Config, DisplayConfig, KeyAction, TypographyConfig } from './defau
 import { defaultConfig, KEY_ACTIONS } from './defaults.js';
 import { defaultConfigPath } from '../utils/paths.js';
 import { ConfigError } from '../utils/errors.js';
-
-const VALID_THEMES_BASE = [
-  'monokai',
-  'dracula',
-  'ayu-dark',
-  'ayu-light',
-  'github-dark',
-  'github-light',
-];
+import { themeNames } from '../themes/themes.js';
 
 export class KeybindingConflictError extends ConfigError {
   readonly key: string;
@@ -83,7 +75,7 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
 
   if (typeof parsed.theme === 'string') {
     config.theme = parsed.theme;
-    if (!VALID_THEMES_BASE.includes(parsed.theme) && !parsed.theme.match(/^custom:/)) {
+    if (!themeNames().includes(parsed.theme) && !parsed.theme.match(/^custom:/)) {
       warnings.push(
         `Theme "${parsed.theme}" is not a built-in theme; custom themes can be defined via "custom-themes"`,
       );
