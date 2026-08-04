@@ -34,6 +34,11 @@ describe('parseInlines', () => {
     expect(inlines[0]).toEqual({ kind: 'code', text: 'const x = 1' });
   });
 
+  it('decodes HTML entities in paragraph text', () => {
+    const inlines = xmlToInlines('<p>a &amp; b &laquo;q&raquo; &mdash; &hellip;</p>');
+    expect(plainOf(inlines)).toBe('a & b \u00abq\u00bb \u2014 \u2026');
+  });
+
   it('accepts an undefined node', () => {
     expect(parseInlines(undefined)).toEqual([]);
   });

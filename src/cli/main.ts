@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import React from 'react';
 import { Command } from 'commander';
 import { render } from 'ink';
@@ -95,4 +96,13 @@ function run(
   void tree.waitUntilExit();
 }
 
-main();
+function isEntryPoint(): boolean {
+  return (
+    typeof process.argv[1] === 'string' &&
+    pathToFileURL(process.argv[1]).href === import.meta.url
+  );
+}
+
+if (isEntryPoint()) {
+  main();
+}

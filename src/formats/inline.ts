@@ -30,7 +30,7 @@ function parseChildren(children: XmlChildren): Inline[] {
     if (key === '#text') {
       const value = kid[key];
       if (typeof value === 'string') {
-        result.push({ kind: 'text', text: value });
+        result.push({ kind: 'text', text: decodeEntities(value) });
       }
       continue;
     }
