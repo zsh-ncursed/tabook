@@ -10,6 +10,8 @@ import { LibraryView } from './library/LibraryView.js';
 import { ReaderView } from './reader/ReaderView.js';
 import { HelpView } from './help/HelpView.js';
 import { TextPrompt } from './components/TextPrompt.js';
+import { ListModal } from './components/ListModal.js';
+import type { ListModalItem } from './components/ListModal.js';
 import { useTerminalSize } from './useTerminalSize.js';
 import { pickBookFile } from '../utils/open.js';
 import { shellSplit } from '../utils/text.js';
@@ -43,6 +45,8 @@ export function App(props: AppProps): React.JSX.Element {
   const libraryCmdRef = useRef<{ sort?: SortField; group?: boolean }>({});
   const [cmdVersion, setCmdVersion] = useState(0);
   const [promptOpenPath, setPromptOpenPath] = useState(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const prePickThemeRef = useRef<string | null>(null);
 
   const theme = useMemo(() => {
     const t = THEMES[themeName];
@@ -190,7 +194,8 @@ export function App(props: AppProps): React.JSX.Element {
               notify(`Unknown theme: ${args[0]}. Available: ${themeNames().join(', ')}`);
             }
           } else {
-            notify(`Theme: ${themeName}`);
+            prePickThemeRef.current = themeName;
+            setThemePickerOpen(true);
           }
           break;
         case 'themes':
@@ -341,7 +346,7 @@ export function App(props: AppProps): React.JSX.Element {
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
           completeCommand={completeCommand}
-          inputDisabled={promptOpenPath || helpOpen}
+          inputDisabled={promptOpenPath || helpOpen || themePickerOpen}
         />
       ) : session ? (
         <ReaderView
@@ -356,11 +361,40 @@ export function App(props: AppProps): React.JSX.Element {
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
           completeCommand={completeCommand}
-          inputDisabled={promptOpenPath || helpOpen}
+          inputDisabled={promptOpenPath || helpOpen || themePickerOpen}
         />
       ) : null}
       {helpOpen ? (
         <HelpView config={config} theme={theme} onClose={() => setHelpOpen(false)} />
+      ) : null}
+      {themePickerOpen ? (
+        <ListModal
+          theme={theme}
+          title="Theme picker"
+          items={themeNames().map((n) => ({ id: n, label: n, accent: n === themeName }))}
+          height={Math.min(14, themeNames().length)}
+          footer="j/k preview · enter apply · esc cancel"
+          onNavigate={(item: ListModalItem) => {
+            const name = String(item.id);
+            if (THEMES[name]) setThemeName(name);
+          }}
+          onSelect={(item: ListModalItem) => {
+            const name = String(item.id);
+            if (THEMES[name]) {
+              setThemeName(name);
+              persistConfig(name);
+              notify(`Theme: ${name}`);
+            }
+            setThemePickerOpen(false);
+            prePickThemeRef.current = null;
+          }}
+          onClose={() => {
+            const prev = prePickThemeRef.current;
+            if (prev && THEMES[prev]) setThemeName(prev);
+            setThemePickerOpen(false);
+            prePickThemeRef.current = null;
+          }}
+        />
       ) : null}
       {promptOpenPath ? (
         <Box paddingX={1}>

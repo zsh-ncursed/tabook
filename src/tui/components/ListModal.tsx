@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import { resolveKeyName } from '../keymap.js';
@@ -23,13 +23,19 @@ export interface ListModalProps {
   onDelete?: (item: ListModalItem) => void;
   onEdit?: (item: ListModalItem) => void;
   onFilter?: () => void;
+  onNavigate?: (item: ListModalItem) => void;
 }
 
 export function ListModal(props: ListModalProps): React.JSX.Element {
-  const { theme, title, items, onSelect, onClose, onDelete, onEdit, onFilter, footer } = props;
+  const { theme, title, items, onSelect, onClose, onDelete, onEdit, onFilter, onNavigate, footer } = props;
   const [cursor, setCursor] = useState(0);
   const width = props.width ?? 70;
   const height = Math.min(props.height ?? items.length, Math.max(6, items.length));
+
+  const moveCursor = useCallback((next: number): void => {
+    setCursor(next);
+    if (onNavigate && items[next]) onNavigate(items[next]!);
+  }, [items, onNavigate]);
 
   useInput((input, key) => {
     const keyName = resolveKeyName(input, key);
@@ -40,17 +46,17 @@ export function ListModal(props: ListModalProps): React.JSX.Element {
         return;
       case 'j':
       case 'down':
-        setCursor((c) => Math.min(items.length - 1, c + 1));
+        moveCursor(Math.min(items.length - 1, cursor + 1));
         return;
       case 'k':
       case 'up':
-        setCursor((c) => Math.max(0, c - 1));
+        moveCursor(Math.max(0, cursor - 1));
         return;
       case 'gg':
-        setCursor(0);
+        moveCursor(0);
         return;
       case 'G':
-        setCursor(items.length - 1);
+        moveCursor(items.length - 1);
         return;
       case 'enter':
       case 'space':
