@@ -35,6 +35,7 @@ function makeTheme(
     dim: string;
     link?: string;
     error?: string;
+    searchHighlight?: string;
   },
 ): Theme {
   return {
@@ -50,7 +51,7 @@ function makeTheme(
       panelBorder: palette.panelBorder,
       statusBar: palette.statusBar,
       statusBarText: palette.text,
-      searchHighlight: palette.heading,
+      searchHighlight: palette.searchHighlight ?? (dark ? '#ffff00' : '#ffeb3b'),
       dim: palette.dim,
       link: palette.link ?? palette.accent,
       tableHeader: palette.heading,

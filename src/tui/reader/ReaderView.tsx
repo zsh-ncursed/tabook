@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useReducer, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { Config, KeyAction } from '../../config/defaults.js';
@@ -43,6 +43,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   const [mode, setMode] = useState<Mode>('reading');
   const [bookmarks, setBookmarks] = useState<BookmarkRow[]>([]);
   const resolver = useMemo(() => createActionResolver(config), [config]);
+  const [, forceTick] = useReducer((n: number) => n + 1, 0);
 
   useEffect(() => {
     session.setViewport(width, height);
@@ -56,28 +57,35 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       case 'move_cursor_down':
       case 'scroll_down':
         session.scrollDown(1);
+        forceTick();
         break;
       case 'move_cursor_up':
       case 'scroll_up':
         session.scrollUp(1);
+        forceTick();
         break;
       case 'page_down':
         session.pageDown();
+        forceTick();
         break;
       case 'page_up':
         session.pageUp();
+        forceTick();
         break;
       case 'go_to_start':
         session.goToStart();
+        forceTick();
         break;
       case 'go_to_end':
         session.goToEnd();
+        forceTick();
         break;
       case 'search':
         setMode('search');
         break;
       case 'search_next':
         if (session.nextMatch()) {
+          forceTick();
           notify(`Match ${searchState.current + 1} of ${searchState.matches}`);
         } else {
           notify('No search results');
@@ -85,6 +93,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         break;
       case 'search_prev':
         if (session.prevMatch()) {
+          forceTick();
           notify(`Match ${searchState.current + 1} of ${searchState.matches}`);
         } else {
           notify('No search results');
@@ -121,6 +130,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         break;
       case 'toggle_simplified':
         session.setSimplified(!session.isSimplified);
+        forceTick();
         notify(`Simplified mode: ${session.isSimplified ? 'on' : 'off'}`);
         break;
       case 'toggle_respect_css':
@@ -203,14 +213,17 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
             const st = session.searchState();
             if (st.matches > 0) {
               session.nextMatch();
+              forceTick();
               notify(`${st.matches} match${st.matches === 1 ? '' : 'es'} · n/N to navigate`);
             } else if (value.trim() !== '') {
+              forceTick();
               notify('No matches found');
             }
             setMode('reading');
           }}
           onCancel={() => {
             session.setQuery('');
+            forceTick();
             setMode('reading');
           }}
         />

@@ -44,14 +44,12 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
         onSubmit(valueRef.current);
         return;
       case 'backspace':
+      case 'delete':
         if (cursorRef.current > 0) {
           const c = cursorRef.current;
           setValue((v) => v.slice(0, c - 1) + v.slice(c));
           setCursor(c - 1);
         }
-        return;
-      case 'delete':
-        setValue((v) => v.slice(0, cursorRef.current) + v.slice(cursorRef.current + 1));
         return;
       case 'left':
         setCursor((c) => Math.max(0, c - 1));

@@ -54,6 +54,7 @@ export function renderLine(line: TextLine, theme: Theme): React.ReactNode {
         <Text
           key={i}
           color={color}
+          backgroundColor={span.highlight ? theme.colors.searchHighlight : undefined}
           bold={span.bold}
           italic={span.italic}
           underline={span.underline}

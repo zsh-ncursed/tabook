@@ -583,6 +583,12 @@ export class BookLayout {
     return this.lines.slice(start, start + pageHeight);
   }
 
+  getRange(start: number, count: number): TextLine[] {
+    if (count <= 0) return [];
+    this.ensureLineCount(start + count);
+    return this.lines.slice(start, start + count);
+  }
+
   pageForCharOffset(charOffset: number, pageHeight: number): number {
     if (charOffset <= 0 || this.totalChars === 0) return 0;
     const targetBlock = this.blockForCharOffset(charOffset);

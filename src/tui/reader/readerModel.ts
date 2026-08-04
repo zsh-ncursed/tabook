@@ -170,13 +170,7 @@ export class ReaderSession {
   viewportLines(): TextLine[] {
     const start = this.line;
     const pageHeight = this.pageHeight();
-    this.layout.ensureLineCount(start + pageHeight);
-    return this.layout
-      .getPage(this.pageNumber, pageHeight)
-      .slice(
-        this.line - this.pageNumber * pageHeight,
-        this.line - this.pageNumber * pageHeight + pageHeight,
-      );
+    return this.layout.getRange(start, pageHeight);
   }
 
   charOffset(): number {
