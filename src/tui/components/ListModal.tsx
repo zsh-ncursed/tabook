@@ -21,10 +21,11 @@ export interface ListModalProps {
   onSelect: (item: ListModalItem) => void;
   onClose: () => void;
   onDelete?: (item: ListModalItem) => void;
+  onEdit?: (item: ListModalItem) => void;
 }
 
 export function ListModal(props: ListModalProps): React.JSX.Element {
-  const { theme, title, items, onSelect, onClose, onDelete, footer } = props;
+  const { theme, title, items, onSelect, onClose, onDelete, onEdit, footer } = props;
   const [cursor, setCursor] = useState(0);
   const width = props.width ?? 70;
   const height = Math.min(props.height ?? items.length, Math.max(6, items.length));
@@ -57,6 +58,9 @@ export function ListModal(props: ListModalProps): React.JSX.Element {
       case 'd':
       case 'x':
         if (onDelete && items.length > 0) onDelete(items[cursor]!);
+        return;
+      case 'e':
+        if (onEdit && items.length > 0) onEdit(items[cursor]!);
         return;
       default:
         break;

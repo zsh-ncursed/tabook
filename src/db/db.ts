@@ -375,6 +375,13 @@ export class LibraryDb {
     return info.changes > 0;
   }
 
+  updateBookmarkLabel(id: number, label: string): boolean {
+    const info = this.db
+      .prepare('UPDATE bookmarks SET label = ? WHERE id = ?')
+      .run(label, id);
+    return info.changes > 0;
+  }
+
   // ---- History ----
 
   recordOpen(bookId: number): void {

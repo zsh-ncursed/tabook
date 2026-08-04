@@ -28,7 +28,7 @@ export interface ReaderViewProps {
   inputDisabled?: boolean;
 }
 
-type Mode = 'reading' | 'search' | 'command' | 'bookmark' | 'bookmarks' | 'toc' | 'info';
+type Mode = 'reading' | 'search' | 'command' | 'bookmark' | 'bookmark-edit' | 'bookmarks' | 'toc' | 'info';
 
 interface BookmarkRow {
   id: number;
@@ -43,6 +43,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   const [width, height] = useTerminalSize();
   const [mode, setMode] = useState<Mode>('reading');
   const [bookmarks, setBookmarks] = useState<BookmarkRow[]>([]);
+  const [editBookmarkId, setEditBookmarkId] = useState<number | null>(null);
   const resolver = useMemo(() => createActionResolver(config), [config]);
   const [, forceTick] = useReducer((n: number) => n + 1, 0);
 
@@ -279,7 +280,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
             detail: b.label ? b.preview : undefined,
           }))}
           height={Math.min(10, height - 8)}
-          footer="j/k move · enter jump · d delete · q close"
+          footer="j/k move · enter jump · e edit · d delete · q close"
           onSelect={(item) => {
             const bm = bookmarks.find((b) => b.id === item.id);
             if (bm) {
@@ -288,12 +289,38 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
             }
             setMode('reading');
           }}
+          onEdit={(item) => {
+            setEditBookmarkId(Number(item.id));
+            setMode('bookmark-edit');
+          }}
           onDelete={(item) => {
             db.deleteBookmark(Number(item.id));
             setBookmarks(loadBookmarks());
             notify('Bookmark deleted');
           }}
           onClose={() => setMode('reading')}
+        />
+      ) : null}
+
+      {mode === 'bookmark-edit' ? (
+        <TextPrompt
+          theme={theme}
+          prefix="e "
+          placeholder="bookmark label…"
+          initialValue={bookmarks.find((b) => b.id === editBookmarkId)?.label ?? ''}
+          onSubmit={(value) => {
+            if (editBookmarkId !== null) {
+              db.updateBookmarkLabel(editBookmarkId, value);
+              setBookmarks(loadBookmarks());
+              notify('Bookmark updated');
+            }
+            setEditBookmarkId(null);
+            setMode('bookmarks');
+          }}
+          onCancel={() => {
+            setEditBookmarkId(null);
+            setMode('bookmarks');
+          }}
         />
       ) : null}
 
