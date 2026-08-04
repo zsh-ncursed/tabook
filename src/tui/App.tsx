@@ -17,8 +17,7 @@ import { serializeConfig } from '../config/config.js';
 import { defaultConfig } from '../config/defaults.js';
 import { defaultConfigPath } from '../utils/paths.js';
 import * as fs from 'node:fs';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
+import { spawnSync } from 'node:child_process';
 
 export interface AppProps {
   db: LibraryDb;
@@ -277,7 +276,6 @@ export function App(props: AppProps): React.JSX.Element {
             const p = configPathRef.current || defaultConfigPath();
             const editor = process.env.EDITOR || process.env.VISUAL || 'vi';
             try {
-              const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
               spawnSync(editor, [p], { stdio: 'inherit' });
             } catch (err) {
               notify(`Cannot open editor: ${err instanceof Error ? err.message : String(err)}`);

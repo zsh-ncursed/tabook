@@ -166,8 +166,20 @@ export function serializeConfig(config: Config): string {
     theme: config.theme,
     db_path: config.dbPath,
     keybindings,
-    typography: { ...config.typography },
-    display: { ...config.display },
+    typography: {
+      measure: config.typography.measure,
+      line_spacing: config.typography.lineSpacing,
+      paragraph_indent: config.typography.paragraphIndent,
+      paragraph_spacing: config.typography.paragraphSpacing,
+      hyphenation: config.typography.hyphenation,
+      font_family: config.typography.fontFamily,
+      ligatures: config.typography.ligatures,
+    },
+    display: {
+      simplified_mode: config.display.simplifiedMode,
+      respect_publisher_css: config.display.respectPublisherCss,
+      show_progress_bar: config.display.showProgressBar,
+    },
   };
   return TOML.stringify(out);
 }
