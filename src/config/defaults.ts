@@ -76,6 +76,7 @@ export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
   b: 'add_bookmark',
   'B': 'list_bookmarks',
   'R': 'toggle_recent',
+  d: 'delete_from_library',
   t: 'toc',
   i: 'book_info',
   '?': 'help',

@@ -423,7 +423,10 @@ function hintBar(config: Config, view: string): string {
       key('command'),
       key('quit'),
     ];
-    return items.map((k, i) => `${actionLabel(actionsList[i]!)} ${k}`.trim()).join(' · ');
+    return items
+      .map((k, i) => (k ? `${actionLabel(actionsList[i]!)} ${k}`.trim() : null))
+      .filter((s): s is string => s !== null)
+      .join(' · ');
   }
   return '';
 }
