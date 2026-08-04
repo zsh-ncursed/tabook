@@ -86,6 +86,8 @@ export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
   escape: 'back',
   space: 'page_down',
   backspace: 'page_up',
+  pageup: 'page_up',
+  pagedown: 'page_down',
   'ctrl+d': 'page_down',
   'ctrl+u': 'page_up',
 };
