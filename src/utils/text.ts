@@ -114,3 +114,30 @@ export function formatBytes(bytes: number): string {
   if (mb < 1024) return `${mb.toFixed(1)} MB`;
   return `${(mb / 1024).toFixed(1)} GB`;
 }
+
+export function shellSplit(input: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]!;
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+      } else {
+        current += ch;
+      }
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === ' ' || ch === '\t') {
+      if (current !== '') {
+        result.push(current);
+        current = '';
+      }
+    } else {
+      current += ch;
+    }
+  }
+  if (current !== '') result.push(current);
+  return result;
+}

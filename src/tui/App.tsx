@@ -12,6 +12,7 @@ import { HelpView } from './help/HelpView.js';
 import { TextPrompt } from './components/TextPrompt.js';
 import { useTerminalSize } from './useTerminalSize.js';
 import { pickBookFile } from '../utils/open.js';
+import { shellSplit } from '../utils/text.js';
 import { serializeConfig } from '../config/config.js';
 import * as fs from 'node:fs';
 
@@ -157,7 +158,7 @@ export function App(props: AppProps): React.JSX.Element {
 
   const handleCommand = useCallback(
     (text: string): void => {
-      const parts = text.trim().split(/\s+/);
+      const parts = shellSplit(text.trim());
       const rawCmd = parts[0] ?? '';
       const cmd = rawCmd.replace(/^:/, '').toLowerCase();
       const args = parts.slice(1);
