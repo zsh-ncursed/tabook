@@ -14,7 +14,11 @@ import { useTerminalSize } from './useTerminalSize.js';
 import { pickBookFile } from '../utils/open.js';
 import { shellSplit } from '../utils/text.js';
 import { serializeConfig } from '../config/config.js';
+import { defaultConfig } from '../config/defaults.js';
+import { defaultConfigPath } from '../utils/paths.js';
 import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
 
 export interface AppProps {
   db: LibraryDb;
@@ -257,6 +261,30 @@ export function App(props: AppProps): React.JSX.Element {
         case 'help':
         case '?':
           setHelpOpen(true);
+          break;
+        case 'config':
+          if (args[0] === 'init') {
+            const p = configPathRef.current || defaultConfigPath();
+            try {
+              const dir = p.substring(0, p.lastIndexOf('/'));
+              if (dir && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+              fs.writeFileSync(p, serializeConfig(defaultConfig()), 'utf8');
+              notify(`Config written to ${p}`);
+            } catch (err) {
+              notify(`Cannot write config: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          } else if (args[0] === 'edit') {
+            const p = configPathRef.current || defaultConfigPath();
+            const editor = process.env.EDITOR || process.env.VISUAL || 'vi';
+            try {
+              const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
+              spawnSync(editor, [p], { stdio: 'inherit' });
+            } catch (err) {
+              notify(`Cannot open editor: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          } else {
+            notify('Usage: :config init | :config edit');
+          }
           break;
         default:
           notify(`Unknown command: ${rawCmd} (try :help)`);
