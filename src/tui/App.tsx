@@ -9,6 +9,7 @@ import { ReaderSession } from './reader/readerModel.js';
 import { LibraryView } from './library/LibraryView.js';
 import { ReaderView } from './reader/ReaderView.js';
 import { HelpView } from './help/HelpView.js';
+import { TextPrompt } from './components/TextPrompt.js';
 import { useTerminalSize } from './useTerminalSize.js';
 import { pickBookFile } from '../utils/open.js';
 
@@ -33,6 +34,7 @@ export function App(props: AppProps): React.JSX.Element {
   const startPageRef = useRef(0);
   const libraryCmdRef = useRef<{ sort?: SortField; group?: boolean }>({});
   const [cmdVersion, setCmdVersion] = useState(0);
+  const [promptOpenPath, setPromptOpenPath] = useState(false);
 
   const theme = getTheme(themeName);
 
@@ -108,8 +110,8 @@ export function App(props: AppProps): React.JSX.Element {
     setLibraryRefresh((c) => c + 1);
   }, [session, db]);
 
-  const saveToLibrary = useCallback((): void => {
-    if (!session) return;
+  const saveToLibrary = useCallback((): number | null => {
+    if (!session) return null;
     const book = session.book;
     db.addBook({
       path: book.path,
@@ -118,8 +120,12 @@ export function App(props: AppProps): React.JSX.Element {
       size: book.size,
       metadata: book.metadata,
     });
+    const record = db.getBookByPath(book.path);
+    const id = record?.id ?? null;
+    if (id !== null) session.setBookId(id);
     notify(`Saved to library: ${book.metadata.title}`);
     setLibraryRefresh((c) => c + 1);
+    return id;
   }, [session, db, notify]);
 
   const openFileDialog = useCallback((): void => {
@@ -129,7 +135,7 @@ export function App(props: AppProps): React.JSX.Element {
       if (file) {
         await openBookPath(file);
       } else {
-        notify('No file picker detected (zenity/kdialog); use :open <path>');
+        setPromptOpenPath(true);
       }
     })();
   }, [openBookPath, notify]);
@@ -259,6 +265,7 @@ export function App(props: AppProps): React.JSX.Element {
           onQuit={() => exit()}
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
+          inputDisabled={promptOpenPath}
         />
       ) : session ? (
         <ReaderView
@@ -272,10 +279,26 @@ export function App(props: AppProps): React.JSX.Element {
           onOpenFile={openFileDialog}
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
+          inputDisabled={promptOpenPath}
         />
       ) : null}
       {helpOpen ? (
         <HelpView config={config} theme={theme} onClose={() => setHelpOpen(false)} />
+      ) : null}
+      {promptOpenPath ? (
+        <Box paddingX={1}>
+          <TextPrompt
+            theme={theme}
+            prefix="open: "
+            placeholder="path to .fb2 / .fb2.zip / .epub file"
+            onSubmit={(value) => {
+              setPromptOpenPath(false);
+              const p = value.trim();
+              if (p) void openBookPath(p);
+            }}
+            onCancel={() => setPromptOpenPath(false)}
+          />
+        </Box>
       ) : null}
       {message ? (
         <Box paddingX={1}>

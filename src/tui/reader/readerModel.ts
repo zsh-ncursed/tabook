@@ -241,6 +241,10 @@ export class ReaderSession {
     return this.db.addBookmark(this.bookId ?? 0, this.charOffset(), label);
   }
 
+  setBookId(id: number): void {
+    (this as { bookId: number | null }).bookId = id;
+  }
+
   gotoBookmark(position: number): void {
     this.goToCharOffset(position);
   }

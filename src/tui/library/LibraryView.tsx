@@ -28,6 +28,7 @@ export interface LibraryViewProps {
   onQuit: () => void;
   onHelp: () => void;
   runCommand: (text: string) => void;
+  inputDisabled?: boolean;
 }
 
 type Mode = 'normal' | 'filter' | 'command' | 'detail' | 'confirm-delete';
@@ -55,6 +56,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
     onQuit,
     onHelp,
     runCommand,
+    inputDisabled = false,
   } = props;
   const [width, height] = useTerminalSize();
   const [books, setBooks] = useState<BookRecord[]>([]);
@@ -207,7 +209,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       const action = resolver.feed(keyName);
       handleAction(action);
     },
-    { isActive: mode === 'normal' },
+    { isActive: mode === 'normal' && !inputDisabled },
   );
 
   const visibleCount = Math.max(3, height - 5);
