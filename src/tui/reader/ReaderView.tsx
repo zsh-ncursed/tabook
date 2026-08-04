@@ -28,7 +28,7 @@ export interface ReaderViewProps {
   inputDisabled?: boolean;
 }
 
-type Mode = 'reading' | 'search' | 'command' | 'bookmark' | 'bookmark-edit' | 'bookmarks' | 'toc' | 'info';
+type Mode = 'reading' | 'search' | 'command' | 'bookmark' | 'bookmark-edit' | 'bookmarks' | 'toc' | 'toc-filter' | 'info';
 
 interface BookmarkRow {
   id: number;
@@ -44,6 +44,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   const [mode, setMode] = useState<Mode>('reading');
   const [bookmarks, setBookmarks] = useState<BookmarkRow[]>([]);
   const [editBookmarkId, setEditBookmarkId] = useState<number | null>(null);
+  const [tocFilter, setTocFilter] = useState('');
   const resolver = useMemo(() => createActionResolver(config), [config]);
   const [, forceTick] = useReducer((n: number) => n + 1, 0);
 
@@ -330,22 +331,45 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         <ListModal
           theme={theme}
           title="Table of Contents"
-          items={session.book.toc.map((entry) => ({
-            id: entry.id,
-            label: entry.label,
-            detail: entry.level > 1 ? '·'.repeat(entry.level - 1) : undefined,
-          }))}
+          items={session.book.toc
+            .filter((entry) => tocFilter === '' || entry.label.toLowerCase().includes(tocFilter.toLowerCase()))
+            .map((entry) => ({
+              id: entry.id,
+              label: entry.label,
+              detail: entry.level > 1 ? '·'.repeat(entry.level - 1) : undefined,
+            }))}
           height={Math.min(12, height - 8)}
-          footer="j/k move · enter jump · q close"
+          footer="j/k move · enter jump · / filter · q close"
           onSelect={(item) => {
             const entry = session.book.toc.find((e) => e.id === item.id);
             if (entry) {
               session.goToToc(entry.blockIndex);
               notify(`→ ${truncate(entry.label, 40)}`);
             }
+            setTocFilter('');
             setMode('reading');
           }}
-          onClose={() => setMode('reading')}
+          onFilter={() => setMode('toc-filter')}
+          onClose={() => {
+            setTocFilter('');
+            setMode('reading');
+          }}
+        />
+      ) : null}
+
+      {mode === 'toc-filter' ? (
+        <TextPrompt
+          theme={theme}
+          prefix="/"
+          placeholder="filter TOC entries…"
+          initialValue={tocFilter}
+          historyKey="toc-filter"
+          onValueChange={(v) => setTocFilter(v)}
+          onSubmit={() => setMode('toc')}
+          onCancel={() => {
+            setTocFilter('');
+            setMode('toc');
+          }}
         />
       ) : null}
 
