@@ -111,7 +111,9 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         setMode('bookmarks');
         break;
       case 'toc':
+        setTocFilter('');
         setMode('toc');
+        forceTick();
         break;
       case 'book_info':
         setMode('info');
