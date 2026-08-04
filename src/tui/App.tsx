@@ -12,16 +12,20 @@ import { HelpView } from './help/HelpView.js';
 import { TextPrompt } from './components/TextPrompt.js';
 import { useTerminalSize } from './useTerminalSize.js';
 import { pickBookFile } from '../utils/open.js';
+import { serializeConfig } from '../config/config.js';
+import * as fs from 'node:fs';
 
 export interface AppProps {
   db: LibraryDb;
   config: Config;
+  configPath?: string;
   initialPath?: string;
   themeOverride?: string;
 }
 
 export function App(props: AppProps): React.JSX.Element {
   const { db, config } = props;
+  const configPathRef = useRef(props.configPath);
   const { exit } = useApp();
   const [width, height] = useTerminalSize();
   const [screen, setScreen] = useState<'library' | 'reader'>('library');
@@ -41,6 +45,17 @@ export function App(props: AppProps): React.JSX.Element {
   const notify = useCallback((text: string): void => {
     setMessage({ text, key: Date.now() });
   }, []);
+
+  const persistConfig = useCallback((newTheme: string): void => {
+    const p = configPathRef.current;
+    if (!p) return;
+    try {
+      const updated = { ...config, theme: newTheme };
+      fs.writeFileSync(p, serializeConfig(updated), 'utf8');
+    } catch {
+      // ponytail: persist is best-effort; if file isn't writable, skip silently
+    }
+  }, [config]);
 
   useEffect(() => {
     if (!message) return undefined;
@@ -162,6 +177,7 @@ export function App(props: AppProps): React.JSX.Element {
           if (args[0]) {
             if (THEMES[args[0]]) {
               setThemeName(args[0]);
+              persistConfig(args[0]);
               notify(`Theme: ${args[0]}`);
             } else {
               notify(`Unknown theme: ${args[0]}. Available: ${themeNames().join(', ')}`);
@@ -234,7 +250,7 @@ export function App(props: AppProps): React.JSX.Element {
           notify(`Unknown command: ${rawCmd} (try :help)`);
       }
     },
-    [screen, session, closeReader, exit, openBookPath, openFileDialog, notify, themeName],
+    [screen, session, closeReader, exit, openBookPath, openFileDialog, notify, themeName, persistConfig],
   );
 
   useEffect(() => {

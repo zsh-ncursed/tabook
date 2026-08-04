@@ -87,6 +87,7 @@ function run(
     React.createElement(App, {
       db,
       config,
+      configPath: loaded.path,
       initialPath,
       themeOverride: options.theme,
     }),
