@@ -32,16 +32,58 @@ export function stripTags(input: string): string {
   return input.replace(/<[^>]*>/g, '');
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: '\u00a0',
+  mdash: '\u2014',
+  ndash: '\u2013',
+  hellip: '\u2026',
+  laquo: '\u00ab',
+  raquo: '\u00bb',
+  lsquo: '\u2018',
+  rsquo: '\u2019',
+  ldquo: '\u201c',
+  rdquo: '\u201d',
+  bull: '\u2022',
+  middot: '\u00b7',
+  copy: '\u00a9',
+  reg: '\u00ae',
+  trade: '\u2122',
+  deg: '\u00b0',
+  plusmn: '\u00b1',
+  euro: '\u20ac',
+  pound: '\u00a3',
+  yen: '\u00a5',
+  sect: '\u00a7',
+  para: '\u00b6',
+  times: '\u00d7',
+  divide: '\u00f7',
+};
+
 export function decodeEntities(input: string): string {
   return input
-    .replace(/&nbsp;/g, '\u00a0')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#x([0-9a-fA-F]+);/g, (_m, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_m, dec: string) => String.fromCodePoint(parseInt(dec, 10)));
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, hex: string) => safeCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_m, dec: string) => safeCodePoint(parseInt(dec, 10)))
+    .replace(/&([a-zA-Z][a-zA-Z0-9]{0,31});/g, (_m, name: string) => {
+      const decoded = NAMED_ENTITIES[name];
+      return decoded !== undefined ? decoded : _m;
+    });
+}
+
+function safeCodePoint(code: number): string {
+  if (
+    Number.isInteger(code) &&
+    code >= 0 &&
+    code <= 0x10ffff &&
+    !(code >= 0xd800 && code <= 0xdfff)
+  ) {
+    return String.fromCodePoint(code);
+  }
+  return '\ufffd';
 }
 
 export function normalizeWhitespace(input: string): string {

@@ -29,6 +29,23 @@ describe('decodeEntities', () => {
     );
     expect(decodeEntities('&#65;&#x42;')).toBe('AB');
   });
+
+  it('decodes common typographic entities', () => {
+    expect(decodeEntities('&mdash; &ndash; &laquo;q&raquo; &hellip;')).toBe(
+      '\u2014 \u2013 \u00abq\u00bb \u2026',
+    );
+  });
+
+  it('does not throw on out-of-range or surrogate numeric entities', () => {
+    expect(decodeEntities('&#1114112;')).toBe('\ufffd');
+    expect(decodeEntities('&#x110000;')).toBe('\ufffd');
+    expect(decodeEntities('&#xD800;')).toBe('\ufffd');
+    expect(decodeEntities('a&#999999999;b')).toBe('a\ufffdb');
+  });
+
+  it('leaves unknown named entities untouched', () => {
+    expect(decodeEntities('x &unknown; y')).toBe('x &unknown; y');
+  });
 });
 
 describe('normalizeWhitespace', () => {

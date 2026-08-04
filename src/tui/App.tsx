@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useApp } from 'ink';
 import type { LibraryDb, BookRecord, SortField } from '../db/db.js';
 import type { Config } from '../config/defaults.js';
-import { getTheme, THEMES, themeNames } from '../themes/themes.js';
+import { THEMES, themeNames } from '../themes/themes.js';
 import { openBook, parseBookFile } from '../formats/index.js';
 import type { ParsedBook } from '../formats/model.js';
 import { ReaderSession } from './reader/readerModel.js';
@@ -44,7 +44,10 @@ export function App(props: AppProps): React.JSX.Element {
   const [cmdVersion, setCmdVersion] = useState(0);
   const [promptOpenPath, setPromptOpenPath] = useState(false);
 
-  const theme = getTheme(themeName);
+  const theme = useMemo(() => {
+    const t = THEMES[themeName];
+    return t ?? THEMES[defaultConfig().theme]!;
+  }, [themeName]);
 
   const notify = useCallback((text: string): void => {
     setMessage({ text, key: Date.now() });
@@ -301,8 +304,8 @@ export function App(props: AppProps): React.JSX.Element {
       const matches = commands.filter((c) => c.startsWith(cmd));
       if (matches.length === 1) return `:${matches[0]} `;
     }
-    if (cmd === 'theme' && parts.length === 1) {
-      const prefix = (parts[0] ?? '').toLowerCase();
+    if (cmd === 'theme' && parts.length === 2) {
+      const prefix = (parts[1] ?? '').toLowerCase();
       const matches = themeNames().filter((t) => t.startsWith(prefix));
       if (matches.length === 1) return `:theme ${matches[0]}`;
     }
@@ -338,7 +341,7 @@ export function App(props: AppProps): React.JSX.Element {
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
           completeCommand={completeCommand}
-          inputDisabled={promptOpenPath}
+          inputDisabled={promptOpenPath || helpOpen}
         />
       ) : session ? (
         <ReaderView
@@ -353,7 +356,7 @@ export function App(props: AppProps): React.JSX.Element {
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
           completeCommand={completeCommand}
-          inputDisabled={promptOpenPath}
+          inputDisabled={promptOpenPath || helpOpen}
         />
       ) : null}
       {helpOpen ? (

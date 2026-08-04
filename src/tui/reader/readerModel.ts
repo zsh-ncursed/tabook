@@ -248,7 +248,10 @@ export class ReaderSession {
   // ---- bookmarks ----
 
   addBookmarkAtCurrent(label: string): number {
-    return this.db.addBookmark(this.bookId ?? 0, this.charOffset(), label);
+    if (this.bookId === null) {
+      throw new Error('Cannot add bookmark: book is not in the library');
+    }
+    return this.db.addBookmark(this.bookId, this.charOffset(), label);
   }
 
   setBookId(id: number): void {

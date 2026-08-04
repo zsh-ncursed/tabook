@@ -1,2 +1,4 @@
 #!/usr/bin/env node
-import './main.js';
+import { main } from './main.js';
+
+main();
