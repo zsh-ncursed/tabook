@@ -13,22 +13,19 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
-    # LTS versions only: Node 20/22 both ship npm 10, so npm ci
-    # resolves the dependency tree identically on every job. Adding
-    # 'latest' (npm 11/12) broke npm ci — different npm versions
-    # compute the ideal tree differently for the vite esbuild override.
-    strategy:
-      matrix:
-        node-version: [20, 22]
-
+    # Node 22 (LTS) ships npm 10, matching the npm@10-generated
+    # lockfile. Node 20 is EOL (April 2026) and its CI job failed
+    # with 'Worker exited unexpectedly'. 'latest' (npm 11/12)
+    # computes a different ideal tree for the vite esbuild override
+    # and breaks npm ci with EUSAGE — so pin a single LTS version.
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
