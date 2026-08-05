@@ -5,6 +5,15 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Limit parallel worker forks: on CI runners many concurrent
+    // vitest workers can crash with "Worker exited unexpectedly".
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        maxForks: 2,
+        minForks: 1,
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
