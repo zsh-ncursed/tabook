@@ -34,9 +34,7 @@ describe('parseXhtmlBlocks', () => {
   });
 
   it('maps container ids to the last containing block', () => {
-    const { blocks, idToBlock } = parse(
-      '<div id="d1"><h2 id="h2">Title</h2><p>Body</p></div>',
-    );
+    const { blocks, idToBlock } = parse('<div id="d1"><h2 id="h2">Title</h2><p>Body</p></div>');
     expect(blocks).toHaveLength(2);
     expect(idToBlock.get('h2')).toBe(0);
     expect(idToBlock.get('d1')).toBe(1);
