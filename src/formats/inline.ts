@@ -162,8 +162,3 @@ function trimInlines(inlines: Inline[]): Inline[] {
   }
   return trimmed;
 }
-
-export function decodeTextRaw(raw: unknown): string {
-  if (typeof raw === 'string') return decodeEntities(raw);
-  return '';
-}

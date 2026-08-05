@@ -516,7 +516,11 @@ function findOffsetOfLine(
     .map((s) => s.text)
     .join('');
   const linePlain = line.map((s) => s.text).join('');
-  const idx = plain.indexOf(linePlain.trim());
+  const trimmed = linePlain.trim();
+  // baseOffset is the running sum of previous line text lengths (without spaces),
+  // which is always ≤ the actual offset in the full plain text.
+  // So indexOf from baseOffset will find the correct occurrence.
+  const idx = plain.indexOf(trimmed, baseOffset);
   if (idx >= 0) return idx;
   return baseOffset;
 }
@@ -582,13 +586,14 @@ function layoutTable(
         const padded = text.padEnd(colWidths[c]!);
         if (cellLine) {
           spans.push(...cellLine);
-          if (padded.length > text.length) spans.push({ text: ' '.repeat(padded.length - text.length) });
+          if (padded.length > text.length)
+            spans.push({ text: ' '.repeat(padded.length - text.length) });
         } else {
           spans.push({ text: padded });
         }
         if (c < colCount - 1) spans.push({ text: ' '.repeat(pad) });
       }
-      if (lineCharOffset < 0) lineCharOffset = row.isHeader ? 0 : cellStartOffsets[0] ?? 0;
+      if (lineCharOffset < 0) lineCharOffset = row.isHeader ? 0 : (cellStartOffsets[0] ?? 0);
       lines.push({
         role: row.isHeader ? 'tableHeader' : 'tableCell',
         spans,

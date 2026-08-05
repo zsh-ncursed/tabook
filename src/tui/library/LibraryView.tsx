@@ -95,7 +95,8 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
             b.genres.some((g) => g.toLowerCase().includes(q)),
         )
       : source;
-    const sorted = view === 'recent' ? filtered : [...filtered].sort((a, b) => compareBooks(a, b, sortField));
+    const sorted =
+      view === 'recent' ? filtered : [...filtered].sort((a, b) => compareBooks(a, b, sortField));
     return sorted;
   }, [books, recentBooks, view, filter, sortField]);
 

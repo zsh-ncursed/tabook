@@ -41,6 +41,7 @@ export function normalizeKeybindings(
   warnings: string[],
 ): Record<string, KeyAction> {
   const result: Record<string, KeyAction> = { ...base.keybindings };
+  const userKeys = new Set<string>();
   for (const [rawKey, rawAction] of Object.entries(raw)) {
     const key = parseKey(rawKey);
     if (key === '') {
@@ -52,11 +53,12 @@ export function normalizeKeybindings(
       warnings.push(`Ignoring keybinding "${rawKey}": unknown action "${String(rawAction)}"`);
       continue;
     }
-    const existing = result[key];
-    if (existing !== undefined && existing !== action) {
-      throw new KeybindingConflictError(key, existing, action);
+    const prev = result[key];
+    if (userKeys.has(key) && prev !== action) {
+      throw new KeybindingConflictError(key, prev!, action);
     }
     result[key] = action;
+    userKeys.add(key);
   }
   return result;
 }

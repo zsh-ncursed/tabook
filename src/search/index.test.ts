@@ -33,7 +33,6 @@ describe('BookSearchIndex', () => {
     const index = new BookSearchIndex(blocks);
     expect(index.search('')).toEqual([]);
     expect(index.search('   ')).toEqual([]);
-    expect(index.blockHas('', 0)).toBe(false);
   });
 
   it('normalizes multiple spaces in the query', () => {
@@ -53,6 +52,5 @@ describe('BookSearchIndex', () => {
   it('returns no matches for absent terms', () => {
     const index = new BookSearchIndex(blocks);
     expect(index.search('zebra')).toEqual([]);
-    expect(index.blockHas('zebra', 0)).toBe(false);
   });
 });

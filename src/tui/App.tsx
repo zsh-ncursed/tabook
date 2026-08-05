@@ -57,16 +57,19 @@ export function App(props: AppProps): React.JSX.Element {
     setMessage({ text, key: Date.now() });
   }, []);
 
-  const persistConfig = useCallback((newTheme: string): void => {
-    const p = configPathRef.current;
-    if (!p) return;
-    try {
-      const updated = { ...config, theme: newTheme };
-      fs.writeFileSync(p, serializeConfig(updated), 'utf8');
-    } catch {
-      // ponytail: persist is best-effort; if file isn't writable, skip silently
-    }
-  }, [config]);
+  const persistConfig = useCallback(
+    (newTheme: string): void => {
+      const p = configPathRef.current;
+      if (!p) return;
+      try {
+        const updated = { ...config, theme: newTheme };
+        fs.writeFileSync(p, serializeConfig(updated), 'utf8');
+      } catch {
+        // ponytail: persist is best-effort; if file isn't writable, skip silently
+      }
+    },
+    [config],
+  );
 
   useEffect(() => {
     if (!message) return undefined;
@@ -296,7 +299,17 @@ export function App(props: AppProps): React.JSX.Element {
           notify(`Unknown command: ${rawCmd} (try :help)`);
       }
     },
-    [screen, session, closeReader, exit, openBookPath, openFileDialog, notify, themeName, persistConfig],
+    [
+      screen,
+      session,
+      closeReader,
+      exit,
+      openBookPath,
+      openFileDialog,
+      notify,
+      themeName,
+      persistConfig,
+    ],
   );
 
   const completeCommand = useCallback((value: string): string | null => {
@@ -304,7 +317,23 @@ export function App(props: AppProps): React.JSX.Element {
     if (!trimmed) return null;
     const parts = shellSplit(trimmed);
     const cmd = (parts[0] ?? '').toLowerCase();
-    const commands = ['q', 'quit', 'exit', 'open', 'o', 'theme', 'themes', 'sort', 'group', 'goto', 'simplified', 'css', 'search', 'help', 'config'];
+    const commands = [
+      'q',
+      'quit',
+      'exit',
+      'open',
+      'o',
+      'theme',
+      'themes',
+      'sort',
+      'group',
+      'goto',
+      'simplified',
+      'css',
+      'search',
+      'help',
+      'config',
+    ];
     if (parts.length <= 1 && !trimmed.includes(' ')) {
       const matches = commands.filter((c) => c.startsWith(cmd));
       if (matches.length === 1) return `:${matches[0]} `;

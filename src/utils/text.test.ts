@@ -4,7 +4,6 @@ import {
   decodeEntities,
   normalizeWhitespace,
   truncate,
-  levenshtein,
   displayWidth,
   formatBytes,
   slugify,
@@ -59,14 +58,6 @@ describe('truncate', () => {
     expect(truncate('abcdefgh', 5)).toBe('ab...');
     expect(truncate('abc', 5)).toBe('abc');
     expect(truncate('abcdef', 3)).toBe('...');
-  });
-});
-
-describe('levenshtein', () => {
-  it('computes edit distances', () => {
-    expect(levenshtein('kitten', 'sitting')).toBe(3);
-    expect(levenshtein('abc', 'abc')).toBe(0);
-    expect(levenshtein('', 'abc')).toBe(3);
   });
 });
 

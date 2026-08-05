@@ -185,7 +185,10 @@ describe('layoutBlock', () => {
     const block: Block = {
       type: 'table',
       headers: [],
-      rows: [[[t('one')], [t('two')]], [[t('three')], [t('four')]]],
+      rows: [
+        [[t('one')], [t('two')]],
+        [[t('three')], [t('four')]],
+      ],
     };
     const lines = layoutBlock(block, 0, {
       typo,
@@ -266,5 +269,30 @@ describe('BookLayout', () => {
     expect(layout.lineCount()).toBe(0);
     expect(layout.textNear(0)).toBe('');
     expect(layout.lineForCharOffset(0)).toBe(0);
+  });
+
+  it('assigns correct charOffset for repeated text in a paragraph', () => {
+    // Two identical words 'abc abc' — second occurrence should have offset 4, not 0
+    const block: Block = {
+      type: 'paragraph',
+      children: [t('abc abc abc')],
+    };
+    const lines = layoutBlock(block, 0, { typo, width: 20 });
+    // All text fits on one line, so charOffset should be 0 (first occurrence)
+    expect(lines[0]!.charOffset).toBe(0);
+  });
+
+  it('assigns correct charOffset for repeated text across wrapped lines', () => {
+    // 'abc abc abc' wrapped at width 5 — each wrapped line should advance
+    const block: Block = {
+      type: 'paragraph',
+      children: [t('abc abc abc')],
+    };
+    const lines = layoutBlock(block, 0, { typo, width: 5 });
+    expect(lines.length).toBeGreaterThanOrEqual(2);
+    // charOffset of each line should be monotonically non-decreasing
+    for (let i = 1; i < lines.length; i++) {
+      expect(lines[i]!.charOffset).toBeGreaterThanOrEqual(lines[i - 1]!.charOffset);
+    }
   });
 });

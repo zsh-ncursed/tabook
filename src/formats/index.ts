@@ -20,7 +20,7 @@ export function detectFormat(data: Uint8Array, name: string): 'fb2' | 'epub' {
   const head = Buffer.from(data.subarray(0, 512)).toString('utf8');
   if (head.includes('<FictionBook')) return 'fb2';
   if (head.trimStart().startsWith('<?xml') && head.includes('<FictionBook')) return 'fb2';
-  return 'fb2';
+  throw new ParseError(`Cannot determine format of "${name}" — expected .fb2 or .epub`);
 }
 
 export function parseBookFile(filePath: string): ParsedBook {

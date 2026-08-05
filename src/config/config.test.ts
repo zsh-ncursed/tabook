@@ -36,18 +36,34 @@ describe('normalizeKeybindings', () => {
     expect(warnings[0]).toContain('explode');
   });
 
-  it('throws on keybinding conflicts', () => {
+  it('allows overriding a default keybinding', () => {
     const base = defaultConfig();
     const warnings: string[] = [];
-    expect(() => normalizeKeybindings({ j: 'scroll_up' }, base, warnings)).toThrow(
-      KeybindingConflictError,
-    );
+    const result = normalizeKeybindings({ j: 'scroll_up' }, base, warnings);
+    expect(result['j']).toBe('scroll_up');
+    expect(warnings).toEqual([]);
   });
 
-  it('allows re-mapping the same key to the same action', () => {
+  it('throws on conflicting user keybindings (same normalized key, different actions)', () => {
+    const base = defaultConfig();
+    const warnings: string[] = [];
+    expect(() =>
+      normalizeKeybindings({ 'Ctrl+J': 'scroll_up', 'ctrl+j': 'page_down' }, base, warnings),
+    ).toThrow(KeybindingConflictError);
+  });
+
+  it('allows re-mapping the same key to the same action (no-op)', () => {
     const base = defaultConfig();
     const result = normalizeKeybindings({ j: 'move_cursor_down' }, base, []);
     expect(result['j']).toBe('move_cursor_down');
+  });
+
+  it('preserves other defaults when overriding one key', () => {
+    const base = defaultConfig();
+    const result = normalizeKeybindings({ j: 'scroll_up' }, base, []);
+    expect(result['k']).toBe('move_cursor_up');
+    expect(result['q']).toBe('quit');
+    expect(result['j']).toBe('scroll_up');
   });
 });
 

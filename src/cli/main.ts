@@ -84,6 +84,14 @@ function run(
     initialPath = undefined;
   }
 
+  process.on('exit', () => {
+    try {
+      db.close();
+    } catch {
+      // best-effort close on exit
+    }
+  });
+
   const tree = render(
     React.createElement(App, {
       db,
@@ -98,8 +106,7 @@ function run(
 
 function isEntryPoint(): boolean {
   return (
-    typeof process.argv[1] === 'string' &&
-    pathToFileURL(process.argv[1]).href === import.meta.url
+    typeof process.argv[1] === 'string' && pathToFileURL(process.argv[1]).href === import.meta.url
   );
 }
 

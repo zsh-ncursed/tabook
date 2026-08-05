@@ -28,7 +28,7 @@ export function StatusBar(props: {
         ) : null}{' '}
         {showBar ? (
           <Text color={theme.colors.accent}>
-            {progressBar(progress ?? 0, barWidth)} {(progress ?? 0)}%
+            {progressBar(progress ?? 0, barWidth)} {progress ?? 0}%
           </Text>
         ) : null}{' '}
       </Text>

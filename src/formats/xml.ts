@@ -117,7 +117,7 @@ export function asArray<T>(value: T | T[] | undefined): T[] {
 }
 
 export function directText(node: XmlNode | undefined): string {
-  return decodeEntities(textOf(node));
+  return textOf(node);
 }
 
 export function fullTextOf(node: XmlNode | undefined): string {

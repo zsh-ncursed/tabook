@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseInlines, plainOf, normalizeInlines, decodeTextRaw } from './inline.js';
+import { parseInlines, plainOf, normalizeInlines } from './inline.js';
 import { parseXml } from './xml.js';
 
 function xmlToInlines(xml: string) {
@@ -81,12 +81,5 @@ describe('normalizeInlines', () => {
       },
     ]);
     expect(plainOf(inlines)).toBe('x y');
-  });
-});
-
-describe('decodeTextRaw', () => {
-  it('decodes entities in strings', () => {
-    expect(decodeTextRaw('a &amp; b')).toBe('a & b');
-    expect(decodeTextRaw(42)).toBe('');
   });
 });

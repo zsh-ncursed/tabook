@@ -75,7 +75,10 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
         if (historyKey) {
           const hist = getHistory(historyKey);
           if (hist.length > 0) {
-            const nextIdx = historyIdxRef.current === -1 ? hist.length - 1 : Math.max(0, historyIdxRef.current - 1);
+            const nextIdx =
+              historyIdxRef.current === -1
+                ? hist.length - 1
+                : Math.max(0, historyIdxRef.current - 1);
             historyIdxRef.current = nextIdx;
             setValue(hist[nextIdx]!);
             setCursor(hist[nextIdx]!.length);

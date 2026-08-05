@@ -55,12 +55,6 @@ export class BookSearchIndex {
     }
     return map;
   }
-
-  blockHas(query: string, blockIndex: number): boolean {
-    const q = normalizeQuery(query);
-    if (q === '') return false;
-    return this.blockTexts[blockIndex]!.includes(q);
-  }
 }
 
 export function normalizeQuery(query: string): string {

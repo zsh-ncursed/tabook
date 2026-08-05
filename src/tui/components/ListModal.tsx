@@ -27,15 +27,19 @@ export interface ListModalProps {
 }
 
 export function ListModal(props: ListModalProps): React.JSX.Element {
-  const { theme, title, items, onSelect, onClose, onDelete, onEdit, onFilter, onNavigate, footer } = props;
+  const { theme, title, items, onSelect, onClose, onDelete, onEdit, onFilter, onNavigate, footer } =
+    props;
   const [cursor, setCursor] = useState(0);
   const width = props.width ?? 70;
   const height = Math.min(props.height ?? items.length, Math.max(6, items.length));
 
-  const moveCursor = useCallback((next: number): void => {
-    setCursor(next);
-    if (onNavigate && items[next]) onNavigate(items[next]!);
-  }, [items, onNavigate]);
+  const moveCursor = useCallback(
+    (next: number): void => {
+      setCursor(next);
+      if (onNavigate && items[next]) onNavigate(items[next]!);
+    },
+    [items, onNavigate],
+  );
 
   useInput((input, key) => {
     const keyName = resolveKeyName(input, key);

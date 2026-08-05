@@ -376,9 +376,7 @@ export class LibraryDb {
   }
 
   updateBookmarkLabel(id: number, label: string): boolean {
-    const info = this.db
-      .prepare('UPDATE bookmarks SET label = ? WHERE id = ?')
-      .run(label, id);
+    const info = this.db.prepare('UPDATE bookmarks SET label = ? WHERE id = ?').run(label, id);
     return info.changes > 0;
   }
 

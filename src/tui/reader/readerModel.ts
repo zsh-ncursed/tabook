@@ -20,9 +20,11 @@ export interface SearchState {
   current: number;
 }
 
+const TOTAL_LINES_DELAY_MS = 50;
+
 export class ReaderSession {
   readonly book: ParsedBook;
-  readonly search: BookSearchIndex;
+  search: BookSearchIndex;
   readonly bookId: number | null;
   private readonly db: LibraryDb;
   private blocks: Block[];
@@ -63,7 +65,7 @@ export class ReaderSession {
   private scheduleTotalLines(): void {
     setTimeout(() => {
       this.exactTotalLines = this.layout.lineCount();
-    }, 50);
+    }, TOTAL_LINES_DELAY_MS);
   }
 
   contentWidth(): number {
@@ -90,6 +92,12 @@ export class ReaderSession {
     const offset = this.charOffset();
     this.blocks = this.simplified ? simplifyBlocks(this.book.content) : this.book.content;
     this.layout = this.buildLayout();
+    this.search = new BookSearchIndex(this.blocks);
+    if (this.query !== '') {
+      this.matches = this.search.search(this.query);
+      this.highlights = this.search.highlightRanges(this.query);
+      this.currentMatch = -1;
+    }
     this.line = this.layout.lineForCharOffset(offset);
     this.exactTotalLines = null;
     this.scheduleTotalLines();

@@ -16,6 +16,11 @@ describe('format detection', () => {
     expect(detectFormat(buildEpub(), 'book.epub')).toBe('epub');
     expect(detectFormat(buildEpub(), 'mystery.bin')).toBe('epub');
   });
+
+  it('throws ParseError for unrecognized format', () => {
+    const garbage = new TextEncoder().encode('this is not a book');
+    expect(() => detectFormat(garbage, 'file.xyz')).toThrow('Cannot determine format');
+  });
 });
 
 describe('file-based parsing', () => {

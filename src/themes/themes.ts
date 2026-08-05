@@ -61,7 +61,7 @@ function makeTheme(
 }
 
 export const THEMES: Record<string, Theme> = {
-  'amoled': makeTheme('amoled', true, {
+  amoled: makeTheme('amoled', true, {
     background: '#000000',
     text: '#ffffff',
     heading: '#b388ff',
@@ -73,7 +73,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#18ffff',
   }),
 
-  'aura': makeTheme('aura', true, {
+  aura: makeTheme('aura', true, {
     background: '#15141b',
     text: '#edecee',
     heading: '#a277ff',
@@ -85,7 +85,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#82e2ff',
   }),
 
-  'ayu': makeTheme('ayu', true, {
+  ayu: makeTheme('ayu', true, {
     background: '#0f1419',
     text: '#d6dae0',
     heading: '#3fb7e3',
@@ -97,7 +97,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#66c6f1',
   }),
 
-  'carbonfox': makeTheme('carbonfox', true, {
+  carbonfox: makeTheme('carbonfox', true, {
     background: '#393939',
     text: '#f2f4f8',
     heading: '#33b1ff',
@@ -109,7 +109,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#78a9ff',
   }),
 
-  'catppuccin': makeTheme('catppuccin', true, {
+  catppuccin: makeTheme('catppuccin', true, {
     background: '#1e1e2e',
     text: '#cdd6f4',
     heading: '#b4befe',
@@ -145,7 +145,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#8aadf4',
   }),
 
-  'cobalt2': makeTheme('cobalt2', true, {
+  cobalt2: makeTheme('cobalt2', true, {
     background: '#193549',
     text: '#ffffff',
     heading: '#ffc600',
@@ -157,7 +157,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#0088ff',
   }),
 
-  'cursor': makeTheme('cursor', true, {
+  cursor: makeTheme('cursor', true, {
     background: '#181818',
     text: '#e4e4e4',
     heading: '#AAA0FA',
@@ -169,7 +169,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#82D2CE',
   }),
 
-  'dracula': makeTheme('dracula', true, {
+  dracula: makeTheme('dracula', true, {
     background: '#1d1e28',
     text: '#f8f8f2',
     heading: '#bd93f9',
@@ -181,7 +181,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#8be9fd',
   }),
 
-  'everforest': makeTheme('everforest', true, {
+  everforest: makeTheme('everforest', true, {
     background: '#2d353b',
     text: '#d3c6aa',
     heading: '#d699b6',
@@ -193,7 +193,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#a7c080',
   }),
 
-  'flexoki': makeTheme('flexoki', true, {
+  flexoki: makeTheme('flexoki', true, {
     background: '#100F0F',
     text: '#CECDC3',
     heading: '#8B7EC8',
@@ -205,7 +205,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#4385BE',
   }),
 
-  'github': makeTheme('github', true, {
+  github: makeTheme('github', true, {
     background: '#0d1117',
     text: '#c9d1d9',
     heading: '#58a6ff',
@@ -217,7 +217,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#58a6ff',
   }),
 
-  'gruvbox': makeTheme('gruvbox', true, {
+  gruvbox: makeTheme('gruvbox', true, {
     background: '#282828',
     text: '#ebdbb2',
     heading: '#83a598',
@@ -229,7 +229,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#d3869b',
   }),
 
-  'kanagawa': makeTheme('kanagawa', true, {
+  kanagawa: makeTheme('kanagawa', true, {
     background: '#1F1F28',
     text: '#DCD7BA',
     heading: '#957FB8',
@@ -253,7 +253,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#EC5B2B',
   }),
 
-  'material': makeTheme('material', true, {
+  material: makeTheme('material', true, {
     background: '#263238',
     text: '#eeffff',
     heading: '#82aaff',
@@ -265,7 +265,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#89ddff',
   }),
 
-  'matrix': makeTheme('matrix', true, {
+  matrix: makeTheme('matrix', true, {
     background: '#0a0e0a',
     text: '#62ff94',
     heading: '#00efff',
@@ -277,7 +277,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#30b3ff',
   }),
 
-  'mercury': makeTheme('mercury', true, {
+  mercury: makeTheme('mercury', true, {
     background: '#171721',
     text: '#dddde5',
     heading: '#ffffff',
@@ -289,7 +289,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#8da4f5',
   }),
 
-  'monokai': makeTheme('monokai', true, {
+  monokai: makeTheme('monokai', true, {
     background: '#272822',
     text: '#f8f8f2',
     heading: '#ae81ff',
@@ -301,7 +301,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#66d9ef',
   }),
 
-  'nightowl': makeTheme('nightowl', true, {
+  nightowl: makeTheme('nightowl', true, {
     background: '#011627',
     text: '#d6deeb',
     heading: '#82aaff',
@@ -313,7 +313,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#82aaff',
   }),
 
-  'nord': makeTheme('nord', true, {
+  nord: makeTheme('nord', true, {
     background: '#2e3440',
     text: '#e5e9f0',
     heading: '#88c0d0',
@@ -337,7 +337,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#61afef',
   }),
 
-  'onedarkpro': makeTheme('onedarkpro', true, {
+  onedarkpro: makeTheme('onedarkpro', true, {
     background: '#1e222a',
     text: '#abb2bf',
     heading: '#61afef',
@@ -349,7 +349,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#56b6c2',
   }),
 
-  'opencode': makeTheme('opencode', true, {
+  opencode: makeTheme('opencode', true, {
     background: '#0a0a0a',
     text: '#eeeeee',
     heading: '#9d7cd8',
@@ -361,7 +361,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#fab283',
   }),
 
-  'orng': makeTheme('orng', true, {
+  orng: makeTheme('orng', true, {
     background: '#0a0a0a',
     text: '#eeeeee',
     heading: '#EC5B2B',
@@ -385,7 +385,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#8CD3CB',
   }),
 
-  'palenight': makeTheme('palenight', true, {
+  palenight: makeTheme('palenight', true, {
     background: '#292d3e',
     text: '#a6accd',
     heading: '#c792ea',
@@ -397,7 +397,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#82aaff',
   }),
 
-  'rosepine': makeTheme('rosepine', true, {
+  rosepine: makeTheme('rosepine', true, {
     background: '#191724',
     text: '#e0def4',
     heading: '#c4a7e7',
@@ -409,7 +409,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#9ccfd8',
   }),
 
-  'shadesofpurple': makeTheme('shadesofpurple', true, {
+  shadesofpurple: makeTheme('shadesofpurple', true, {
     background: '#1a102b',
     text: '#f5f0ff',
     heading: '#c792ff',
@@ -421,7 +421,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#7dd4ff',
   }),
 
-  'solarized': makeTheme('solarized', true, {
+  solarized: makeTheme('solarized', true, {
     background: '#002b36',
     text: '#93a1a1',
     heading: '#6c71c4',
@@ -433,7 +433,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#2aa198',
   }),
 
-  'synthwave84': makeTheme('synthwave84', true, {
+  synthwave84: makeTheme('synthwave84', true, {
     background: '#262335',
     text: '#ffffff',
     heading: '#ff7edb',
@@ -445,7 +445,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#36f9f6',
   }),
 
-  'tokyonight': makeTheme('tokyonight', true, {
+  tokyonight: makeTheme('tokyonight', true, {
     background: '#1a1b26',
     text: '#c0caf5',
     heading: '#7aa2f7',
@@ -457,7 +457,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#7dcfff',
   }),
 
-  'vercel': makeTheme('vercel', true, {
+  vercel: makeTheme('vercel', true, {
     background: '#000000',
     text: '#EDEDED',
     heading: '#BF7AF0',
@@ -469,7 +469,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#52A8FF',
   }),
 
-  'vesper': makeTheme('vesper', true, {
+  vesper: makeTheme('vesper', true, {
     background: '#101010',
     text: '#FFF',
     heading: '#FFC799',
@@ -481,7 +481,7 @@ export const THEMES: Record<string, Theme> = {
     link: '#FFC799',
   }),
 
-  'zenburn': makeTheme('zenburn', true, {
+  zenburn: makeTheme('zenburn', true, {
     background: '#3f3f3f',
     text: '#dcdccc',
     heading: '#f0dfaf',
@@ -552,7 +552,6 @@ export const THEMES: Record<string, Theme> = {
     dim: '#7c7f93',
     link: '#179299',
   }),
-
 };
 
 export function getTheme(name: string): Theme {

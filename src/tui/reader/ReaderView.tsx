@@ -29,7 +29,16 @@ export interface ReaderViewProps {
   inputDisabled?: boolean;
 }
 
-type Mode = 'reading' | 'search' | 'command' | 'bookmark' | 'bookmark-edit' | 'bookmarks' | 'toc' | 'toc-filter' | 'info';
+type Mode =
+  | 'reading'
+  | 'search'
+  | 'command'
+  | 'bookmark'
+  | 'bookmark-edit'
+  | 'bookmarks'
+  | 'toc'
+  | 'toc-filter'
+  | 'info';
 
 interface BookmarkRow {
   id: number;
@@ -39,8 +48,20 @@ interface BookmarkRow {
 }
 
 export function ReaderView(props: ReaderViewProps): React.JSX.Element {
-  const { session, config, theme, db, notify, onClose, onSave, onOpenFile, onHelp, runCommand, completeCommand, inputDisabled = false } =
-    props;
+  const {
+    session,
+    config,
+    theme,
+    db,
+    notify,
+    onClose,
+    onSave,
+    onOpenFile,
+    onHelp,
+    runCommand,
+    completeCommand,
+    inputDisabled = false,
+  } = props;
   const [width, height] = useTerminalSize();
   const [mode, setMode] = useState<Mode>('reading');
   const [bookmarks, setBookmarks] = useState<BookmarkRow[]>([]);
@@ -336,7 +357,10 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           theme={theme}
           title="Table of Contents"
           items={session.book.toc
-            .filter((entry) => tocFilter === '' || entry.label.toLowerCase().includes(tocFilter.toLowerCase()))
+            .filter(
+              (entry) =>
+                tocFilter === '' || entry.label.toLowerCase().includes(tocFilter.toLowerCase()),
+            )
             .map((entry) => ({
               id: entry.id,
               label: entry.label,
