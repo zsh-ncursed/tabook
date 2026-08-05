@@ -16,7 +16,7 @@ let db: LibraryDb;
 let bookId: number;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tome-bm-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tabook-bm-'));
   db = new LibraryDb(path.join(dir, 'bm.sqlite'));
   bookId = db.addBook({
     path: '/tmp/b.fb2',

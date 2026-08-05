@@ -369,7 +369,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
 
       <StatusBar
         theme={theme}
-        left={`tome · ${selectedBook ? truncateW(selectedBook.title, 30) : 'no selection'}`}
+        left={`tabook · ${selectedBook ? truncateW(selectedBook.title, 30) : 'no selection'}`}
         right={hintBar(config, 'library')}
         message={''}
       />

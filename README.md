@@ -1,4 +1,4 @@
-# tome
+# tabook
 
 A terminal e-book reader for **FB2**, **FB2-in-ZIP** and **EPUB** (2.x / 3.x) with
 vim-like controls. Built with TypeScript, React + Ink and SQLite.
@@ -29,12 +29,12 @@ npm install
 npm run build
 ```
 
-This compiles TypeScript to `dist/`. The `tome` binary is exposed via `npm link`
+This compiles TypeScript to `dist/`. The `tabook` binary is exposed via `npm link`
 or the `bin` field in `package.json`:
 
 ```bash
 npm link
-tome --help
+tabook --help
 ```
 
 ## Usage
@@ -42,22 +42,22 @@ tome --help
 Open a book directly:
 
 ```bash
-tome book.fb2
-tome book.fb2.zip
-tome book.epub
+tabook book.fb2
+tabook book.fb2.zip
+tabook book.epub
 ```
 
 Open the library view:
 
 ```bash
-tome --library
+tabook --library
 ```
 
 Additional options:
 
 ```bash
-tome --theme monokai book.epub     # override the theme
-tome --config ~/.config/tome.toml  # use a specific config file
+tabook --theme monokai book.epub     # override the theme
+tabook --config ~/.config/tabook/config.toml  # use a specific config file
 ```
 
 ## Keybindings
@@ -100,14 +100,14 @@ tome --config ~/.config/tome.toml  # use a specific config file
 
 ## Configuration
 
-`tome` looks for `$XDG_CONFIG_HOME/tome/config.toml`
-(default `~/.config/tome/config.toml`). The default database is
-`$XDG_CONFIG_HOME/tome/library.db`.
+`tabook` looks for `$XDG_CONFIG_HOME/tabook/config.toml`
+(default `~/.config/tabook/config.toml`). The default database is
+`$XDG_CONFIG_HOME/tabook/library.db`.
 
 ```toml
 # config.toml
 theme = "dracula"
-db_path = "~/.local/share/tome/library.db"
+db_path = "~/.local/share/tabook/library.db"
 
 [keybindings]
 j = "move_cursor_down"
@@ -131,7 +131,7 @@ show_progress_bar = true
 ```
 
 The sample TOML above is the complete set of supported options. Drop it into
-`~/.config/tome/config.toml` and edit to taste.
+`~/.config/tabook/config.toml` and edit to taste.
 
 ## Themes
 

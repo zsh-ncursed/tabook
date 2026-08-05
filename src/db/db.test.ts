@@ -23,7 +23,7 @@ function makeDb(): LibraryDb {
 }
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tome-test-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tabook-test-'));
   db = makeDb();
 });
 

@@ -39,7 +39,7 @@ describe('paths', () => {
   });
 
   it('ensureDir creates directories recursively', () => {
-    const dir = path.join(os.tmpdir(), 'tome-paths-test', 'nested');
+    const dir = path.join(os.tmpdir(), 'tabook-paths-test', 'nested');
     ensureDir(dir);
     expect(require('node:fs').existsSync(dir)).toBe(true);
   });

@@ -25,7 +25,7 @@ describe('format detection', () => {
 
 describe('file-based parsing', () => {
   it('parseBookFile reads and parses fb2 from disk', () => {
-    const file = path.join(os.tmpdir(), 'tome-detect-test.fb2');
+    const file = path.join(os.tmpdir(), 'tabook-detect-test.fb2');
     fs.writeFileSync(file, FB2_SAMPLE);
     try {
       const book = parseBookFile(file);
@@ -37,7 +37,7 @@ describe('file-based parsing', () => {
   });
 
   it('openBook parses epub asynchronously', async () => {
-    const file = path.join(os.tmpdir(), 'tome-detect-test.epub');
+    const file = path.join(os.tmpdir(), 'tabook-detect-test.epub');
     fs.writeFileSync(file, buildEpub());
     try {
       const book = await openBook(file);

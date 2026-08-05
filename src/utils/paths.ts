@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 
-export const APP_NAME = 'tome';
+export const APP_NAME = 'tabook';
 
 export function configDir(): string {
   const xdg = process.env.XDG_CONFIG_HOME;

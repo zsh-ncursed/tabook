@@ -26,7 +26,7 @@ function readVersion(): string {
 export function main(): void {
   const program = new Command();
   program
-    .name('tome')
+    .name('tabook')
     .description('TUI e-book reader for FB2 and EPUB')
     .version(readVersion(), '-V, --version', 'output the version number')
     .option('--library', 'open the library view')
@@ -52,12 +52,12 @@ function run(
   try {
     loaded = loadConfig(options.config);
   } catch (err) {
-    console.error(`tome: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`tabook: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
 
   for (const warning of loaded.warnings) {
-    console.error(`tome: ${warning}`);
+    console.error(`tabook: ${warning}`);
   }
 
   const config = loaded.config;
@@ -65,7 +65,7 @@ function run(
     try {
       getTheme(options.theme);
     } catch {
-      console.error(`tome: unknown theme "${options.theme}"`);
+      console.error(`tabook: unknown theme "${options.theme}"`);
       process.exit(1);
     }
   }
@@ -75,7 +75,7 @@ function run(
     const dbPath = config.dbPath !== '' ? config.dbPath : defaultDbPath();
     db = new LibraryDb(dbPath);
   } catch (err) {
-    console.error(`tome: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`tabook: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
 
