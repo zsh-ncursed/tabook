@@ -48,3 +48,31 @@ describe('blockToPlainText', () => {
     expect(blockTextLength({ type: 'paragraph', children: [t('hello')] })).toBe(5);
   });
 });
+
+describe('blockToPlainText edge cases', () => {
+  it('flattens inline images and line breaks', () => {
+    const block: Block = {
+      type: 'paragraph',
+      children: [{ kind: 'image', src: 'x.png', alt: 'pic' }, { kind: 'lineBreak' }, t('tail')],
+    };
+    expect(blockToPlainText(block)).toBe('pic tail');
+  });
+
+  it('skips empty items and flattens nested lists', () => {
+    const block: Block = {
+      type: 'list',
+      ordered: false,
+      items: [
+        { children: [], nested: [] },
+        {
+          children: [t('top')],
+          nested: [
+            { type: 'list', ordered: true, items: [{ children: [t('sub')], nested: [] }] },
+            { type: 'paragraph', children: [] },
+          ],
+        },
+      ],
+    };
+    expect(blockToPlainText(block)).toBe('top\nsub');
+  });
+});

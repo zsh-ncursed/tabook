@@ -38,8 +38,7 @@ function titleInfo(root: XmlNode): XmlNode | undefined {
   return firstChild(description, 'title-info');
 }
 
-function parseAuthor(node: XmlNode | undefined) {
-  if (!node) return [];
+function parseAuthor(node: XmlNode) {
   const result = [];
   for (const author of findChildren(node, 'author')) {
     const nickname = textOf(firstChild(author, 'nickname'));

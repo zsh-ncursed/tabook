@@ -204,6 +204,40 @@ describe('layoutBlock', () => {
     );
     expect(highlighted.join('')).toBe('tw');
   });
+
+  it('highlights ragged tables with empty cells at correct offsets', () => {
+    const block: Block = {
+      type: 'table',
+      headers: [],
+      rows: [
+        [[t('alpha')], [t('beta gamma')]],
+        [[], [t('delta')]],
+      ],
+    };
+    const lines = layoutBlock(block, 0, {
+      typo,
+      width: 40,
+      // 'beta gamma' sits at plain-text offset 6, so 'beta' is chars 6..9.
+      getHighlights: () => [{ start: 6, end: 10 }],
+    });
+    const cellLines = lines.filter((l) => l.role === 'tableCell');
+    // Each row emits a single line: row 1 starts at 0, row 2 starts at 18
+    // (empty cell at 17, then delta).
+    expect(cellLines.length).toBe(2);
+    expect(cellLines[0]!.charOffset).toBe(0);
+    expect(cellLines[1]!.charOffset).toBe(18);
+    const highlighted = cellLines.flatMap((l) =>
+      l.spans.filter((s) => s.highlight).map((s) => s.text),
+    );
+    expect(highlighted.join('')).toBe('beta');
+  });
+
+  it('falls back to a zero char offset for all-empty header rows', () => {
+    const block: Block = { type: 'table', headers: [[], []], rows: [] };
+    const lines = layoutBlock(block, 0, { typo, width: 30 });
+    expect(lines[0]!.role).toBe('tableHeader');
+    expect(lines[0]!.charOffset).toBe(0);
+  });
 });
 
 describe('BookLayout', () => {
@@ -294,5 +328,171 @@ describe('BookLayout', () => {
     for (let i = 1; i < lines.length; i++) {
       expect(lines[i]!.charOffset).toBeGreaterThanOrEqual(lines[i - 1]!.charOffset);
     }
+  });
+});
+
+describe('inlineToSpans extended styles', () => {
+  it('tracks underline, strike, link and code', () => {
+    const spans = inlineToSpans([
+      { kind: 'underline', children: [t('u')] },
+      { kind: 'strike', children: [t('s')] },
+      { kind: 'link', href: '#', children: [t('l')] },
+      { kind: 'code', text: 'c' },
+    ]);
+    expect(spans.map((s) => s.text).join('')).toBe('uslc');
+    expect(spans.some((s) => s.underline)).toBe(true);
+    expect(spans.some((s) => s.strike)).toBe(true);
+    expect(spans.some((s) => s.link)).toBe(true);
+  });
+});
+
+describe('wrapSpans edge cases', () => {
+  it('trims trailing whitespace when hard-breaking a line', () => {
+    // 'a  ' at width 1: the second space overflows and is flushed with its line
+    const spans = inlineToSpans([t('a  ')]);
+    const lines = wrapSpans(spans, 1);
+    expect(lines.map((l) => l.map((s) => s.text).join('')).join('')).toBe('a');
+  });
+});
+
+describe('layoutBlock edge cases', () => {
+  it('emits an empty line for a paragraph with only a line break', () => {
+    const block: Block = { type: 'paragraph', children: [{ kind: 'lineBreak' }] };
+    const lines = layoutBlock(block, 0, { typo, width: 30 });
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines[0]!.role).toBe('empty');
+  });
+
+  it('lays out an empty block as a single empty line', () => {
+    const lines = layoutBlock({ type: 'empty' }, 0, { typo, width: 30 });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.role).toBe('empty');
+  });
+
+  it('produces no lines for an empty heading', () => {
+    const lines = layoutBlock({ type: 'heading', level: 1, children: [] }, 0, { typo, width: 30 });
+    expect(lines).toHaveLength(0);
+  });
+
+  it('lays out quotes, epigraphs and annotations', () => {
+    const quote = layoutBlock({ type: 'quote', children: [t('to be')] }, 0, { typo, width: 30 });
+    expect(quote[0]!.role).toBe('quote');
+    const epigraph = layoutBlock({ type: 'epigraph', children: [t('carpe diem')] }, 0, {
+      typo,
+      width: 30,
+    });
+    expect(epigraph[0]!.role).toBe('epigraph');
+    const annotation = layoutBlock({ type: 'annotation', children: [t('note')] }, 0, {
+      typo,
+      width: 30,
+    });
+    expect(annotation[0]!.role).toBe('annotation');
+  });
+
+  it('skips empty list items and walks nested lists', () => {
+    const block: Block = {
+      type: 'list',
+      ordered: true,
+      items: [
+        { children: [], nested: [] },
+        {
+          children: [t('one')],
+          nested: [
+            { type: 'list', ordered: false, items: [{ children: [t('two')], nested: [] }] },
+            { type: 'paragraph', children: [t('ignored')] },
+          ],
+        },
+      ],
+    };
+    const lines = layoutBlock(block, 0, { typo, width: 30 });
+    const itemLines = lines.filter((l) => l.role === 'listItem');
+    expect(itemLines.length).toBeGreaterThanOrEqual(2);
+    const texts = itemLines.map((l) => l.spans.map((s) => s.text).join(''));
+    expect(texts).toContain('one');
+    expect(texts).toContain('two');
+  });
+
+  it('separates poem stanzas with an empty line', () => {
+    const block: Block = {
+      type: 'poem',
+      stanzas: [{ lines: [[t('one')]] }, { lines: [[t('two')]] }],
+    };
+    const lines = layoutBlock(block, 0, { typo, width: 30 });
+    expect(lines.some((l) => l.role === 'empty')).toBe(true);
+  });
+
+  it('falls back to a generic label for images without alt text', () => {
+    const lines = layoutBlock({ type: 'image', src: 'x.png', alt: '' }, 0, { typo, width: 30 });
+    expect(lines[0]!.spans[0]!.text).toBe('[Image: image]');
+  });
+
+  it('inserts spacer lines when lineSpacing is configured', () => {
+    const block: Block = { type: 'paragraph', children: [t('hello world')] };
+    const lines = layoutBlock(block, 0, {
+      typo: { ...typo, lineSpacing: 2, paragraphSpacing: 0 },
+      width: 30,
+    });
+    expect(lines.filter((l) => l.role === 'empty').length).toBe(2);
+  });
+
+  it('returns no lines for a fully empty table', () => {
+    expect(layoutBlock({ type: 'table', headers: [], rows: [] }, 0, { typo, width: 30 })).toEqual(
+      [],
+    );
+  });
+
+  it('handles ragged table rows with missing cells', () => {
+    const block: Block = {
+      type: 'table',
+      headers: [],
+      rows: [[[t('a')], [t('b')]], [[t('c')]]],
+    };
+    const lines = layoutBlock(block, 0, { typo, width: 30 });
+    expect(lines.filter((l) => l.role === 'tableCell').length).toBeGreaterThan(0);
+  });
+
+  it('pads empty cells and falls back to a row char offset', () => {
+    const block: Block = { type: 'table', headers: [], rows: [[[], []]] };
+    const lines = layoutBlock(block, 0, { typo, width: 30 });
+    expect(lines[0]!.role).toBe('tableCell');
+  });
+});
+
+describe('BookLayout edge cases', () => {
+  const blocks: Block[] = [
+    { type: 'heading', level: 1, children: [t('Chapter One')] },
+    { type: 'paragraph', children: [t('a '.repeat(100))] },
+    { type: 'paragraph', children: [t('final text')] },
+  ];
+
+  it('returns empty for non-positive page height and range count', () => {
+    const layout = new BookLayout(blocks, { typo, width: 50 });
+    expect(layout.getPage(0, 0)).toEqual([]);
+    expect(layout.getRange(0, 0)).toEqual([]);
+  });
+
+  it('serves line ranges', () => {
+    const layout = new BookLayout(blocks, { typo, width: 50 });
+    expect(layout.getRange(0, 2)).toHaveLength(2);
+  });
+
+  it('estimates line counts and clamps zero width', () => {
+    const layout = new BookLayout(blocks, { typo, width: 50 });
+    expect(layout.estimateLineCount()).toBeGreaterThan(0);
+    const zero = new BookLayout(blocks, { typo, width: 0 });
+    expect(zero.estimateLineCount()).toBe(1);
+  });
+
+  it('maps blocks to their start lines', () => {
+    const layout = new BookLayout(blocks, { typo, width: 50 });
+    expect(layout.blockStartLine(0)).toBe(0);
+    expect(layout.lineForBlock(0)).toBe(0);
+    expect(layout.lineForBlock(2)).toBeGreaterThan(0);
+  });
+
+  it('clamps charOffsetForLine lookups', () => {
+    const layout = new BookLayout(blocks, { typo, width: 50 });
+    expect(layout.charOffsetForLine(0)).toBe(0);
+    expect(layout.charOffsetForLine(10_000)).toBe(layout.totalChars);
   });
 });

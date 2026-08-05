@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { LibraryDb } from './db.js';
+import { DatabaseError } from '../utils/errors.js';
 import type { BookMetadata } from '../formats/model.js';
 
 const metadata: BookMetadata = {
@@ -165,6 +166,13 @@ describe('LibraryDb', () => {
     expect(stats.sessionCount).toBe(1);
     expect(stats.totalPages).toBe(15);
     expect(stats.lastReadAt).toBeTruthy();
+  });
+
+  it('throws DatabaseError when the database cannot be opened', () => {
+    // better-sqlite3 cannot open a directory as a database (SQLITE_CANTOPEN).
+    const dbDir = path.join(dir, 'not-a-db');
+    fs.mkdirSync(dbDir);
+    expect(() => new LibraryDb(dbDir)).toThrow(DatabaseError);
   });
 
   it('persists across reopens', () => {

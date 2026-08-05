@@ -228,7 +228,8 @@ function wrapChars(chars: Char[], maxWidth: number): Char[][] {
         lines.push(line.slice(0, lastSpace));
         line = line.slice(lastSpace + 1);
         width = line.reduce((acc, c) => acc + displayWidth(c.ch), 0);
-        lastSpace = findLastSpace(line);
+        // The remainder starts after the last space, so it can never contain one.
+        lastSpace = -1;
       } else {
         flushLine();
       }
@@ -242,13 +243,6 @@ function wrapChars(chars: Char[], maxWidth: number): Char[][] {
     lines.push(line.slice(0, end));
   }
   return lines;
-}
-
-function findLastSpace(chars: Char[]): number {
-  for (let i = chars.length - 1; i >= 0; i--) {
-    if (chars[i]!.ch === ' ') return i;
-  }
-  return -1;
 }
 
 function sliceHighlights(
@@ -564,12 +558,14 @@ function layoutTable(
         running += cell.length + 1;
       }
     }
-    const wrappedCells: StyledSpan[][][] = row.cells.map((cell, c) => {
+    const wrappedCells: StyledSpan[][][] = Array.from({ length: colCount }, (_, c) => {
+      const cell = row.cells[c] ?? '';
       const w = colWidths[c]!;
       if (row.isHeader) {
         return wrapSpans([{ text: cell }], w, []);
       }
-      const hls = sliceHighlights(highlights, cellStartOffsets[c] ?? 0, cell.length);
+      // Non-header rows always fill one entry per column above.
+      const hls = sliceHighlights(highlights, cellStartOffsets[c]!, cell.length);
       return wrapSpans(highlightPlain(cell, hls), w, []);
     });
     const rowHeight = Math.max(1, ...wrappedCells.map((ws) => ws.length));
@@ -593,7 +589,8 @@ function layoutTable(
         }
         if (c < colCount - 1) spans.push({ text: ' '.repeat(pad) });
       }
-      if (lineCharOffset < 0) lineCharOffset = row.isHeader ? 0 : (cellStartOffsets[0] ?? 0);
+      // Non-header rows always fill at least one entry per row above.
+      if (lineCharOffset < 0) lineCharOffset = row.isHeader ? 0 : cellStartOffsets[0]!;
       lines.push({
         role: row.isHeader ? 'tableHeader' : 'tableCell',
         spans,

@@ -109,3 +109,38 @@ describe('directText / fullTextOf', () => {
     expect(fullTextOf(undefined)).toBe('');
   });
 });
+
+describe('xml coverage edge cases', () => {
+  it('reads attributes stored as child entries', () => {
+    const node = { p: [{ '@_foo': 'bar' }, { '#text': 'hi' }] } as unknown as XmlNode;
+    expect(attributesOf(node)).toEqual({ foo: 'bar' });
+  });
+
+  it('skips non-attribute keys in the attribute map', () => {
+    const node = { p: [], ':@': { plain: 'x' } } as unknown as XmlNode;
+    expect(attributesOf(node)).toEqual({});
+  });
+
+  it('handles empty and non-text children', () => {
+    expect(textOf({ p: [{}] } as unknown as XmlNode)).toBe('');
+    expect(textOf({ p: [{ '#text': 42 }] } as unknown as XmlNode)).toBe('');
+    expect(textOf({ p: [{ other: 'x' }, { '#text': 'y' }] } as unknown as XmlNode)).toBe('y');
+  });
+
+  it('tolerates empty child objects in findChildren', () => {
+    expect(findChildren({ root: [{}] } as unknown as XmlNode, 'x')).toEqual([]);
+  });
+
+  it('normalizes namespaced attribute and tag lookups', () => {
+    const img = parseXml('<img src="x.png" xml:lang="en"/>')[0]!;
+    expect(attrOf(img, 'xml:lang')).toBe('en');
+    const node = { root: [{ 'fb:item': 'v' }] } as unknown as XmlNode;
+    expect(findChildren(node, 'item')).toHaveLength(1);
+  });
+
+  it('joins array-typed text in fullTextOf', () => {
+    expect(fullTextOf({ p: [{ '#text': ['a', 'b'] }] } as unknown as XmlNode)).toBe('ab');
+    expect(fullTextOf({ p: [{ '#text': 42 }] } as unknown as XmlNode)).toBe('');
+    expect(fullTextOf({ p: [{}] } as unknown as XmlNode)).toBe('');
+  });
+});

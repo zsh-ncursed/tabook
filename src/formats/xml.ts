@@ -16,9 +16,8 @@ const parser = new XMLParser({
 });
 
 export function parseXml(text: string): XmlChildren {
-  const result = parser.parse(text) as XmlNode | XmlChildren;
-  if (Array.isArray(result)) return result;
-  return [result];
+  // preserveOrder mode always returns an array, so no wrapping is needed.
+  return parser.parse(text) as XmlChildren;
 }
 
 export function asXmlChildren(value: unknown): XmlChildren {
