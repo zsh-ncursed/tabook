@@ -121,3 +121,109 @@ describe('FB2 parser', () => {
     expect(book.state.blocks.length).toBe(0);
   });
 });
+
+describe('FB2 parser coverage edge cases', () => {
+  const fb2Doc = (body: string): string =>
+    `<?xml version="1.0"?><FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0"><description><title-info><book-title>T</book-title></title-info></description><body>${body}</body></FictionBook>`;
+
+  it('falls back to filename when description is missing', () => {
+    const { metadata, state } = parseFb2Text(
+      '<?xml version="1.0"?><FictionBook><body><p>Hi</p></body></FictionBook>',
+      '/tmp/x.fb2',
+      'x.fb2',
+    );
+    expect(metadata.title).toBe('x');
+    expect(state.blocks.map((b) => b.type)).toContain('paragraph');
+  });
+
+  it('parses middle-name-only authors and skips empty authors', () => {
+    const xml = `<?xml version="1.0"?><FictionBook><description><title-info>
+      <book-title>T</book-title>
+      <author><middle-name>Petrovich</middle-name></author>
+      <author><first-name/></author>
+    </title-info></description><body/></FictionBook>`;
+    const { metadata } = parseFb2Text(xml, '/tmp/a.fb2', 'a.fb2');
+    expect(metadata.authors).toEqual([
+      { firstName: '', lastName: '', middleName: 'Petrovich', nickname: '' },
+    ]);
+  });
+
+  it('falls back to filename for an empty book-title and missing lang', () => {
+    const xml = `<?xml version="1.0"?><FictionBook><description><title-info><book-title>   </book-title></title-info></description><body/></FictionBook>`;
+    const { metadata } = parseFb2Text(xml, '/tmp/e.fb2', 'e.fb2');
+    expect(metadata.title).toBe('e');
+    expect(metadata.lang).toBeUndefined();
+  });
+
+  it('handles sequences with invalid numbers and a missing coverpage', () => {
+    const xml = `<?xml version="1.0"?><FictionBook><description><title-info>
+      <book-title>T</book-title>
+      <sequence name="Saga" number="abc"/>
+    </title-info></description><body/></FictionBook>`;
+    const { metadata } = parseFb2Text(xml, '/tmp/s.fb2', 's.fb2');
+    expect(metadata.series).toEqual({ name: 'Saga', number: undefined });
+    expect(metadata.coverKey).toBeUndefined();
+  });
+
+  it('handles publish-info without publisher or isbn', () => {
+    const xml = `<?xml version="1.0"?><FictionBook><description><title-info><book-title>T</book-title></title-info><publish-info><year>2020</year></publish-info></description><body/></FictionBook>`;
+    const { metadata } = parseFb2Text(xml, '/tmp/p.fb2', 'p.fb2');
+    expect(metadata.publisher).toBeUndefined();
+    expect(metadata.isbn).toBeUndefined();
+    expect(metadata.year).toBe(2020);
+  });
+
+  it('skips binary resources without an id', () => {
+    const xml = `<?xml version="1.0"?><FictionBook><description><title-info><book-title>T</book-title></title-info></description><body/><binary>aGVsbG8=</binary></FictionBook>`;
+    const { resources } = parseFb2Text(xml, '/tmp/b.fb2', 'b.fb2');
+    expect(resources.size).toBe(0);
+  });
+
+  it('parses exotic content blocks', () => {
+    const body = `
+      <title>Plain Title</title>
+      <title><p><strong>B</strong><emphasis>I</emphasis><u>U</u><s>S</s><a l:href="#x">L</a><code>C</code><br/>img</p></title>
+      <section><title>Sec</title><p>X</p></section>
+      <p>   </p>
+      <list><li>Outer<list><li>Inner</li></list></li></list>
+      <poem><title>Poem Title</title><v>Line</v><subtitle>Sub</subtitle><stanza><v>V1</v><v>V2</v></stanza></poem>
+      <poem><title><p>WithP</p></title><stanza><v>X</v></stanza></poem>
+      <table><tr><td>A</td><td>B</td></tr></table>
+      <epigraph><p>Quote</p><text-author>Author</text-author></epigraph>
+      <epigraph><poem><stanza><v>Verse</v></stanza></poem></epigraph>
+      <epigraph><subtitle>Lone</subtitle></epigraph>
+      <annotation><p>Note</p></annotation>
+      <text-author>Me</text-author>
+      <code>const x = 1;</code>
+      <image l:href="#pic" alt="pic"/>
+      <image/>
+      <unknown><p>Inner</p></unknown>
+      <unknown/>
+    `;
+    const { state } = parseFb2Text(fb2Doc(body), '/tmp/c.fb2', 'c.fb2');
+    const types = state.blocks.map((b) => b.type);
+    for (const t of [
+      'heading',
+      'paragraph',
+      'list',
+      'poem',
+      'table',
+      'epigraph',
+      'annotation',
+      'image',
+      'empty',
+    ]) {
+      expect(types).toContain(t);
+    }
+    expect(state.toc.length).toBeGreaterThan(0);
+    const table = state.blocks.find((b) => b.type === 'table');
+    if (table && table.type === 'table') {
+      expect(table.headers).toEqual([]);
+      expect(table.rows).toHaveLength(1);
+    }
+  });
+
+  it('throws when extracting from a zip without an fb2 file', () => {
+    expect(() => extractFb2FromZip(makeFb2Zip('<html/>', 'readme.txt'))).toThrow(ParseError);
+  });
+});
