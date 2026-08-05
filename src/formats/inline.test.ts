@@ -42,6 +42,11 @@ describe('parseInlines', () => {
   it('accepts an undefined node', () => {
     expect(parseInlines(undefined)).toEqual([]);
   });
+
+  it('flattens images, line breaks and code via plainOf', () => {
+    const inlines = xmlToInlines('<p>a<br/><image href="#i" alt="pic"/>b<code>c</code></p>');
+    expect(plainOf(inlines)).toBe('a\npicbc');
+  });
 });
 
 describe('normalizeInlines', () => {
@@ -81,5 +86,10 @@ describe('normalizeInlines', () => {
       },
     ]);
     expect(plainOf(inlines)).toBe('x y');
+  });
+
+  it('keeps code inlines untouched', () => {
+    const inlines = normalizeInlines([{ kind: 'code', text: 'x = 1' }]);
+    expect(inlines).toEqual([{ kind: 'code', text: 'x = 1' }]);
   });
 });

@@ -7,6 +7,9 @@ import {
   displayWidth,
   formatBytes,
   slugify,
+  stripTags,
+  ansiStrip,
+  shellSplit,
 } from './text.js';
 import type { Inline } from '../formats/model.js';
 
@@ -18,6 +21,23 @@ describe('inlinesToText', () => {
       { kind: 'link', href: '#x', children: [{ kind: 'text', text: ' link' }] },
     ];
     expect(inlinesToText(inlines)).toBe('A bold link');
+  });
+
+  it('handles every inline kind', () => {
+    const inlines: Inline[] = [
+      { kind: 'italic', children: [{ kind: 'text', text: 'i' }] },
+      { kind: 'underline', children: [{ kind: 'text', text: 'u' }] },
+      { kind: 'strike', children: [{ kind: 'text', text: 's' }] },
+      { kind: 'code', text: 'c' },
+      { kind: 'image', src: '#x', alt: 'alt' },
+      { kind: 'image', src: '#y', alt: '' },
+      { kind: 'lineBreak' },
+    ];
+    expect(inlinesToText(inlines)).toBe('iuscalt\n');
+  });
+
+  it('returns empty for undefined', () => {
+    expect(inlinesToText(undefined)).toBe('');
   });
 });
 
@@ -67,6 +87,16 @@ describe('displayWidth', () => {
     expect(displayWidth('汉字')).toBe(4);
     expect(displayWidth('한')).toBe(2);
   });
+
+  it('counts every wide range as width 2', () => {
+    expect(displayWidth(String.fromCodePoint(0x1100))).toBe(2); // Hangul Jamo
+    expect(displayWidth(String.fromCodePoint(0xf900))).toBe(2); // CJK compat
+    expect(displayWidth(String.fromCodePoint(0xfe30))).toBe(2); // CJK punctuation
+    expect(displayWidth(String.fromCodePoint(0xff01))).toBe(2); // fullwidth form
+    expect(displayWidth(String.fromCodePoint(0xffe0))).toBe(2); // fullwidth sign
+    expect(displayWidth(String.fromCodePoint(0x20000))).toBe(2); // CJK ext B
+    expect(displayWidth(String.fromCodePoint(0x30000))).toBe(2); // CJK ext G
+  });
 });
 
 describe('formatBytes', () => {
@@ -74,6 +104,7 @@ describe('formatBytes', () => {
     expect(formatBytes(500)).toBe('500 B');
     expect(formatBytes(2048)).toBe('2.0 KB');
     expect(formatBytes(3 * 1024 * 1024)).toBe('3.0 MB');
+    expect(formatBytes(1024 ** 3)).toBe('1.0 GB');
   });
 });
 
@@ -81,5 +112,39 @@ describe('slugify', () => {
   it('produces url-safe slugs', () => {
     expect(slugify('Hello, World!')).toBe('hello-world');
     expect(slugify('  spaced  out  ')).toBe('spaced-out');
+  });
+
+  it('keeps cyrillic letters', () => {
+    expect(slugify('Привет, Мир!')).toBe('привет-мир');
+  });
+});
+
+describe('stripTags', () => {
+  it('removes html tags', () => {
+    expect(stripTags('<p>Hello <b>world</b></p>')).toBe('Hello world');
+    expect(stripTags('no tags here')).toBe('no tags here');
+  });
+});
+
+describe('ansiStrip', () => {
+  it('removes ANSI color codes', () => {
+    expect(ansiStrip('\x1b[31mred\x1b[0m')).toBe('red');
+    expect(ansiStrip('plain')).toBe('plain');
+  });
+});
+
+describe('shellSplit', () => {
+  it('splits simple args', () => {
+    expect(shellSplit('open book.fb2')).toEqual(['open', 'book.fb2']);
+    expect(shellSplit('')).toEqual([]);
+  });
+
+  it('handles double and single quotes', () => {
+    expect(shellSplit('open "my book.fb2"')).toEqual(['open', 'my book.fb2']);
+    expect(shellSplit("open 'my book.fb2'")).toEqual(['open', 'my book.fb2']);
+  });
+
+  it('collapses spaces and tabs', () => {
+    expect(shellSplit('  a\t b  ')).toEqual(['a', 'b']);
   });
 });
