@@ -131,6 +131,10 @@ export class LibraryDb {
       this.db.pragma('foreign_keys = ON');
       this.migrate();
     } catch (err) {
+      // Defensive: ensureDir/better-sqlite3 currently throw Error, but a non-Error
+      // throw (e.g. a future dependency throwing a string or null) would render
+      // messageOf(err as Error) produce "undefined". Keep the unknown guard so
+      // the error message stays meaningful without trusting the throw site.
       throw new DatabaseError(`Cannot open database at ${filePath}: ${messageOf(err)}`, {
         cause: err,
       });

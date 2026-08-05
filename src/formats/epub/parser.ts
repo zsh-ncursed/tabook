@@ -240,9 +240,16 @@ export function parseEpubBuffer(data: Uint8Array, filePath: string): ParsedBook 
     try {
       docText = readTextFile(zip, item.href);
     } catch (err) {
-      throw new ParseError(`Cannot read EPUB content file ${item.href}: ${messageOf(err)}`, {
-        cause: err,
-      });
+      // Defensive: readTextFile only throws ParseError today, but keeping the
+      // unknown guard (instead of `err as Error`) avoids an "undefined" message
+      // if any future caller throws a non-Error value. Costs nothing and keeps
+      // error reporting robust without trusting every throw site.
+      throw new ParseError(
+        `Cannot read EPUB content file ${item.href}: ${messageOf(err)}`,
+        {
+          cause: err,
+        },
+      );
     }
     const parsed = parseXml(docText);
     const html = findNode(parsed, 'html');
