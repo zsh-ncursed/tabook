@@ -13,9 +13,13 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
+    # LTS versions only: Node 20/22 both ship npm 10, so npm ci
+    # resolves the dependency tree identically on every job. Adding
+    # 'latest' (npm 11/12) broke npm ci — different npm versions
+    # compute the ideal tree differently for the vite esbuild override.
     strategy:
       matrix:
-        node-version: [20, 22, latest]
+        node-version: [20, 22]
 
     steps:
       - name: Checkout
