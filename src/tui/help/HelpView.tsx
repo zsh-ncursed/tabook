@@ -17,12 +17,15 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
   const { config, theme, onClose } = props;
   const [width] = useTerminalSize();
 
-  useInput((input, key) => {
-    const keyName = resolveKeyName(input, key);
-    if (keyName === 'escape') {
-      onClose();
-    }
-  });
+  useInput(
+    (input, key) => {
+      const keyName = resolveKeyName(input, key);
+      if (keyName === 'escape') {
+        onClose();
+      }
+    },
+    { isActive: true },
+  );
 
   const keysForAction = (action: KeyAction): string[] => {
     const keys: string[] = [];

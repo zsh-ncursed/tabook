@@ -318,6 +318,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
             detail: b.label ? b.preview : undefined,
           }))}
           height={Math.min(10, height - 8)}
+          isActive={mode === 'bookmarks'}
           footer="j/k move · enter jump · e edit · d delete · esc close"
           onSelect={(item) => {
             const bm = bookmarks.find((b) => b.id === item.id);
@@ -377,6 +378,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
               detail: entry.level > 1 ? '·'.repeat(entry.level - 1) : undefined,
             }))}
           height={Math.min(12, height - 8)}
+          isActive={mode === 'toc'}
           footer="j/k move · enter jump · / filter · esc close"
           onSelect={(item) => {
             const entry = session.book.toc.find((e) => e.id === item.id);
@@ -412,7 +414,13 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       ) : null}
 
       {mode === 'info' ? (
-        <InfoModal session={session} db={db} theme={theme} onClose={() => setMode('reading')} />
+        <InfoModal
+          session={session}
+          db={db}
+          theme={theme}
+          isActive={mode === 'info'}
+          onClose={() => setMode('reading')}
+        />
       ) : null}
 
       <StatusBar
@@ -429,13 +437,17 @@ function InfoModal(props: {
   session: ReaderSession;
   db: LibraryDb;
   theme: Theme;
+  isActive: boolean;
   onClose: () => void;
 }): React.JSX.Element {
-  const { session, db, theme, onClose } = props;
-  useInput((input, key) => {
-    const keyName = resolveKeyName(input, key);
-    if (keyName === 'escape') onClose();
-  });
+  const { session, db, theme, isActive, onClose } = props;
+  useInput(
+    (input, key) => {
+      const keyName = resolveKeyName(input, key);
+      if (keyName === 'escape') onClose();
+    },
+    { isActive },
+  );
   const m = session.book.metadata;
   const stats = session.bookId !== null ? db.getStats(session.bookId) : undefined;
   const lines: string[] = [

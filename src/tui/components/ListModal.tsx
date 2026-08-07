@@ -18,6 +18,7 @@ export interface ListModalProps {
   width?: number;
   height?: number;
   footer?: string;
+  isActive?: boolean;
   onSelect: (item: ListModalItem) => void;
   onClose: () => void;
   onDelete?: (item: ListModalItem) => void;
@@ -27,8 +28,19 @@ export interface ListModalProps {
 }
 
 export function ListModal(props: ListModalProps): React.JSX.Element {
-  const { theme, title, items, onSelect, onClose, onDelete, onEdit, onFilter, onNavigate, footer } =
-    props;
+  const {
+    theme,
+    title,
+    items,
+    onSelect,
+    onClose,
+    onDelete,
+    onEdit,
+    onFilter,
+    onNavigate,
+    footer,
+    isActive = true,
+  } = props;
   const [cursor, setCursor] = useState(0);
   const width = props.width ?? 70;
   const height = Math.min(props.height ?? items.length, Math.max(6, items.length));
@@ -41,44 +53,47 @@ export function ListModal(props: ListModalProps): React.JSX.Element {
     [items, onNavigate],
   );
 
-  useInput((input, key) => {
-    const keyName = resolveKeyName(input, key);
-    switch (keyName) {
-      case 'escape':
-        onClose();
-        return;
-      case 'j':
-      case 'down':
-        moveCursor(Math.min(items.length - 1, cursor + 1));
-        return;
-      case 'k':
-      case 'up':
-        moveCursor(Math.max(0, cursor - 1));
-        return;
-      case 'gg':
-        moveCursor(0);
-        return;
-      case 'G':
-        moveCursor(items.length - 1);
-        return;
-      case 'enter':
-      case 'space':
-        if (items.length > 0) onSelect(items[cursor]!);
-        return;
-      case 'd':
-      case 'x':
-        if (onDelete && items.length > 0) onDelete(items[cursor]!);
-        return;
-      case 'e':
-        if (onEdit && items.length > 0) onEdit(items[cursor]!);
-        return;
-      case '/':
-        if (onFilter) onFilter();
-        return;
-      default:
-        break;
-    }
-  });
+  useInput(
+    (input, key) => {
+      const keyName = resolveKeyName(input, key);
+      switch (keyName) {
+        case 'escape':
+          onClose();
+          return;
+        case 'j':
+        case 'down':
+          moveCursor(Math.min(items.length - 1, cursor + 1));
+          return;
+        case 'k':
+        case 'up':
+          moveCursor(Math.max(0, cursor - 1));
+          return;
+        case 'gg':
+          moveCursor(0);
+          return;
+        case 'G':
+          moveCursor(items.length - 1);
+          return;
+        case 'enter':
+        case 'space':
+          if (items.length > 0) onSelect(items[cursor]!);
+          return;
+        case 'd':
+        case 'x':
+          if (onDelete && items.length > 0) onDelete(items[cursor]!);
+          return;
+        case 'e':
+          if (onEdit && items.length > 0) onEdit(items[cursor]!);
+          return;
+        case '/':
+          if (onFilter) onFilter();
+          return;
+        default:
+          break;
+      }
+    },
+    { isActive },
+  );
 
   const visible = items.slice(
     Math.max(0, Math.min(cursor - Math.floor(height / 2), items.length - height)),

@@ -403,6 +403,7 @@ export function App(props: AppProps): React.JSX.Element {
           title="Theme picker"
           items={themeNames().map((n) => ({ id: n, label: n, accent: n === themeName }))}
           height={Math.min(14, themeNames().length)}
+          isActive={themePickerOpen}
           footer="j/k preview · enter apply · esc cancel"
           onNavigate={(item: ListModalItem) => {
             const name = String(item.id);
