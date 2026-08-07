@@ -190,8 +190,7 @@ describe('ReaderView modal escape behavior', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(props.onClose).not.toHaveBeenCalled();
   });
-
-  it('TOC: navigate with j, close with esc, reopen, esc still closes', async () => {
+it('TOC: navigate with j, close with esc, reopen, esc still closes', async () => {
     // Reproduce the exact user scenario: open TOC, move cursor down (j),
     // close with esc, reopen, esc again. The second esc must close — not
     // be swallowed by a stale useInput handler after the cursor re-render.
@@ -217,5 +216,32 @@ describe('ReaderView modal escape behavior', () => {
     stdin.write('\u001b');
     await new Promise((r) => setTimeout(r, 50));
     expect(lastFrame()).not.toContain('Table of Contents');
+  });
+
+  it('TOC: t+esc arriving in a single stdin chunk closes the modal', async () => {
+    // When fast keypresses are coalesced into one stdin chunk ("t\u001b"),
+    // Ink's parseKeypress only parses the first character, so the escape
+    // would be dropped and the TOC would stay open. The handler must split
+    // the chunk and dispatch each keypress.
+    const props = makeProps();
+    const { stdin, lastFrame } = render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write('t\u001b');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastFrame()).not.toContain('Table of Contents');
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  it('TOC: separate t then esc with no delay still closes (no swallowed key)', async () => {
+    // Two back-to-back writes (as a fast real user types t then Esc) — the
+    // second keypress must still close the TOC, even before any re-render.
+    const props = makeProps();
+    const { stdin, lastFrame } = render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write('t');
+    stdin.write('\u001b');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastFrame()).not.toContain('Table of Contents');
+    expect(props.onClose).not.toHaveBeenCalled();
   });
 });

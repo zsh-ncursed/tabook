@@ -11,6 +11,7 @@ import { ListModal } from '../components/ListModal.js';
 import { Modal } from '../components/Modal.js';
 import { renderLine } from '../renderLines.js';
 import { useTerminalSize } from '../useTerminalSize.js';
+import { forceRedraw } from '../screenRefresh.js';
 import { formatBytes, truncate } from '../../utils/text.js';
 import { joinAuthors, formatSeries } from '../../formats/model.js';
 
@@ -63,12 +64,30 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     inputDisabled = false,
   } = props;
   const [width, height] = useTerminalSize();
-  const [mode, setMode] = useState<Mode>('reading');
+  const [mode, setModeState] = useState<Mode>('reading');
+  // Mirrors `mode` but is updated synchronously so a multi-keypress chunk
+  // (e.g. "t\u001b") that opens a modal and then presses Esc in the same
+  // synchronous tick sees the just-transitioned mode instead of the stale
+  // render closure.
+  const modeRef = useRef<Mode>('reading');
+  const setMode = useCallback((m: Mode): void => {
+    modeRef.current = m;
+    setModeState(m);
+  }, []);
   const [bookmarks, setBookmarks] = useState<BookmarkRow[]>([]);
   const [editBookmarkId, setEditBookmarkId] = useState<number | null>(null);
   const [tocFilter, setTocFilter] = useState('');
   const resolver = useMemo(() => createActionResolver(config), [config]);
   const [, forceTick] = useReducer((n: number) => n + 1, 0);
+
+  // Ink's logUpdate suppresses a write when the closing frame is byte-identical
+  // to the pre-modal one (in our reader the underlying page is unchanged, so the
+  // modal stays on screen until the next keystroke). Pieces an explicit clear +
+  // re-render so the closing frame always paints immediately.
+  const closeModal = useCallback((next: Mode) => {
+    setMode(next);
+    forceRedraw();
+  }, [setMode]);
 
   useEffect(() => {
     session.setViewport(width, height);
@@ -206,26 +225,26 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   dispatchRef.current = (input: string, key: Key) => {
     const keyName = resolveKeyName(input, key);
     if (keyName === null) return;
-
+    const currentMode = modeRef.current;
     // TextPrompt modes have their own useInput; skip to avoid double-dispatch.
     if (
-      mode === 'search' ||
-      mode === 'command' ||
-      mode === 'bookmark' ||
-      mode === 'bookmark-edit' ||
-      mode === 'toc-filter'
+      currentMode === 'search' ||
+      currentMode === 'command' ||
+      currentMode === 'bookmark' ||
+      currentMode === 'bookmark-edit' ||
+      currentMode === 'toc-filter'
     ) {
       return;
     }
 
     // Info modal: only Esc closes.
-    if (mode === 'info') {
-      if (keyName === 'escape') setMode('reading');
+    if (currentMode === 'info') {
+      if (keyName === 'escape') closeModal('reading');
       return;
     }
 
     // TOC / bookmarks list modal: dispatch navigation keys here.
-    if (mode === 'toc' || mode === 'bookmarks') {
+    if (currentMode === 'toc' || currentMode === 'bookmarks') {
       const items =
         mode === 'toc'
           ? session.book.toc
@@ -248,7 +267,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         case 'escape':
           setListCursor(0);
           if (mode === 'toc') setTocFilter('');
-          setMode('reading');
+          closeModal('reading');
           return;
         case 'j':
         case 'down':
@@ -268,7 +287,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         case 'space':
           if (count > 0) {
             const item = items[listCursor]!;
-            if (mode === 'toc') {
+            if (currentMode === 'toc') {
               const entry = session.book.toc.find((e) => e.id === item.id);
               if (entry) {
                 session.goToToc(entry.blockIndex);
@@ -288,20 +307,20 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           return;
         case 'd':
         case 'x':
-          if (mode === 'bookmarks' && count > 0) {
+          if (currentMode === 'bookmarks' && count > 0) {
             db.deleteBookmark(Number(items[listCursor]!.id));
             setBookmarks(loadBookmarks());
             notify('Bookmark deleted');
           }
           return;
         case 'e':
-          if (mode === 'bookmarks' && count > 0) {
+          if (currentMode === 'bookmarks' && count > 0) {
             setEditBookmarkId(Number(items[listCursor]!.id));
             setMode('bookmark-edit');
           }
           return;
         case '/':
-          if (mode === 'toc') setMode('toc-filter');
+          if (currentMode === 'toc') setMode('toc-filter');
           return;
         default:
           return;
@@ -313,8 +332,48 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     handleAction(action);
   };
 
+  // Dispatch a single raw input chunk. When fast keypresses arrive in one
+  // stdin chunk (e.g. "t\u001b"), ink parses only the first char into `key`,
+  // so the rest would be dropped. Iterate char-by-char and dispatch each.
+  const emptyKey = (): Key => ({
+    upArrow: false,
+    downArrow: false,
+    leftArrow: false,
+    rightArrow: false,
+    pageDown: false,
+    pageUp: false,
+    return: false,
+    escape: false,
+    ctrl: false,
+    shift: false,
+    tab: false,
+    backspace: false,
+    delete: false,
+    meta: false,
+  });
+  const charKey = (ch: string): Key => {
+    const k = emptyKey();
+    k.escape = ch === '\u001b';
+    k.return = ch === '\r' || ch === '\n';
+    k.tab = ch === '\t';
+    k.backspace = ch === '\u007f' || ch === '\b';
+    return k;
+  };
+
+  const dispatchChunk = (input: string): void => {
+    for (const ch of input.split('')) {
+      dispatchRef.current(ch, charKey(ch));
+    }
+  };
+
   const handleMainInput = useCallback(
-    (input: string, key: Key) => dispatchRef.current(input, key),
+    (input: string, key: Key) => {
+      if (input.length > 1 && !key.ctrl && !key.meta) {
+        dispatchChunk(input);
+        return;
+      }
+      dispatchRef.current(input, key);
+    },
     [],
   );
   useInput(handleMainInput, { isActive: !inputDisabled });
@@ -378,12 +437,12 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
               forceTick();
               notify('No matches found');
             }
-            setMode('reading');
+            closeModal('reading');
           }}
           onCancel={() => {
             session.setQuery('');
             forceTick();
-            setMode('reading');
+            closeModal('reading');
           }}
         />
       ) : null}
@@ -396,10 +455,10 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           historyKey="command"
           onTab={completeCommand}
           onSubmit={(value) => {
-            setMode('reading');
+            closeModal('reading');
             runCommand(value);
           }}
-          onCancel={() => setMode('reading')}
+          onCancel={() => closeModal('reading')}
         />
       ) : null}
 
@@ -419,9 +478,9 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
               session.addBookmarkAtCurrent(value);
               notify('Bookmark added');
             }
-            setMode('reading');
+            closeModal('reading');
           }}
-          onCancel={() => setMode('reading')}
+          onCancel={() => closeModal('reading')}
         />
       ) : null}
 
@@ -453,11 +512,11 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
               notify('Bookmark updated');
             }
             setEditBookmarkId(null);
-            setMode('bookmarks');
+            closeModal('bookmarks');
           }}
           onCancel={() => {
             setEditBookmarkId(null);
-            setMode('bookmarks');
+            closeModal('bookmarks');
           }}
         />
       ) : null}
@@ -490,10 +549,10 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           initialValue={tocFilter}
           historyKey="toc-filter"
           onValueChange={(v) => setTocFilter(v)}
-          onSubmit={() => setMode('toc')}
+          onSubmit={() => closeModal('toc')}
           onCancel={() => {
             setTocFilter('');
-            setMode('toc');
+            closeModal('toc');
           }}
         />
       ) : null}

@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import React from 'react';
 import { Command } from 'commander';
 import { render } from 'ink';
+import { registerForceRedraw } from '../tui/screenRefresh.js';
 import { loadConfig } from '../config/config.js';
 import { getTheme } from '../themes/themes.js';
 import { LibraryDb } from '../db/db.js';
@@ -101,6 +102,10 @@ function run(
       themeOverride: options.theme,
     }),
   );
+  // ponytail: Ink's logUpdate suppresses a write when the closing frame is
+  // byte-identical to the pre-modal one (modal stays on screen). clear()
+  // resets logUpdate so the next re-render always paints.
+  registerForceRedraw(() => tree.clear());
   void tree.waitUntilExit();
 }
 
