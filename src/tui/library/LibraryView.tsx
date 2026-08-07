@@ -445,14 +445,14 @@ function DeleteConfirm(props: {
       onConfirm();
       return;
     }
-    if (keyName === 'n' || keyName === 'escape' || keyName === 'q') {
+    if (keyName === 'n' || keyName === 'escape') {
       onCancel();
     }
   });
   return (
     <Box flexDirection="column">
       <Text color={theme.colors.error} bold>
-        Remove "{truncateW(book.title, 40)}" from the library? (y/N)
+        Remove "{truncateW(book.title, 40)}" from the library? (y/N · esc cancel)
       </Text>
       <Text color={theme.colors.dim} dimColor>
         Only the database record is removed; the file on disk is untouched.

@@ -216,7 +216,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     config.display.showProgressBar ? '' : `${session.percent()}%`,
     `p.${session.pageNumber + 1}/${session.totalPages()}`,
     searchState.query ? `search "${truncate(searchState.query, 20)}"` : '',
-    'j/k · space · n/N · ?',
+    readerHint(mode),
   ]
     .filter(Boolean)
     .join(' · ');
@@ -318,7 +318,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
             detail: b.label ? b.preview : undefined,
           }))}
           height={Math.min(10, height - 8)}
-          footer="j/k move · enter jump · e edit · d delete · q close"
+          footer="j/k move · enter jump · e edit · d delete · esc close"
           onSelect={(item) => {
             const bm = bookmarks.find((b) => b.id === item.id);
             if (bm) {
@@ -377,7 +377,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
               detail: entry.level > 1 ? '·'.repeat(entry.level - 1) : undefined,
             }))}
           height={Math.min(12, height - 8)}
-          footer="j/k move · enter jump · / filter · q close"
+          footer="j/k move · enter jump · / filter · esc close"
           onSelect={(item) => {
             const entry = session.book.toc.find((e) => e.id === item.id);
             if (entry) {
@@ -434,7 +434,7 @@ function InfoModal(props: {
   const { session, db, theme, onClose } = props;
   useInput((input, key) => {
     const keyName = resolveKeyName(input, key);
-    if (keyName === 'q' || keyName === 'escape') onClose();
+    if (keyName === 'escape') onClose();
   });
   const m = session.book.metadata;
   const stats = session.bookId !== null ? db.getStats(session.bookId) : undefined;
@@ -457,7 +457,7 @@ function InfoModal(props: {
     if (stats.lastReadAt) lines.push(`Last read: ${stats.lastReadAt}`);
   }
   return (
-    <Modal theme={theme} title="Book Info" width={72} footer="q — close">
+    <Modal theme={theme} title="Book Info" width={72} footer="Esc — close">
       <Box flexDirection="column">
         {lines.map((line, i) => (
           <Text key={i} color={theme.colors.text}>
@@ -484,4 +484,31 @@ function formatDuration(totalSeconds: number): string {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
+}
+
+// Context-aware hint for the StatusBar right side, reflecting the keys that
+// are actionable in the current reader mode. Kept compact (key-only, no
+// labels) so it fits on narrow terminals; the full mapping lives in Help (?).
+function readerHint(mode: Mode): string {
+  switch (mode) {
+    case 'reading':
+      return 'j/k · space · / · b · t · i · J · W · ? · q';
+    case 'search':
+      return 'type · enter search · esc cancel';
+    case 'command':
+      return 'type · enter run · esc cancel';
+    case 'bookmark':
+    case 'bookmark-edit':
+      return 'type · enter save · esc cancel';
+    case 'bookmarks':
+      return 'j/k · enter · e · d · esc';
+    case 'toc':
+      return 'j/k · enter · / · esc';
+    case 'toc-filter':
+      return 'type · enter · esc';
+    case 'info':
+      return 'esc close';
+    default:
+      return '';
+  }
 }

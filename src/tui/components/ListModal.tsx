@@ -44,7 +44,6 @@ export function ListModal(props: ListModalProps): React.JSX.Element {
   useInput((input, key) => {
     const keyName = resolveKeyName(input, key);
     switch (keyName) {
-      case 'q':
       case 'escape':
         onClose();
         return;
@@ -121,7 +120,7 @@ export function ListModal(props: ListModalProps): React.JSX.Element {
             })}
           </Box>
           <Text color={theme.colors.dim} dimColor>
-            {footer ?? 'j/k move · enter select · q close'}
+            {footer ?? 'j/k move · enter select · esc close'}
           </Text>
         </Box>
       </Box>

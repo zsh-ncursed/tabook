@@ -5,6 +5,7 @@ import type { Config, KeyAction } from '../../config/defaults.js';
 import { KEY_ACTIONS } from '../../config/defaults.js';
 import { resolveKeyName, actionLabel } from '../keymap.js';
 import { useTerminalSize } from '../useTerminalSize.js';
+import { Modal } from '../components/Modal.js';
 
 export interface HelpViewProps {
   config: Config;
@@ -18,7 +19,7 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
 
   useInput((input, key) => {
     const keyName = resolveKeyName(input, key);
-    if (keyName === 'q' || keyName === 'escape' || keyName === '?') {
+    if (keyName === 'escape') {
       onClose();
     }
   });
@@ -40,10 +41,12 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
   const colW = Math.max(30, Math.floor((width - 6) / 2));
 
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <Text color={theme.colors.heading} bold>
-        Help — Keybindings
-      </Text>
+    <Modal
+      theme={theme}
+      title="Help — Keybindings"
+      width={Math.min(width - 2, 100)}
+      footer="Esc — close"
+    >
       <Text color={theme.colors.dim} dimColor>
         All keys can be remapped in config.toml via [keybindings]. Vim-like by default.
       </Text>
@@ -63,10 +66,7 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
         Tip: type : to open the command line (try :theme nord, :sort author, :goto 10, :open
         file.fb2).
       </Text>
-      <Text color={theme.colors.dim} dimColor>
-        Press q or Esc to close help.
-      </Text>
-    </Box>
+    </Modal>
   );
 }
 
