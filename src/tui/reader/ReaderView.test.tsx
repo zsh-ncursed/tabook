@@ -21,7 +21,11 @@ const book: ParsedBook = {
     genres: [],
     annotation: 'Test annotation.',
   },
-  toc: [],
+  toc: [
+    { id: 'toc-1', label: 'Chapter 1', level: 1, blockIndex: 0 },
+    { id: 'toc-2', label: 'Chapter 2', level: 1, blockIndex: 1 },
+    { id: 'toc-3', label: 'Chapter 3', level: 1, blockIndex: 2 },
+  ],
   content: [{ type: 'paragraph', children: [{ kind: 'text', text: 'Hello world.' }] }],
   resources: new Map(),
 };
@@ -185,5 +189,33 @@ describe('ReaderView modal escape behavior', () => {
     stdin.write('\u001b');
     await new Promise((r) => setTimeout(r, 50));
     expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  it('TOC: navigate with j, close with esc, reopen, esc still closes', async () => {
+    // Reproduce the exact user scenario: open TOC, move cursor down (j),
+    // close with esc, reopen, esc again. The second esc must close — not
+    // be swallowed by a stale useInput handler after the cursor re-render.
+    const props = makeProps();
+    const { stdin, lastFrame } = render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    // Open TOC
+    stdin.write('t');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastFrame()).toContain('Table of Contents');
+    // Move cursor down (triggers re-render → handler re-create race)
+    stdin.write('j');
+    await new Promise((r) => setTimeout(r, 50));
+    // Close with esc
+    stdin.write('\u001b');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastFrame()).not.toContain('Table of Contents');
+    // Reopen
+    stdin.write('t');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastFrame()).toContain('Table of Contents');
+    // Second esc — the bug: this was swallowed
+    stdin.write('\u001b');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastFrame()).not.toContain('Table of Contents');
   });
 });

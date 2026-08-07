@@ -1,5 +1,5 @@
-import React from 'react';
-import { Box, Text, useInput } from 'ink';
+import React, { useCallback, useRef } from 'react';
+import { Box, Text, useInput, type Key } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { Config, KeyAction } from '../../config/defaults.js';
 import { KEY_ACTIONS } from '../../config/defaults.js';
@@ -17,15 +17,13 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
   const { config, theme, onClose } = props;
   const [width] = useTerminalSize();
 
-  useInput(
-    (input, key) => {
-      const keyName = resolveKeyName(input, key);
-      if (keyName === 'escape') {
-        onClose();
-      }
-    },
-    { isActive: true },
-  );
+  // Stable handler backed by a ref — see ListModal for the rationale.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const handleInput = useCallback((input: string, key: Key) => {
+    if (resolveKeyName(input, key) === 'escape') onCloseRef.current();
+  }, []);
+  useInput(handleInput, { isActive: true });
 
   const keysForAction = (action: KeyAction): string[] => {
     const keys: string[] = [];

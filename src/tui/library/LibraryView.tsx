@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Text, useInput, type Key } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { Config, KeyAction } from '../../config/defaults.js';
 import type { BookRecord, LibraryDb, SortField } from '../../db/db.js';
@@ -213,16 +213,18 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
     }
   };
 
-  useInput(
-    (input, key) => {
-      if (mode !== 'normal') return;
-      const keyName = resolveKeyName(input, key);
-      if (keyName === null) return;
-      const action = resolver.feed(keyName);
-      handleAction(action);
-    },
-    { isActive: mode === 'normal' && !inputDisabled },
-  );
+  // Stable handler backed by a ref — prevents Ink useInput re-subscribe race.
+  const libInputRef = useRef({ mode, resolver, handleAction });
+  libInputRef.current = { mode, resolver, handleAction };
+  const handleLibInput = useCallback((input: string, key: Key) => {
+    const s = libInputRef.current;
+    if (s.mode !== 'normal') return;
+    const keyName = resolveKeyName(input, key);
+    if (keyName === null) return;
+    const action = s.resolver.feed(keyName);
+    s.handleAction(action);
+  }, []);
+  useInput(handleLibInput, { isActive: mode === 'normal' && !inputDisabled });
 
   const visibleCount = Math.max(3, height - 5);
   const start = Math.max(

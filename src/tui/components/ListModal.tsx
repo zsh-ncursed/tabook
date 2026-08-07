@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import React, { useCallback, useRef, useState } from 'react';
+import { Box, Text, useInput, type Key } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import { resolveKeyName } from '../keymap.js';
 import { truncateW } from '../../utils/text.js';
@@ -53,47 +53,65 @@ export function ListModal(props: ListModalProps): React.JSX.Element {
     [items, onNavigate],
   );
 
-  useInput(
-    (input, key) => {
-      const keyName = resolveKeyName(input, key);
-      switch (keyName) {
-        case 'escape':
-          onClose();
-          return;
-        case 'j':
-        case 'down':
-          moveCursor(Math.min(items.length - 1, cursor + 1));
-          return;
-        case 'k':
-        case 'up':
-          moveCursor(Math.max(0, cursor - 1));
-          return;
-        case 'gg':
-          moveCursor(0);
-          return;
-        case 'G':
-          moveCursor(items.length - 1);
-          return;
-        case 'enter':
-        case 'space':
-          if (items.length > 0) onSelect(items[cursor]!);
-          return;
-        case 'd':
-        case 'x':
-          if (onDelete && items.length > 0) onDelete(items[cursor]!);
-          return;
-        case 'e':
-          if (onEdit && items.length > 0) onEdit(items[cursor]!);
-          return;
-        case '/':
-          if (onFilter) onFilter();
-          return;
-        default:
-          break;
-      }
-    },
-    { isActive },
-  );
+  // Keep the latest props/state in a ref so the useInput handler can stay
+  // referentially stable. Ink's useInput re-subscribes on every handler
+  // identity change (useEffect deps include inputHandler), and an inline
+  // arrow function causes an unsubscribe/resubscribe on every cursor move —
+  // which races with Esc delivery and loses the keypress. A stable handler
+  // backed by a ref avoids that race entirely.
+  const stateRef = useRef({
+    cursor,
+    items,
+    onClose,
+    onSelect,
+    onDelete,
+    onEdit,
+    onFilter,
+    moveCursor,
+  });
+  stateRef.current = { cursor, items, onClose, onSelect, onDelete, onEdit, onFilter, moveCursor };
+
+  const handleInput = useCallback((input: string, key: Key) => {
+    const s = stateRef.current;
+    const keyName = resolveKeyName(input, key);
+    switch (keyName) {
+      case 'escape':
+        s.onClose();
+        return;
+      case 'j':
+      case 'down':
+        s.moveCursor(Math.min(s.items.length - 1, s.cursor + 1));
+        return;
+      case 'k':
+      case 'up':
+        s.moveCursor(Math.max(0, s.cursor - 1));
+        return;
+      case 'gg':
+        s.moveCursor(0);
+        return;
+      case 'G':
+        s.moveCursor(s.items.length - 1);
+        return;
+      case 'enter':
+      case 'space':
+        if (s.items.length > 0) s.onSelect(s.items[s.cursor]!);
+        return;
+      case 'd':
+      case 'x':
+        if (s.onDelete && s.items.length > 0) s.onDelete(s.items[s.cursor]!);
+        return;
+      case 'e':
+        if (s.onEdit && s.items.length > 0) s.onEdit(s.items[s.cursor]!);
+        return;
+      case '/':
+        if (s.onFilter) s.onFilter();
+        return;
+      default:
+        break;
+    }
+  }, []);
+
+  useInput(handleInput, { isActive });
 
   const visible = items.slice(
     Math.max(0, Math.min(cursor - Math.floor(height / 2), items.length - height)),

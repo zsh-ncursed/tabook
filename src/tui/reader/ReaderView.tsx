@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useReducer, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Box, Text, useInput, type Key } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { Config, KeyAction } from '../../config/defaults.js';
 import type { LibraryDb } from '../../db/db.js';
@@ -191,16 +191,19 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     }));
   };
 
-  useInput(
-    (input, key) => {
-      if (mode !== 'reading') return;
-      const keyName = resolveKeyName(input, key);
-      if (keyName === null) return;
-      const action = resolver.feed(keyName);
-      handleAction(action);
-    },
-    { isActive: mode === 'reading' && !inputDisabled },
-  );
+  // Stable handler backed by a ref — prevents Ink useInput from
+  // unsubscribing/resubscribing on every mode change or cursor move.
+  const inputStateRef = useRef({ mode, resolver, handleAction });
+  inputStateRef.current = { mode, resolver, handleAction };
+  const handleMainInput = useCallback((input: string, key: Key) => {
+    const s = inputStateRef.current;
+    if (s.mode !== 'reading') return;
+    const keyName = resolveKeyName(input, key);
+    if (keyName === null) return;
+    const action = s.resolver.feed(keyName);
+    s.handleAction(action);
+  }, []);
+  useInput(handleMainInput, { isActive: mode === 'reading' && !inputDisabled });
 
   const lines = session.viewportLines();
 
@@ -441,13 +444,14 @@ function InfoModal(props: {
   onClose: () => void;
 }): React.JSX.Element {
   const { session, db, theme, isActive, onClose } = props;
-  useInput(
-    (input, key) => {
-      const keyName = resolveKeyName(input, key);
-      if (keyName === 'escape') onClose();
-    },
-    { isActive },
-  );
+  // Stable handler backed by a ref — see ListModal for the rationale
+  // (Ink useInput re-subscribes on handler identity change, racing Esc).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const handleInput = useCallback((input: string, key: Key) => {
+    if (resolveKeyName(input, key) === 'escape') onCloseRef.current();
+  }, []);
+  useInput(handleInput, { isActive });
   const m = session.book.metadata;
   const stats = session.bookId !== null ? db.getStats(session.bookId) : undefined;
   const lines: string[] = [
