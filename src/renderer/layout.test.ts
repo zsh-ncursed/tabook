@@ -115,6 +115,53 @@ describe('layoutBlock', () => {
     expect(lines[0]!.prefix).toBe('1. ');
   });
 
+  it('justifies paragraph lines by distributing spaces between words', () => {
+    // Short words at width 30 leave slack on the first line; justify should
+    // distribute that slack as extra spaces between words.
+    const block: Block = {
+      type: 'paragraph',
+      children: [t('a b c d e f g h i j k l m n o p q r s t u v w x y z')],
+    };
+    const typo0 = { ...typo, paragraphSpacing: 0, lineSpacing: 0 };
+    const leftLines = layoutBlock(block, 0, { typo: typo0, width: 30 });
+    const justLines = layoutBlock(block, 0, { typo: typo0, width: 30, justify: true });
+    expect(justLines.length).toBe(leftLines.length);
+    expect(justLines.length).toBeGreaterThan(1);
+    // The last line is NOT justified (same as left).
+    const lastLeft = leftLines[leftLines.length - 1]!;
+    const lastJust = justLines[justLines.length - 1]!;
+    expect(lastJust.spans.map((s) => s.text).join('')).toBe(
+      lastLeft.spans.map((s) => s.text).join(''),
+    );
+    // At least one non-final justified line should be wider than its
+    // left-aligned counterpart (extra spaces inserted between words).
+    let stretched = 0;
+    for (let i = 0; i < justLines.length - 1; i++) {
+      const leftWidth = leftLines[i]!.spans.reduce((w, s) => w + s.text.length, 0);
+      const justWidth = justLines[i]!.spans.reduce((w, s) => w + s.text.length, 0);
+      if (justWidth > leftWidth) stretched += 1;
+    }
+    expect(stretched).toBeGreaterThan(0);
+    // And the justified width should not exceed the content width (30).
+    for (let i = 0; i < justLines.length - 1; i++) {
+      const w = justLines[i]!.spans.reduce((acc, s) => acc + s.text.length, 0);
+      expect(w).toBeLessThanOrEqual(30);
+    }
+  });
+
+  it('does not justify a single-word line', () => {
+    // A single long word wraps but has no spaces to distribute — justify
+    // must leave it as-is (left-aligned).
+    const block: Block = { type: 'paragraph', children: [t('supercalifragilistic')] };
+    const lines = layoutBlock(block, 0, { typo, width: 10, justify: true });
+    // Only one line, so nothing to compare against; just check it didn't
+    // insert any extra spaces.
+    for (const line of lines) {
+      const text = line.spans.map((s) => s.text).join('');
+      expect(text).not.toContain('  ');
+    }
+  });
+
   it('restarts numbering for nested ordered lists', () => {
     // HTML <ol> nesting: each level starts at 1. The previous walkCounter
     // implementation shared one counter and pre-advanced it, producing

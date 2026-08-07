@@ -27,6 +27,7 @@ export type KeyAction =
   | 'sort_cycle'
   | 'toggle_simplified'
   | 'toggle_respect_css'
+  | 'toggle_justify'
   | 'toggle_recent';
 
 export const KEY_ACTIONS: readonly KeyAction[] = [
@@ -58,6 +59,7 @@ export const KEY_ACTIONS: readonly KeyAction[] = [
   'sort_cycle',
   'toggle_simplified',
   'toggle_respect_css',
+  'toggle_justify',
   'toggle_recent',
 ];
 
@@ -76,6 +78,7 @@ export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
   b: 'add_bookmark',
   B: 'list_bookmarks',
   R: 'toggle_recent',
+  J: 'toggle_justify',
   d: 'delete_from_library',
   t: 'toc',
   i: 'book_info',
@@ -100,6 +103,7 @@ export interface TypographyConfig {
   hyphenation: boolean;
   fontFamily: string;
   ligatures: boolean;
+  justify: boolean;
 }
 
 export interface DisplayConfig {
@@ -129,6 +133,7 @@ export function defaultConfig(): Config {
       hyphenation: false,
       fontFamily: 'monospace',
       ligatures: false,
+      justify: false,
     },
     display: {
       simplifiedMode: false,

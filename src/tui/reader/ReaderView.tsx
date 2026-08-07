@@ -163,6 +163,11 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       case 'toggle_respect_css':
         notify('Publisher CSS option saved to config; CSS engine lands in a later stage');
         break;
+      case 'toggle_justify':
+        session.setJustify(!session.isJustify);
+        forceTick();
+        notify(`Text justify: ${session.isJustify ? 'on' : 'off'}`);
+        break;
       case 'move_cursor_left':
       case 'move_cursor_right':
         // ponytail: horizontal scroll not implemented; no-op to keep keymap valid

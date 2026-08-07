@@ -34,6 +34,7 @@ export class ReaderSession {
   private blocks: Block[];
   private layout: BookLayout;
   private simplified: boolean;
+  private justify: boolean;
   private typo: TypographyConfig;
   private width: number;
   private height: number;
@@ -49,6 +50,7 @@ export class ReaderSession {
     this.db = opts.db;
     this._bookId = opts.bookId;
     this.simplified = opts.simplified;
+    this.justify = !!opts.typo.justify;
     this.typo = opts.typo;
     this.width = opts.width;
     this.height = opts.height;
@@ -63,6 +65,7 @@ export class ReaderSession {
       typo: this.typo,
       width: this.contentWidth(),
       getHighlights: (blockIndex) => this.highlights.get(blockIndex),
+      justify: this.justify,
     });
   }
 
@@ -115,6 +118,16 @@ export class ReaderSession {
 
   get isSimplified(): boolean {
     return this.simplified;
+  }
+
+  setJustify(value: boolean): void {
+    if (value === this.justify) return;
+    this.justify = value;
+    this.rebuild();
+  }
+
+  get isJustify(): boolean {
+    return this.justify;
   }
 
   // ---- navigation ----

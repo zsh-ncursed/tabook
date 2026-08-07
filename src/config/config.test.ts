@@ -116,6 +116,22 @@ simplified_mode = true
     expect(warnings.some((w) => w.includes('typograhy'))).toBe(true);
   });
 
+  it('parses the justify option from [typography]', () => {
+    const warnings: string[] = [];
+    const config = parseTomlConfig('[typography]\njustify = true', defaultConfig(), warnings);
+    expect(config.typography.justify).toBe(true);
+    expect(warnings).toEqual([]);
+  });
+
+  it('round-trips justify through serializeConfig', () => {
+    const config = defaultConfig();
+    config.typography.justify = true;
+    const text = serializeConfig(config);
+    expect(text).toContain('justify = true');
+    const reparsed = parseTomlConfig(text, defaultConfig(), []);
+    expect(reparsed.typography.justify).toBe(true);
+  });
+
   it('throws on invalid TOML', () => {
     expect(() => parseTomlConfig('this is not toml ===', defaultConfig(), [])).toThrow(ConfigError);
   });

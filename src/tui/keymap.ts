@@ -113,6 +113,7 @@ export function actionLabel(action: KeyAction): string {
     sort_cycle: 'Cycle sort',
     toggle_simplified: 'Toggle simplified mode',
     toggle_respect_css: 'Toggle publisher CSS',
+    toggle_justify: 'Toggle text justify',
     toggle_recent: 'Toggle recent books',
   };
   return labels[action] ?? action;

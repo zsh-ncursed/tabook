@@ -49,6 +49,7 @@ export interface LayoutOptions {
   typo: TypographyConfig;
   width: number;
   getHighlights?: (blockIndex: number) => HighlightRange[] | undefined;
+  justify?: boolean;
 }
 
 interface CharStyle {
@@ -298,8 +299,87 @@ function mergeSpanLines(lines: StyledSpan[][]): StyledSpan[] {
   return result;
 }
 
+// Justify a single rendered line by distributing extra spaces between words.
+// Only applied to non-final lines of justified blocks (paragraph/heading/
+// quote/epigraph/annotation) that have more than one word — the last line of
+// a paragraph and lines with a single long word stay left-aligned.
+//
+// The extra spaces are inserted by widening existing space characters inside
+// span.text rather than emitting new spans, so style information (bold/italic/
+// link/highlight) is preserved. Wide-glyph width is respected via
+// displayWidth, so CJK content won't be over-stretched.
+function justifyLine(line: TextLine, contentWidth: number): TextLine {
+  if (line.role === 'empty' || line.spans.length === 0) return line;
+  // Count spaces across all spans and compute current width.
+  let spaceCount = 0;
+  let textWidth = 0;
+  for (const span of line.spans) {
+    for (const ch of span.text) {
+      if (ch === ' ') spaceCount += 1;
+    }
+    textWidth += displayWidth(span.text);
+  }
+  if (spaceCount === 0) return line;
+  const slack = contentWidth - textWidth;
+  if (slack <= 0) return line;
+  // Even distribution: each gap gets floor(slack/gaps) extra spaces, and the
+  // first (slack % gaps) gaps get one more. This matches the classical
+  // text-justify:inter-word behavior.
+  const gaps = spaceCount;
+  const base = Math.floor(slack / gaps);
+  const extra = slack % gaps;
+  const spans = line.spans.map((s) => ({ ...s }));
+  let applied = 0;
+  for (const span of spans) {
+    if (!span.text.includes(' ')) continue;
+    let out = '';
+    for (const ch of span.text) {
+      if (ch === ' ') {
+        const pad = base + (applied < extra ? 1 : 0);
+        applied += 1;
+        out += ' ' + ' '.repeat(pad);
+      } else {
+        out += ch;
+      }
+    }
+    span.text = out;
+  }
+  return { ...line, spans };
+}
+
+// Apply justify to non-final lines of justifiable block types. Mutates the
+// array in place and returns it. Called from the paragraph/heading/quote/
+// epigraph/annotation cases before they return.
+function applyJustify(lines: TextLine[], width: number): TextLine[] {
+  if (lines.length <= 1) return lines;
+  const justifiableRoles: LineRole[] = [
+    'paragraph',
+    'heading1',
+    'heading2',
+    'heading3',
+    'heading4',
+    'heading5',
+    'heading6',
+    'quote',
+    'epigraph',
+    'annotation',
+  ];
+  let lastContentIdx = lines.length - 1;
+  while (lastContentIdx >= 0 && lines[lastContentIdx]!.role === 'empty') {
+    lastContentIdx -= 1;
+  }
+  for (let i = 0; i < lastContentIdx; i++) {
+    const line = lines[i]!;
+    if (!justifiableRoles.includes(line.role)) continue;
+    const contentWidth = width - line.indent - line.prefix.length;
+    lines[i] = justifyLine(line, contentWidth);
+  }
+  return lines;
+}
+
 export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOptions): TextLine[] {
   const { typo, width } = opts;
+  const justify = !!opts.justify;
   const highlights = opts.getHighlights ? opts.getHighlights(blockIndex) : undefined;
   const lines: TextLine[] = [];
 
@@ -336,7 +416,7 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
         const offset = findOffsetOfLine(spans, line, 0, plain);
         emit(`heading${Math.min(block.level, 6)}` as LineRole, line, 0, '', offset);
       }
-      return lines;
+      return justify ? applyJustify(lines, width) : lines;
     }
     case 'paragraph': {
       const spans = inlineToSpans(block.children);
@@ -362,7 +442,7 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
           });
         }
       }
-      return lines;
+      return justify ? applyJustify(lines, width) : lines;
     }
     case 'quote': {
       const spans = inlineToSpans(block.children);
@@ -373,7 +453,7 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
         emit('quote', line, 4, '', running);
         running += text.length;
       }
-      return lines;
+      return justify ? applyJustify(lines, width) : lines;
     }
     case 'epigraph': {
       const spans = inlineToSpans(block.children);
@@ -384,7 +464,7 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
         emit('epigraph', line, 6, '', running);
         running += text.length;
       }
-      return lines;
+      return justify ? applyJustify(lines, width) : lines;
     }
     case 'annotation': {
       const spans = inlineToSpans(block.children);
@@ -395,7 +475,7 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
         emit('annotation', line, 0, '', running);
         running += text.length;
       }
-      return lines;
+      return justify ? applyJustify(lines, width) : lines;
     }
     case 'list': {
       const offsets = partCounter({ skipEmpty: true });
@@ -495,6 +575,7 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
       return lines;
     }
   }
+  return lines;
 }
 
 function findOffsetOfLine(
