@@ -81,8 +81,10 @@ class ImageLayer {
     for (const id of this.shown) {
       if (!next.has(id)) this.send({ action: 'remove', identifier: id });
     }
+    // Always re-send add: an image already on screen may have moved or
+    // resized as the viewport scrolled (ueberzugpp replaces in place by
+    // identifier). Skipping it would freeze it at the size it first appeared.
     for (const p of placements) {
-      if (this.shown.has(p.identifier)) continue; // already visible
       const path = this.resolvePath(p.src, resources);
       if (!path) continue;
       this.send({
