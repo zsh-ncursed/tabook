@@ -382,9 +382,22 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   const lines = session.viewportLines();
 
   // ponytail: ueberzugpp draws book images over the viewport's image
-  // placeholders. Reconciled on every page/scroll change; hidden while a
-  // modal is open so the overlay doesn't bleed over the dialog.
+  // placeholders. Reconciled on every page/scroll change. In info mode the
+  // book cover is drawn instead, so the overlay doesn't bleed over a modal.
   useEffect(() => {
+    if (mode === 'info') {
+      if (!imageLayer.start()) return;
+      const coverSrc = session.book.metadata.coverKey;
+      if (coverSrc) {
+        imageLayer.update(
+          [{ identifier: 'cover', x: 2, y: 3, width: 24, height: 14, src: coverSrc }],
+          session.book.resources,
+        );
+      } else {
+        imageLayer.clear();
+      }
+      return;
+    }
     if (mode !== 'reading') {
       imageLayer.clear();
       return;
