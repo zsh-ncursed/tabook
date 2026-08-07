@@ -8,7 +8,7 @@ import { StatusBar } from '../components/StatusBar.js';
 import { TextPrompt } from '../components/TextPrompt.js';
 import { BookDetail } from './BookDetail.js';
 import { useTerminalSize } from '../useTerminalSize.js';
-import { displayWidth, formatBytes } from '../../utils/text.js';
+import { formatBytes, truncateW } from '../../utils/text.js';
 
 interface LibraryCommandBus {
   sort?: SortField;
@@ -391,19 +391,6 @@ function compareBooks(a: BookRecord, b: BookRecord, field: SortField): number {
       return pb - pa;
     }
   }
-}
-
-function truncateW(text: string, max: number): string {
-  if (displayWidth(text) <= max) return text;
-  let out = '';
-  let w = 0;
-  for (const ch of text) {
-    const cw = displayWidth(ch);
-    if (w + cw > max - 1) break;
-    out += ch;
-    w += cw;
-  }
-  return out + '…';
 }
 
 function hintBar(config: Config, view: string): string {

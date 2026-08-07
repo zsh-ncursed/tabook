@@ -1,4 +1,5 @@
 import AdmZip from 'adm-zip';
+import path from 'node:path';
 import { ParseError } from './errors.js';
 
 export interface ZipEntryInfo {
@@ -25,7 +26,17 @@ export function openZip(data: Uint8Array): ZipArchive {
   const entries: ZipEntryInfo[] = [];
   for (const entry of zip.getEntries()) {
     if (entry.isDirectory) continue;
-    entries.push({ name: entry.entryName, size: entry.header.size });
+    // Defense against zip-slip: reject entries whose normalized path escapes
+    // the archive root. A leading "../" or absolute path would let a malicious
+    // archive collide keys in the in-memory resources map today, and become a
+    // real traversal if any future feature extracts entries to disk.
+    const norm = path.posix.normalize(entry.entryName);
+    if (norm.startsWith('../') || path.posix.isAbsolute(norm)) {
+      throw new ParseError(
+        `ZIP entry escapes archive root: ${entry.entryName}`,
+      );
+    }
+    entries.push({ name: norm, size: entry.header.size });
   }
   return {
     entries,

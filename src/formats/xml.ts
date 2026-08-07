@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 import { decodeEntities } from '../utils/text.js';
+import { ParseError } from '../utils/errors.js';
 
 export type XmlNode = Record<string, unknown>;
 export type XmlChildren = XmlNode[];
@@ -16,6 +17,16 @@ const parser = new XMLParser({
 });
 
 export function parseXml(text: string): XmlChildren {
+  // Defense-in-depth against XXE: fast-xml-parser is a pull parser that does
+  // not fetch external entities, but reject DOCTYPE declarations carrying
+  // SYSTEM/PUBLIC identifiers outright so a future parser swap can't turn
+  // this into an SSRF / local-file-disclosure hole.
+  const doctype = text.slice(0, 2048).match(/<!DOCTYPE[^>]*>/i);
+  if (doctype && /\b(SYSTEM|PUBLIC)\b/i.test(doctype[0])) {
+    throw new ParseError(
+      'Refused XML with external entity declaration (potential XXE)',
+    );
+  }
   // preserveOrder mode always returns an array, so no wrapping is needed.
   return parser.parse(text) as XmlChildren;
 }

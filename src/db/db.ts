@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DatabaseError } from '../utils/errors.js';
+import { DatabaseError, messageOf } from '../utils/errors.js';
 import { ensureDir } from '../utils/paths.js';
 import type { BookMetadata } from '../formats/model.js';
 import { joinAuthors, formatSeries } from '../formats/model.js';
@@ -144,55 +144,63 @@ export class LibraryDb {
   private migrate(): void {
     const version = this.db.pragma('user_version', { simple: true }) as number;
     if (version >= SCHEMA_VERSION) return;
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS books (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        path TEXT NOT NULL UNIQUE,
-        filename TEXT NOT NULL,
-        format TEXT NOT NULL,
-        size INTEGER NOT NULL DEFAULT 0,
-        title TEXT NOT NULL,
-        authors TEXT NOT NULL DEFAULT '',
-        series_name TEXT,
-        series_number REAL,
-        genres TEXT NOT NULL DEFAULT '',
-        annotation TEXT NOT NULL DEFAULT '',
-        lang TEXT,
-        cover_key TEXT,
-        publisher TEXT,
-        isbn TEXT,
-        year INTEGER,
-        added_at TEXT NOT NULL DEFAULT (datetime('now')),
-        last_opened_at TEXT
-      );
-      CREATE TABLE IF NOT EXISTS reading_progress (
-        book_id INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
-        position INTEGER NOT NULL DEFAULT 0,
-        percent REAL NOT NULL DEFAULT 0,
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      CREATE TABLE IF NOT EXISTS bookmarks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-        position INTEGER NOT NULL,
-        label TEXT NOT NULL DEFAULT '',
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_id);
-      CREATE TABLE IF NOT EXISTS reading_sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-        started_at TEXT NOT NULL,
-        ended_at TEXT,
-        pages_read INTEGER NOT NULL DEFAULT 0
-      );
-      CREATE INDEX IF NOT EXISTS idx_sessions_book ON reading_sessions(book_id);
-      CREATE TABLE IF NOT EXISTS history (
-        book_id INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
-        opened_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      PRAGMA user_version = ${SCHEMA_VERSION};
-    `);
+    // Forward-only migrations. v0 (fresh DB) gets the full schema via the
+    // bootstrap; future versions append ALTER TABLE statements here gated on
+    // the previous version so existing tables gain columns without the IF NOT
+    // EXISTS no-op that would silently skip new columns on existing tables.
+    if (version < 1) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS books (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          path TEXT NOT NULL UNIQUE,
+          filename TEXT NOT NULL,
+          format TEXT NOT NULL,
+          size INTEGER NOT NULL DEFAULT 0,
+          title TEXT NOT NULL,
+          authors TEXT NOT NULL DEFAULT '',
+          series_name TEXT,
+          series_number REAL,
+          genres TEXT NOT NULL DEFAULT '',
+          annotation TEXT NOT NULL DEFAULT '',
+          lang TEXT,
+          cover_key TEXT,
+          publisher TEXT,
+          isbn TEXT,
+          year INTEGER,
+          added_at TEXT NOT NULL DEFAULT (datetime('now')),
+          last_opened_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS reading_progress (
+          book_id INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
+          position INTEGER NOT NULL DEFAULT 0,
+          percent REAL NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS bookmarks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+          position INTEGER NOT NULL,
+          label TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_id);
+        CREATE TABLE IF NOT EXISTS reading_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+          started_at TEXT NOT NULL,
+          ended_at TEXT,
+          pages_read INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_sessions_book ON reading_sessions(book_id);
+        CREATE TABLE IF NOT EXISTS history (
+          book_id INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
+          opened_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+    }
+    // Example for the next migration:
+    //   if (version < 2) { this.db.exec('ALTER TABLE books ADD COLUMN x ...'); }
+    this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
 
   close(): void {
@@ -288,13 +296,20 @@ export class LibraryDb {
     return row ? rowToBook(row) : undefined;
   }
 
-  listBooks(): BookRecord[] {
-    const rows = this.db
-      .prepare(
-        `SELECT b.*, p.position AS progress_position, p.percent AS progress_percent
-         FROM books b LEFT JOIN reading_progress p ON p.book_id = b.id`,
-      )
-      .all() as BookRow[];
+  listBooks(opts?: { limit?: number; offset?: number; orderBy?: 'title' | 'added' | 'opened' }): BookRecord[] {
+    const limit = opts?.limit;
+    const offset = opts?.offset ?? 0;
+    const orderClause =
+      opts?.orderBy === 'opened'
+        ? 'ORDER BY b.last_opened_at DESC NULLS LAST, b.title'
+        : opts?.orderBy === 'added'
+          ? 'ORDER BY b.added_at DESC, b.title'
+          : 'ORDER BY b.title';
+    const sql = `SELECT b.*, p.position AS progress_position, p.percent AS progress_percent
+         FROM books b LEFT JOIN reading_progress p ON p.book_id = b.id ${orderClause}
+         ${limit !== undefined ? 'LIMIT ? OFFSET ?' : ''}`;
+    const params = limit !== undefined ? [limit, offset] : [];
+    const rows = this.db.prepare(sql).all(...params) as BookRow[];
     return rows.map(rowToBook);
   }
 
@@ -464,8 +479,4 @@ export class LibraryDb {
   fileExists(): boolean {
     return fs.existsSync(this.filePath);
   }
-}
-
-function messageOf(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }

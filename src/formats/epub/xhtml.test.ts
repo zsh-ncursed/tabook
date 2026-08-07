@@ -33,11 +33,13 @@ describe('parseXhtmlBlocks', () => {
     expect(blocks[0]).toMatchObject({ type: 'image', src: '', alt: '' });
   });
 
-  it('maps container ids to the last containing block', () => {
+  it('maps container ids to the first containing block', () => {
     const { blocks, idToBlock } = parse('<div id="d1"><h2 id="h2">Title</h2><p>Body</p></div>');
     expect(blocks).toHaveLength(2);
     expect(idToBlock.get('h2')).toBe(0);
-    expect(idToBlock.get('d1')).toBe(1);
+    // TOC link to a container should land on its FIRST content block, not the
+    // last — a reader clicking "Chapter 1" expects to see the chapter heading.
+    expect(idToBlock.get('d1')).toBe(0);
   });
 
   it('maps nested containers and figures', () => {

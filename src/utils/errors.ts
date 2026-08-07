@@ -28,3 +28,11 @@ export class DatabaseError extends AppError {
     this.name = 'DatabaseError';
   }
 }
+
+// Defensive extraction of a message from an unknown thrown value. JS allows
+// throwing anything (strings, null, objects), and `as Error` casts can mask
+// "undefined" messages from non-Error throws. Keep the guard so error
+// reporting stays robust without trusting every throw site to be an Error.
+export function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}

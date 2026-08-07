@@ -115,6 +115,40 @@ describe('layoutBlock', () => {
     expect(lines[0]!.prefix).toBe('1. ');
   });
 
+  it('restarts numbering for nested ordered lists', () => {
+    // HTML <ol> nesting: each level starts at 1. The previous walkCounter
+    // implementation shared one counter and pre-advanced it, producing
+    // markers like "5.", "6.", "7." for a 3-item nested <ol>.
+    const block: Block = {
+      type: 'list',
+      ordered: true,
+      items: [
+        {
+          children: [t('top')],
+          nested: [
+            {
+              type: 'list',
+              ordered: true,
+              items: [
+                { children: [t('inner one')], nested: [] },
+                { children: [t('inner two')], nested: [] },
+              ],
+            },
+          ],
+        },
+        { children: [t('top two')], nested: [] },
+      ],
+    };
+    const lines = layoutBlock(block, 0, { typo, width: 60 });
+    const itemLines = lines.filter((l) => l.role === 'listItem');
+    const prefixes = itemLines.map((l) => l.prefix);
+    expect(prefixes).toContain('1. ');
+    expect(prefixes).toContain('2. ');
+    // Nested ordered list restarts at 1.
+    const innerMarkers = prefixes.filter((p) => p === '1. ');
+    expect(innerMarkers.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('highlights only the matching item in a list', () => {
     const block: Block = {
       type: 'list',

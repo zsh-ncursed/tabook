@@ -101,8 +101,19 @@ simplified_mode = true
   it('clamps out-of-range typography values', () => {
     const warnings: string[] = [];
     const config = parseTomlConfig('[typography]\nmeasure = 99999', defaultConfig(), warnings);
-    expect(config.typography.measure).toBe(defaultConfig().typography.measure);
+    // clampInt now actually clamps to the [min,max] range rather than falling
+    // back to the default — a value of 99999 is clamped to 500.
+    expect(config.typography.measure).toBe(500);
     expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain('Clamping');
+  });
+
+  it('warns on unknown top-level config keys', () => {
+    const warnings: string[] = [];
+    parseTomlConfig('[typograhy]\nmeasure = 80', defaultConfig(), warnings);
+    // "typograhy" is a typo of "typography" — must be surfaced, not silently
+    // dropped, so the user notices their config isn't taking effect.
+    expect(warnings.some((w) => w.includes('typograhy'))).toBe(true);
   });
 
   it('throws on invalid TOML', () => {

@@ -2,7 +2,7 @@ import path from 'node:path';
 import { parseXml, childrenOf, firstChild, findChildren, attrOf, textOf, tagOf } from '../xml.js';
 import type { XmlChildren, XmlNode } from '../xml.js';
 import { decodeXmlBuffer, isZipBuffer } from '../encoding.js';
-import { ParseError } from '../../utils/errors.js';
+import { ParseError, messageOf } from '../../utils/errors.js';
 import { normalizeWhitespace } from '../../utils/text.js';
 import { openZip } from '../../utils/zip.js';
 import type { ZipArchive } from '../../utils/zip.js';
@@ -21,6 +21,7 @@ interface OpfData {
   spine: string[];
   ncxId: string | undefined;
   coverId: string | undefined;
+  coverHrefFromProperties: string | undefined;
 }
 
 interface TocLink {
@@ -128,13 +129,29 @@ function parseOpf(zip: ZipArchive, opfPath: string): OpfData {
   }
 
   let coverId: string | undefined;
+  let coverHrefFromProperties: string | undefined;
   if (metadataNode) {
     for (const meta of findChildren(metadataNode, 'meta')) {
       if (attrOf(meta, 'name') === 'cover') coverId = attrOf(meta, 'content');
     }
   }
+  // EPUB3 declares cover via the manifest item's `properties="cover-image"`
+  // attribute rather than the EPUB2 <meta name="cover">. Prefer the EPUB2
+  // signal when present, fall back to the EPUB3 one so both work.
+  if (manifestNode) {
+    for (const item of findChildren(manifestNode, 'item')) {
+      const props = attrOf(item, 'properties') ?? '';
+      if (props.split(/\s+/).includes('cover-image')) {
+        const id = attrOf(item, 'id');
+        if (id) {
+          coverHrefFromProperties = attrOf(item, 'href');
+          if (!coverId) coverId = id;
+        }
+      }
+    }
+  }
 
-  return { metadata, manifest, spine, ncxId, coverId };
+  return { metadata, manifest, spine, ncxId, coverId, coverHrefFromProperties };
 }
 
 function parseNcx(zip: ZipArchive, ncxHref: string, opfDir: string): TocLink[] {
@@ -274,7 +291,9 @@ export function parseEpubBuffer(data: Uint8Array, filePath: string): ParsedBook 
     }
   }
 
-  const coverHref = opf.coverId ? opf.manifest.get(opf.coverId)?.href : undefined;
+  const coverHref =
+    (opf.coverId ? opf.manifest.get(opf.coverId)?.href : undefined) ??
+    opf.coverHrefFromProperties;
   if (coverHref) opf.metadata.coverKey = coverHref;
 
   const filename = path.basename(filePath);
@@ -307,8 +326,4 @@ function flattenToc(
     out.push({ id: `epub-${out.length + 1}`, label: link.label, level: link.level, blockIndex });
     flattenToc(link.children, idToBlock, fileToBlock, out);
   }
-}
-
-function messageOf(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }

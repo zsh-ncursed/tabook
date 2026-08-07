@@ -142,16 +142,17 @@ export function App(props: AppProps): React.JSX.Element {
   const saveToLibrary = useCallback((): number | null => {
     if (!session) return null;
     const book = session.book;
-    db.addBook({
+    // addBook already returns the row id (existing.id on conflict,
+    // lastInsertRowid on insert). Re-querying via getBookByPath risks a race
+    // when another process inserted the same path between the two calls.
+    const id = db.addBook({
       path: book.path,
       filename: book.filename,
       format: book.format,
       size: book.size,
       metadata: book.metadata,
     });
-    const record = db.getBookByPath(book.path);
-    const id = record?.id ?? null;
-    if (id !== null) session.setBookId(id);
+    session.setBookId(id);
     notify(`Saved to library: ${book.metadata.title}`);
     setLibraryRefresh((c) => c + 1);
     return id;

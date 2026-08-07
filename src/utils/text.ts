@@ -79,11 +79,55 @@ function safeCodePoint(code: number): string {
     Number.isInteger(code) &&
     code >= 0 &&
     code <= 0x10ffff &&
-    !(code >= 0xd800 && code <= 0xdfff)
+    !(code >= 0xd800 && code <= 0xdfff) &&
+    // Reject Unicode noncharacters (last 2 codepoints of each plane + a few
+    // dedicated ones) — they have no assigned glyph and would garble output.
+    !isNoncharacter(code)
   ) {
     return String.fromCodePoint(code);
   }
   return '\ufffd';
+}
+
+function isNoncharacter(code: number): boolean {
+  // Last two code points of each of the 17 planes (0xXXFE / 0xXXFF).
+  if ((code & 0xfffe) === 0xfffe) return true;
+  // Dedicated noncharacter ranges.
+  return (
+    (code >= 0xfdd0 && code <= 0xfdef) ||
+    code === 0xfffe ||
+    code === 0xffff ||
+    code === 0x1fffe ||
+    code === 0x1ffff ||
+    code === 0x2fffe ||
+    code === 0x2ffff ||
+    code === 0x3fffe ||
+    code === 0x3ffff ||
+    code === 0x4fffe ||
+    code === 0x4ffff ||
+    code === 0x5fffe ||
+    code === 0x5ffff ||
+    code === 0x6fffe ||
+    code === 0x6ffff ||
+    code === 0x7fffe ||
+    code === 0x7ffff ||
+    code === 0x8fffe ||
+    code === 0x8ffff ||
+    code === 0x9fffe ||
+    code === 0x9ffff ||
+    code === 0xafffe ||
+    code === 0xaffff ||
+    code === 0xbfffe ||
+    code === 0xbffff ||
+    code === 0xcfffe ||
+    code === 0xcffff ||
+    code === 0xdfffe ||
+    code === 0xdffff ||
+    code === 0xefffe ||
+    code === 0xeffff ||
+    code === 0x10fffe ||
+    code === 0x10ffff
+  );
 }
 
 export function normalizeWhitespace(input: string): string {
@@ -160,4 +204,19 @@ export function shellSplit(input: string): string[] {
   }
   if (current !== '') result.push(current);
   return result;
+}
+
+// Truncate text to fit a display width, appending an ellipsis when truncated.
+// Width-aware (uses displayWidth) so CJK / wide glyphs count as 2 columns.
+export function truncateW(text: string, max: number): string {
+  if (displayWidth(text) <= max) return text;
+  let out = '';
+  let w = 0;
+  for (const ch of text) {
+    const cw = displayWidth(ch);
+    if (w + cw > max - 1) break;
+    out += ch;
+    w += cw;
+  }
+  return out + '…';
 }

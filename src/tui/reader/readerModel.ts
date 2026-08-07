@@ -25,8 +25,12 @@ const TOTAL_LINES_DELAY_MS = 50;
 export class ReaderSession {
   readonly book: ParsedBook;
   search: BookSearchIndex;
-  readonly bookId: number | null;
+  private _bookId: number | null;
   private readonly db: LibraryDb;
+
+  get bookId(): number | null {
+    return this._bookId;
+  }
   private blocks: Block[];
   private layout: BookLayout;
   private simplified: boolean;
@@ -43,7 +47,7 @@ export class ReaderSession {
   constructor(book: ParsedBook, opts: ReaderOptions) {
     this.book = book;
     this.db = opts.db;
-    this.bookId = opts.bookId;
+    this._bookId = opts.bookId;
     this.simplified = opts.simplified;
     this.typo = opts.typo;
     this.width = opts.width;
@@ -142,8 +146,13 @@ export class ReaderSession {
   }
 
   goToEnd(): void {
-    this.exactTotalLines = this.layout.lineCount();
-    this.line = Math.max(0, this.exactTotalLines - this.pageHeight());
+    // Avoid lineCount() here — it forces laying out every block synchronously
+    // and freezes the UI on large books. estimateLineCount() is a cheap upper
+    // bound; over-shooting by a fraction of a page is invisible to the user
+    // (the clamp on the next render corrects it). exactTotalLines is only set
+    // when lineCount() is genuinely needed (e.g. goToPercent is called later).
+    const total = this.layout.estimateLineCount();
+    this.line = Math.max(0, total - this.pageHeight());
   }
 
   goToPage(pageNumber: number): void {
@@ -201,8 +210,8 @@ export class ReaderSession {
   }
 
   saveProgress(): void {
-    if (this.bookId === null) return;
-    this.db.setProgress(this.bookId, this.charOffset(), this.percent());
+    if (this._bookId === null) return;
+    this.db.setProgress(this._bookId, this.charOffset(), this.percent());
   }
 
   // ---- search ----
@@ -256,14 +265,14 @@ export class ReaderSession {
   // ---- bookmarks ----
 
   addBookmarkAtCurrent(label: string): number {
-    if (this.bookId === null) {
+    if (this._bookId === null) {
       throw new Error('Cannot add bookmark: book is not in the library');
     }
-    return this.db.addBookmark(this.bookId, this.charOffset(), label);
+    return this.db.addBookmark(this._bookId, this.charOffset(), label);
   }
 
   setBookId(id: number): void {
-    (this as { bookId: number | null }).bookId = id;
+    this._bookId = id;
   }
 
   gotoBookmark(position: number): void {

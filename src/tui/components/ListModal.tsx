@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import { resolveKeyName } from '../keymap.js';
-import { displayWidth } from '../../utils/text.js';
+import { truncateW } from '../../utils/text.js';
 
 export interface ListModalItem {
   id: string | number;
@@ -127,17 +127,4 @@ export function ListModal(props: ListModalProps): React.JSX.Element {
       </Box>
     </Box>
   );
-}
-
-function truncateW(text: string, max: number): string {
-  if (displayWidth(text) <= max) return text;
-  let out = '';
-  let w = 0;
-  for (const ch of text) {
-    const cw = displayWidth(ch);
-    if (w + cw > max - 1) break;
-    out += ch;
-    w += cw;
-  }
-  return out + '…';
 }

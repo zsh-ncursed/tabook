@@ -398,9 +398,13 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
       return lines;
     }
     case 'list': {
-      let counter = 1;
       const offsets = partCounter({ skipEmpty: true });
+      // Each <ol>/<ul> has its own counter (matching HTML semantics). A nested
+      // list restarts at 1, not "continue parent's counter" — the previous
+      // version shared one counter across all levels and pre-advanced it via
+      // walkCounter, which corrupted ordered-list numbering for nested lists.
       const walk = (list: Extract<Block, { type: 'list' }>, level: number): void => {
+        let counter = 1;
         for (const item of list.items) {
           const marker = list.ordered ? `${counter}.` : '-';
           counter += list.ordered ? 1 : 0;
@@ -436,7 +440,6 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
           }
           for (const nested of item.nested) {
             if (nested.type === 'list') {
-              counter = walkCounter(nested, counter);
               walk(nested, level + 1);
             }
           }
@@ -494,11 +497,6 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
   }
 }
 
-function walkCounter(list: Extract<Block, { type: 'list' }>, counter: number): number {
-  for (let i = 0; i < list.items.length; i++) counter += 1;
-  return counter;
-}
-
 function findOffsetOfLine(
   spans: StyledSpan[],
   line: StyledSpan[],
@@ -511,9 +509,12 @@ function findOffsetOfLine(
     .join('');
   const linePlain = line.map((s) => s.text).join('');
   const trimmed = linePlain.trim();
-  // baseOffset is the running sum of previous line text lengths (without spaces),
-  // which is always ≤ the actual offset in the full plain text.
-  // So indexOf from baseOffset will find the correct occurrence.
+  // baseOffset is the running sum of previous line text lengths (without
+  // inter-line break spaces), which is always ≤ the actual offset in the full
+  // plain text. So indexOf from baseOffset will find the correct occurrence.
+  // ponytail: O(n) per line via indexOf from baseOffset, not O(n²) full-scan.
+  // Total across a paragraph is O(plain.length) — indexOf advances baseOffset
+  // each call. Upgrade to a running cursor only if a profile shows hot spots.
   const idx = plain.indexOf(trimmed, baseOffset);
   if (idx >= 0) return idx;
   return baseOffset;

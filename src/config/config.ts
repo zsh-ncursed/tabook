@@ -75,6 +75,16 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
 
   const config = { ...base, keybindings: { ...base.keybindings } };
 
+  // Warn on unknown top-level keys so a typo like [typograhy] is surfaced
+  // instead of silently ignored. Catches the common "I set it but nothing
+  // changed" confusion at config-load time.
+  const knownTop = new Set(['theme', 'db_path', 'keybindings', 'typography', 'display']);
+  for (const key of Object.keys(parsed)) {
+    if (!knownTop.has(key)) {
+      warnings.push(`Unknown config key "${key}" — ignored`);
+    }
+  }
+
   if (typeof parsed.theme === 'string') {
     config.theme = parsed.theme;
     if (!themeNames().includes(parsed.theme) && !parsed.theme.match(/^custom:/)) {
@@ -133,11 +143,14 @@ function clampInt(
   warnings: string[],
   field: string,
 ): number {
-  if (!Number.isInteger(value) || value < min || value > max) {
-    warnings.push(`Ignoring typography.${field}: value must be integer in [${min}, ${max}]`);
+  if (!Number.isInteger(value)) {
+    warnings.push(`Ignoring typography.${field}: value must be an integer`);
     return defaultConfig().typography[field as keyof TypographyConfig] as number;
   }
-  return value;
+  if (value < min || value > max) {
+    warnings.push(`Clamping typography.${field} from ${value} to [${min}, ${max}]`);
+  }
+  return Math.min(max, Math.max(min, value));
 }
 
 export function loadConfig(configPath?: string): LoadConfigResult {

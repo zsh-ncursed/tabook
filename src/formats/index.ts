@@ -25,19 +25,18 @@ export function detectFormat(data: Uint8Array, name: string): 'fb2' | 'epub' {
 
 export function parseBookFile(filePath: string): ParsedBook {
   const data = fs.readFileSync(filePath);
-  const format = detectFormat(data, path.basename(filePath));
-  switch (format) {
-    case 'fb2':
-      return parseFb2Buffer(data, filePath);
-    case 'epub':
-      return parseEpubBuffer(data, filePath);
-    default:
-      throw new ParseError(`Unsupported format for ${filePath}`);
-  }
+  return dispatchParse(data, filePath);
 }
 
 export async function openBook(filePath: string): Promise<ParsedBook> {
   const data = await fs.promises.readFile(filePath);
+  return dispatchParse(data, filePath);
+}
+
+// Shared detect+dispatch for both sync and async entry points. Adding a new
+// format touches exactly one place — the previous version duplicated the
+// switch across parseBookFile and openBook, and the error messages diverged.
+function dispatchParse(data: Uint8Array, filePath: string): ParsedBook {
   const format = detectFormat(data, path.basename(filePath));
   switch (format) {
     case 'fb2':

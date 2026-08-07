@@ -138,13 +138,18 @@ function parseNode(state: XhtmlState, node: XmlNode): void {
     case 'main':
     case 'aside':
     case 'hgroup':
-    case 'form':
+    case 'form': {
+      // Remember the index of the first block emitted inside this container;
+      // the container id should resolve to that block so TOC links land at the
+      // start of the section, not at its trailing paragraph.
+      const start = state.blockIndex;
       parseNodes(state, children);
-      if (id && state.blocks.length > 0) {
-        const idx = findContainingBlock(state);
+      if (id && state.blocks.length > start) {
+        const idx = findFirstContentBlock(state, start);
         if (idx !== undefined) state.idToBlock.set(id, idx);
       }
       break;
+    }
     case 'header':
     case 'footer':
     case 'nav':
@@ -161,8 +166,8 @@ function parseNode(state: XhtmlState, node: XmlNode): void {
   }
 }
 
-function findContainingBlock(state: XhtmlState): number | undefined {
-  for (let i = state.blocks.length - 1; i >= 0; i--) {
+function findFirstContentBlock(state: XhtmlState, from: number): number | undefined {
+  for (let i = from; i < state.blocks.length; i++) {
     const block = state.blocks[i]!;
     if (block.type === 'heading' || block.type === 'paragraph' || block.type === 'image') {
       return i;
