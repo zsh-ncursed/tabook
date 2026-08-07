@@ -292,8 +292,7 @@ export function parseEpubBuffer(data: Uint8Array, filePath: string): ParsedBook 
   }
 
   const coverHref =
-    (opf.coverId ? opf.manifest.get(opf.coverId)?.href : undefined) ??
-    opf.coverHrefFromProperties;
+    (opf.coverId ? opf.manifest.get(opf.coverId)?.href : undefined) ?? opf.coverHrefFromProperties;
   if (coverHref) opf.metadata.coverKey = coverHref;
 
   const filename = path.basename(filePath);

@@ -32,9 +32,7 @@ export function openZip(data: Uint8Array): ZipArchive {
     // real traversal if any future feature extracts entries to disk.
     const norm = path.posix.normalize(entry.entryName);
     if (norm.startsWith('../') || path.posix.isAbsolute(norm)) {
-      throw new ParseError(
-        `ZIP entry escapes archive root: ${entry.entryName}`,
-      );
+      throw new ParseError(`ZIP entry escapes archive root: ${entry.entryName}`);
     }
     entries.push({ name: norm, size: entry.header.size });
   }

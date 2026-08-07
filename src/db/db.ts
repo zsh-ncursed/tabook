@@ -296,7 +296,11 @@ export class LibraryDb {
     return row ? rowToBook(row) : undefined;
   }
 
-  listBooks(opts?: { limit?: number; offset?: number; orderBy?: 'title' | 'added' | 'opened' }): BookRecord[] {
+  listBooks(opts?: {
+    limit?: number;
+    offset?: number;
+    orderBy?: 'title' | 'added' | 'opened';
+  }): BookRecord[] {
     const limit = opts?.limit;
     const offset = opts?.offset ?? 0;
     const orderClause =

@@ -23,9 +23,7 @@ export function parseXml(text: string): XmlChildren {
   // this into an SSRF / local-file-disclosure hole.
   const doctype = text.slice(0, 2048).match(/<!DOCTYPE[^>]*>/i);
   if (doctype && /\b(SYSTEM|PUBLIC)\b/i.test(doctype[0])) {
-    throw new ParseError(
-      'Refused XML with external entity declaration (potential XXE)',
-    );
+    throw new ParseError('Refused XML with external entity declaration (potential XXE)');
   }
   // preserveOrder mode always returns an array, so no wrapping is needed.
   return parser.parse(text) as XmlChildren;
