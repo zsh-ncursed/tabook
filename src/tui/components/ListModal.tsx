@@ -1,7 +1,6 @@
-import React, { useCallback, useRef, useState } from 'react';
-import { Box, Text, useInput, type Key } from 'ink';
+import React from 'react';
+import { Box, Text } from 'ink';
 import type { Theme } from '../../themes/themes.js';
-import { resolveKeyName } from '../keymap.js';
 import { truncateW } from '../../utils/text.js';
 
 export interface ListModalItem {
@@ -15,103 +14,20 @@ export interface ListModalProps {
   theme: Theme;
   title: string;
   items: ListModalItem[];
+  cursor: number;
   width?: number;
   height?: number;
   footer?: string;
-  isActive?: boolean;
-  onSelect: (item: ListModalItem) => void;
-  onClose: () => void;
-  onDelete?: (item: ListModalItem) => void;
-  onEdit?: (item: ListModalItem) => void;
-  onFilter?: () => void;
   onNavigate?: (item: ListModalItem) => void;
 }
 
+// Presentational-only modal. Input dispatch is owned by the parent
+// (ReaderView's single useInput) to avoid Ink's setRawMode reference-count
+// race that swallowed Esc on reopen. cursor is passed in as a prop.
 export function ListModal(props: ListModalProps): React.JSX.Element {
-  const {
-    theme,
-    title,
-    items,
-    onSelect,
-    onClose,
-    onDelete,
-    onEdit,
-    onFilter,
-    onNavigate,
-    footer,
-    isActive = true,
-  } = props;
-  const [cursor, setCursor] = useState(0);
+  const { theme, title, items, cursor, footer } = props;
   const width = props.width ?? 70;
   const height = Math.min(props.height ?? items.length, Math.max(6, items.length));
-
-  const moveCursor = useCallback(
-    (next: number): void => {
-      setCursor(next);
-      if (onNavigate && items[next]) onNavigate(items[next]!);
-    },
-    [items, onNavigate],
-  );
-
-  // Keep the latest props/state in a ref so the useInput handler can stay
-  // referentially stable. Ink's useInput re-subscribes on every handler
-  // identity change (useEffect deps include inputHandler), and an inline
-  // arrow function causes an unsubscribe/resubscribe on every cursor move —
-  // which races with Esc delivery and loses the keypress. A stable handler
-  // backed by a ref avoids that race entirely.
-  const stateRef = useRef({
-    cursor,
-    items,
-    onClose,
-    onSelect,
-    onDelete,
-    onEdit,
-    onFilter,
-    moveCursor,
-  });
-  stateRef.current = { cursor, items, onClose, onSelect, onDelete, onEdit, onFilter, moveCursor };
-
-  const handleInput = useCallback((input: string, key: Key) => {
-    const s = stateRef.current;
-    const keyName = resolveKeyName(input, key);
-    switch (keyName) {
-      case 'escape':
-        s.onClose();
-        return;
-      case 'j':
-      case 'down':
-        s.moveCursor(Math.min(s.items.length - 1, s.cursor + 1));
-        return;
-      case 'k':
-      case 'up':
-        s.moveCursor(Math.max(0, s.cursor - 1));
-        return;
-      case 'gg':
-        s.moveCursor(0);
-        return;
-      case 'G':
-        s.moveCursor(s.items.length - 1);
-        return;
-      case 'enter':
-      case 'space':
-        if (s.items.length > 0) s.onSelect(s.items[s.cursor]!);
-        return;
-      case 'd':
-      case 'x':
-        if (s.onDelete && s.items.length > 0) s.onDelete(s.items[s.cursor]!);
-        return;
-      case 'e':
-        if (s.onEdit && s.items.length > 0) s.onEdit(s.items[s.cursor]!);
-        return;
-      case '/':
-        if (s.onFilter) s.onFilter();
-        return;
-      default:
-        break;
-    }
-  }, []);
-
-  useInput(handleInput, { isActive });
 
   const visible = items.slice(
     Math.max(0, Math.min(cursor - Math.floor(height / 2), items.length - height)),

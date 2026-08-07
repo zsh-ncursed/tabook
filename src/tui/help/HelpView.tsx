@@ -1,29 +1,22 @@
-import React, { useCallback, useRef } from 'react';
-import { Box, Text, useInput, type Key } from 'ink';
+import React from 'react';
+import { Box, Text } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { Config, KeyAction } from '../../config/defaults.js';
 import { KEY_ACTIONS } from '../../config/defaults.js';
-import { resolveKeyName, actionLabel } from '../keymap.js';
+import { actionLabel } from '../keymap.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { Modal } from '../components/Modal.js';
 
 export interface HelpViewProps {
   config: Config;
   theme: Theme;
-  onClose: () => void;
 }
 
+// Presentational-only. Esc to close is handled by the parent (App.tsx) to
+// avoid Ink's setRawMode reference-count race (see ReaderView for rationale).
 export function HelpView(props: HelpViewProps): React.JSX.Element {
-  const { config, theme, onClose } = props;
+  const { config, theme } = props;
   const [width] = useTerminalSize();
-
-  // Stable handler backed by a ref — see ListModal for the rationale.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const handleInput = useCallback((input: string, key: Key) => {
-    if (resolveKeyName(input, key) === 'escape') onCloseRef.current();
-  }, []);
-  useInput(handleInput, { isActive: true });
 
   const keysForAction = (action: KeyAction): string[] => {
     const keys: string[] = [];

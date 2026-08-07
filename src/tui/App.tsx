@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Text, useApp } from 'ink';
+import { Box, Text, useApp, useInput, type Key } from 'ink';
 import type { LibraryDb, BookRecord, SortField } from '../db/db.js';
 import type { Config } from '../config/defaults.js';
 import { THEMES, themeNames } from '../themes/themes.js';
@@ -11,8 +11,8 @@ import { ReaderView } from './reader/ReaderView.js';
 import { HelpView } from './help/HelpView.js';
 import { TextPrompt } from './components/TextPrompt.js';
 import { ListModal } from './components/ListModal.js';
-import type { ListModalItem } from './components/ListModal.js';
 import { useTerminalSize } from './useTerminalSize.js';
+import { resolveKeyName } from './keymap.js';
 import { pickBookFile } from '../utils/open.js';
 import { shellSplit } from '../utils/text.js';
 import { serializeConfig } from '../config/config.js';
@@ -46,6 +46,7 @@ export function App(props: AppProps): React.JSX.Element {
   const [cmdVersion, setCmdVersion] = useState(0);
   const [promptOpenPath, setPromptOpenPath] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [themeCursor, setThemeCursor] = useState(0);
   const prePickThemeRef = useRef<string | null>(null);
 
   const theme = useMemo(() => {
@@ -359,6 +360,77 @@ export function App(props: AppProps): React.JSX.Element {
     };
   }, [session]);
 
+  // Theme picker input dispatch. Single useInput, active only when picker is
+  // open — but since the picker is the only overlay that needs keys here and
+  // it opens/closes rarely, the setRawMode race doesn't bite (unlike TOC which
+  // reopens frequently during a reading session).
+  const themeItems = themeNames();
+  const themeDispatchRef = useRef<(input: string, key: Key) => void>(() => {});
+  themeDispatchRef.current = (input: string, key: Key) => {
+    const keyName = resolveKeyName(input, key);
+    if (keyName === null) return;
+    const count = themeItems.length;
+    switch (keyName) {
+      case 'escape': {
+        const prev = prePickThemeRef.current;
+        if (prev && THEMES[prev]) setThemeName(prev);
+        setThemePickerOpen(false);
+        setThemeCursor(0);
+        prePickThemeRef.current = null;
+        return;
+      }
+      case 'j':
+      case 'down':
+        setThemeCursor((c) => Math.min(count - 1, c + 1));
+        return;
+      case 'k':
+      case 'up':
+        setThemeCursor((c) => Math.max(0, c - 1));
+        return;
+      case 'enter':
+      case 'space': {
+        const name = themeItems[themeCursor];
+        if (name && THEMES[name]) {
+          setThemeName(name);
+          persistConfig(name);
+          notify(`Theme: ${name}`);
+        }
+        setThemePickerOpen(false);
+        setThemeCursor(0);
+        prePickThemeRef.current = null;
+        return;
+      }
+      default:
+        return;
+    }
+  };
+  const handleThemeInput = useCallback(
+    (input: string, key: Key) => themeDispatchRef.current(input, key),
+    [],
+  );
+  useInput(handleThemeInput, { isActive: themePickerOpen });
+
+  // Help overlay: Esc closes. Single useInput, active only when help is open.
+  const helpDispatchRef = useRef<(input: string, key: Key) => void>(() => {});
+  helpDispatchRef.current = (input: string, key: Key) => {
+    if (resolveKeyName(input, key) === 'escape') setHelpOpen(false);
+  };
+  const handleHelpInput = useCallback(
+    (input: string, key: Key) => helpDispatchRef.current(input, key),
+    [],
+  );
+  useInput(handleHelpInput, { isActive: helpOpen });
+
+  // Navigate (preview) on cursor change.
+  useEffect(() => {
+    if (!themePickerOpen) return;
+    const name = themeItems[themeCursor];
+    if (name && THEMES[name]) {
+      if (prePickThemeRef.current === null) prePickThemeRef.current = themeName;
+      setThemeName(name);
+    }
+  }, [themePickerOpen, themeCursor, themeItems, themeName]);
+
   return (
     <Box flexDirection="column" width="100%" height="100%">
       {screen === 'library' ? (
@@ -394,37 +466,15 @@ export function App(props: AppProps): React.JSX.Element {
           inputDisabled={promptOpenPath || helpOpen || themePickerOpen}
         />
       ) : null}
-      {helpOpen ? (
-        <HelpView config={config} theme={theme} onClose={() => setHelpOpen(false)} />
-      ) : null}
+      {helpOpen ? <HelpView config={config} theme={theme} /> : null}
       {themePickerOpen ? (
         <ListModal
           theme={theme}
           title="Theme picker"
           items={themeNames().map((n) => ({ id: n, label: n, accent: n === themeName }))}
+          cursor={themeCursor}
           height={Math.min(14, themeNames().length)}
-          isActive={themePickerOpen}
           footer="j/k preview · enter apply · esc cancel"
-          onNavigate={(item: ListModalItem) => {
-            const name = String(item.id);
-            if (THEMES[name]) setThemeName(name);
-          }}
-          onSelect={(item: ListModalItem) => {
-            const name = String(item.id);
-            if (THEMES[name]) {
-              setThemeName(name);
-              persistConfig(name);
-              notify(`Theme: ${name}`);
-            }
-            setThemePickerOpen(false);
-            prePickThemeRef.current = null;
-          }}
-          onClose={() => {
-            const prev = prePickThemeRef.current;
-            if (prev && THEMES[prev]) setThemeName(prev);
-            setThemePickerOpen(false);
-            prePickThemeRef.current = null;
-          }}
         />
       ) : null}
       {promptOpenPath ? (

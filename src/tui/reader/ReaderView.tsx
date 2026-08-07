@@ -191,19 +191,133 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     }));
   };
 
-  // Stable handler backed by a ref — prevents Ink useInput from
-  // unsubscribing/resubscribing on every mode change or cursor move.
-  const inputStateRef = useRef({ mode, resolver, handleAction });
-  inputStateRef.current = { mode, resolver, handleAction };
-  const handleMainInput = useCallback((input: string, key: Key) => {
-    const s = inputStateRef.current;
-    if (s.mode !== 'reading') return;
+  // Single useInput, always active (when not disabled by a parent overlay like
+  // Help). Modals (InfoModal, ListModal) do NOT have their own useInput — keys
+  // are dispatched here by mode. This avoids Ink's setRawMode reference-count
+  // race: when multiple useInput hooks toggle isActive, the internal
+  // EventEmitter unsubscribes/resubscribes and loses keypresses (notably Esc
+  // on the second open of a modal). With one always-on useInput, setRawMode
+  // is called exactly once and handleReadable is never detached.
+  const [listCursor, setListCursor] = useState(0);
+
+  // Ref holds the latest state/callbacks so the useInput handler can stay
+  // referentially stable (no re-subscribe race).
+  const dispatchRef = useRef<(input: string, key: Key) => void>(() => {});
+  dispatchRef.current = (input: string, key: Key) => {
     const keyName = resolveKeyName(input, key);
     if (keyName === null) return;
-    const action = s.resolver.feed(keyName);
-    s.handleAction(action);
-  }, []);
-  useInput(handleMainInput, { isActive: mode === 'reading' && !inputDisabled });
+
+    // TextPrompt modes have their own useInput; skip to avoid double-dispatch.
+    if (
+      mode === 'search' ||
+      mode === 'command' ||
+      mode === 'bookmark' ||
+      mode === 'bookmark-edit' ||
+      mode === 'toc-filter'
+    ) {
+      return;
+    }
+
+    // Info modal: only Esc closes.
+    if (mode === 'info') {
+      if (keyName === 'escape') setMode('reading');
+      return;
+    }
+
+    // TOC / bookmarks list modal: dispatch navigation keys here.
+    if (mode === 'toc' || mode === 'bookmarks') {
+      const items =
+        mode === 'toc'
+          ? session.book.toc
+              .filter(
+                (entry) =>
+                  tocFilter === '' || entry.label.toLowerCase().includes(tocFilter.toLowerCase()),
+              )
+              .map((entry) => ({
+                id: entry.id,
+                label: entry.label,
+                detail: entry.level > 1 ? '·'.repeat(entry.level - 1) : undefined,
+              }))
+          : bookmarks.map((b) => ({
+              id: b.id,
+              label: b.label || b.preview || '(no label)',
+              detail: b.label ? b.preview : undefined,
+            }));
+      const count = items.length;
+      switch (keyName) {
+        case 'escape':
+          setListCursor(0);
+          if (mode === 'toc') setTocFilter('');
+          setMode('reading');
+          return;
+        case 'j':
+        case 'down':
+          setListCursor((c) => Math.min(count - 1, c + 1));
+          return;
+        case 'k':
+        case 'up':
+          setListCursor((c) => Math.max(0, c - 1));
+          return;
+        case 'gg':
+          setListCursor(0);
+          return;
+        case 'G':
+          setListCursor(count - 1);
+          return;
+        case 'enter':
+        case 'space':
+          if (count > 0) {
+            const item = items[listCursor]!;
+            if (mode === 'toc') {
+              const entry = session.book.toc.find((e) => e.id === item.id);
+              if (entry) {
+                session.goToToc(entry.blockIndex);
+                notify(`→ ${truncate(entry.label, 40)}`);
+              }
+              setTocFilter('');
+            } else {
+              const bm = bookmarks.find((b) => b.id === item.id);
+              if (bm) {
+                session.gotoBookmark(bm.position);
+                notify(`Jumped to bookmark${bm.label ? ` "${bm.label}"` : ''}`);
+              }
+            }
+            setListCursor(0);
+            setMode('reading');
+          }
+          return;
+        case 'd':
+        case 'x':
+          if (mode === 'bookmarks' && count > 0) {
+            db.deleteBookmark(Number(items[listCursor]!.id));
+            setBookmarks(loadBookmarks());
+            notify('Bookmark deleted');
+          }
+          return;
+        case 'e':
+          if (mode === 'bookmarks' && count > 0) {
+            setEditBookmarkId(Number(items[listCursor]!.id));
+            setMode('bookmark-edit');
+          }
+          return;
+        case '/':
+          if (mode === 'toc') setMode('toc-filter');
+          return;
+        default:
+          return;
+      }
+    }
+
+    // Reading mode: dispatch via keymap resolver.
+    const action = resolver.feed(keyName);
+    handleAction(action);
+  };
+
+  const handleMainInput = useCallback(
+    (input: string, key: Key) => dispatchRef.current(input, key),
+    [],
+  );
+  useInput(handleMainInput, { isActive: !inputDisabled });
 
   const lines = session.viewportLines();
 
@@ -320,27 +434,9 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
             label: b.label || b.preview || '(no label)',
             detail: b.label ? b.preview : undefined,
           }))}
+          cursor={listCursor}
           height={Math.min(10, height - 8)}
-          isActive={mode === 'bookmarks'}
           footer="j/k move · enter jump · e edit · d delete · esc close"
-          onSelect={(item) => {
-            const bm = bookmarks.find((b) => b.id === item.id);
-            if (bm) {
-              session.gotoBookmark(bm.position);
-              notify(`Jumped to bookmark${bm.label ? ` "${bm.label}"` : ''}`);
-            }
-            setMode('reading');
-          }}
-          onEdit={(item) => {
-            setEditBookmarkId(Number(item.id));
-            setMode('bookmark-edit');
-          }}
-          onDelete={(item) => {
-            db.deleteBookmark(Number(item.id));
-            setBookmarks(loadBookmarks());
-            notify('Bookmark deleted');
-          }}
-          onClose={() => setMode('reading')}
         />
       ) : null}
 
@@ -380,23 +476,9 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
               label: entry.label,
               detail: entry.level > 1 ? '·'.repeat(entry.level - 1) : undefined,
             }))}
+          cursor={listCursor}
           height={Math.min(12, height - 8)}
-          isActive={mode === 'toc'}
           footer="j/k move · enter jump · / filter · esc close"
-          onSelect={(item) => {
-            const entry = session.book.toc.find((e) => e.id === item.id);
-            if (entry) {
-              session.goToToc(entry.blockIndex);
-              notify(`→ ${truncate(entry.label, 40)}`);
-            }
-            setTocFilter('');
-            setMode('reading');
-          }}
-          onFilter={() => setMode('toc-filter')}
-          onClose={() => {
-            setTocFilter('');
-            setMode('reading');
-          }}
         />
       ) : null}
 
@@ -416,15 +498,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         />
       ) : null}
 
-      {mode === 'info' ? (
-        <InfoModal
-          session={session}
-          db={db}
-          theme={theme}
-          isActive={mode === 'info'}
-          onClose={() => setMode('reading')}
-        />
-      ) : null}
+      {mode === 'info' ? <InfoModal session={session} db={db} theme={theme} /> : null}
 
       <StatusBar
         theme={theme}
@@ -440,18 +514,8 @@ function InfoModal(props: {
   session: ReaderSession;
   db: LibraryDb;
   theme: Theme;
-  isActive: boolean;
-  onClose: () => void;
 }): React.JSX.Element {
-  const { session, db, theme, isActive, onClose } = props;
-  // Stable handler backed by a ref — see ListModal for the rationale
-  // (Ink useInput re-subscribes on handler identity change, racing Esc).
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const handleInput = useCallback((input: string, key: Key) => {
-    if (resolveKeyName(input, key) === 'escape') onCloseRef.current();
-  }, []);
-  useInput(handleInput, { isActive });
+  const { session, db, theme } = props;
   const m = session.book.metadata;
   const stats = session.bookId !== null ? db.getStats(session.bookId) : undefined;
   const lines: string[] = [
