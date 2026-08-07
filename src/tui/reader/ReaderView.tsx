@@ -12,6 +12,7 @@ import { Modal } from '../components/Modal.js';
 import { renderLine } from '../renderLines.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { forceRedraw } from '../screenRefresh.js';
+import { imageLayer, type ImagePlacement } from '../imageLayer.js';
 import { formatBytes, truncate } from '../../utils/text.js';
 import { joinAuthors, formatSeries } from '../../formats/model.js';
 
@@ -379,6 +380,38 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   useInput(handleMainInput, { isActive: !inputDisabled });
 
   const lines = session.viewportLines();
+
+  // ponytail: ueberzugpp draws book images over the viewport's image
+  // placeholders. Reconciled on every page/scroll change; hidden while a
+  // modal is open so the overlay doesn't bleed over the dialog.
+  useEffect(() => {
+    if (mode !== 'reading') {
+      imageLayer.clear();
+      return;
+    }
+    if (!imageLayer.start()) return;
+    const pageH = session.pageHeight();
+    const placements: ImagePlacement[] = [];
+    lines.forEach((line, i) => {
+      if (line.role !== 'image') return;
+      const block = session.book.content[line.blockIndex];
+      if (!block || block.type !== 'image') return;
+      const y = 1 + i; // row 0 = title, viewport starts at row 1
+      const maxH = pageH - i;
+      if (maxH < 2) return; // not enough room; keep the text placeholder
+      placements.push({
+        identifier: `img${line.blockIndex}`,
+        x: 1 + line.indent,
+        y,
+        width: Math.max(8, (session.contentWidth() - line.indent) | 0),
+        height: Math.min(10, maxH),
+        src: block.src,
+      });
+    });
+    imageLayer.update(placements, session.book.resources);
+  }, [lines, mode, session]);
+
+  useEffect(() => () => imageLayer.stop(), []);
 
   const headerMeta = [
     metadata.authors ? joinAuthors(metadata.authors) : '',
