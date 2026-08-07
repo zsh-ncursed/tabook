@@ -21,6 +21,12 @@ export interface ImagePlacement {
   src: string;
 }
 
+// How many terminal rows an image overlay occupies. Layout reserves this
+// many blank lines under the placeholder so the overlay doesn't cover text,
+// and ReaderView caps the overlay height to the same value. Kept here so
+// both sides reference a single source of truth.
+export const IMAGE_ROWS = 10;
+
 class ImageLayer {
   private proc: ChildProcessWithoutNullStreams | null = null;
   private cache = new Map<string, string>(); // resource id -> temp file path

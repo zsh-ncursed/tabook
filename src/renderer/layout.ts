@@ -2,6 +2,7 @@ import type { Block, Inline } from '../formats/model.js';
 import { displayWidth, inlinesToText } from '../utils/text.js';
 import type { TypographyConfig } from '../config/defaults.js';
 import { blockToPlainText } from './blocks.js';
+import { IMAGE_ROWS } from '../tui/imageLayer.js';
 
 export type LineRole =
   | 'heading1'
@@ -572,6 +573,11 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
         blockIndex,
         charOffset: 0,
       });
+      // Reserve blank lines under the placeholder so the ueberzugpp overlay
+      // (IMAGE_ROWS tall) doesn't cover the text that follows.
+      for (let r = 1; r < IMAGE_ROWS; r++) {
+        lines.push({ role: 'empty', spans: [], indent: 0, prefix: '', blockIndex, charOffset: 0 });
+      }
       return lines;
     }
   }

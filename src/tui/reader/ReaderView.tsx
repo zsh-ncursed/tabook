@@ -12,7 +12,7 @@ import { Modal } from '../components/Modal.js';
 import { renderLine } from '../renderLines.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { forceRedraw } from '../screenRefresh.js';
-import { imageLayer, type ImagePlacement } from '../imageLayer.js';
+import { imageLayer, type ImagePlacement, IMAGE_ROWS } from '../imageLayer.js';
 import { formatBytes, truncate } from '../../utils/text.js';
 import { joinAuthors, formatSeries } from '../../formats/model.js';
 
@@ -404,7 +404,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         x: 1 + line.indent,
         y,
         width: Math.max(8, (session.contentWidth() - line.indent) | 0),
-        height: Math.min(10, maxH),
+        height: Math.min(IMAGE_ROWS, maxH),
         src: block.src,
       });
     });
