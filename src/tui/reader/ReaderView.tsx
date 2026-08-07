@@ -168,6 +168,11 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         forceTick();
         notify(`Text justify: ${session.isJustify ? 'on' : 'off'}`);
         break;
+      case 'toggle_wide':
+        session.setWide(!session.isWide);
+        forceTick();
+        notify(`Wide screen: ${session.isWide ? 'on' : 'off'}`);
+        break;
       case 'move_cursor_left':
       case 'move_cursor_right':
         // ponytail: horizontal scroll not implemented; no-op to keep keymap valid

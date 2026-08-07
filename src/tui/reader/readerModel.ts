@@ -35,6 +35,7 @@ export class ReaderSession {
   private layout: BookLayout;
   private simplified: boolean;
   private justify: boolean;
+  private wide: boolean;
   private typo: TypographyConfig;
   private width: number;
   private height: number;
@@ -51,6 +52,7 @@ export class ReaderSession {
     this._bookId = opts.bookId;
     this.simplified = opts.simplified;
     this.justify = !!opts.typo.justify;
+    this.wide = false;
     this.typo = opts.typo;
     this.width = opts.width;
     this.height = opts.height;
@@ -76,6 +78,11 @@ export class ReaderSession {
   }
 
   contentWidth(): number {
+    // Wide mode: ignore the typography.measure cap and use the full terminal
+    // width minus the ReaderView padding (1 column per side = 2 total). This
+    // lets justify fill the entire screen on wide monitors. On narrow
+    // terminals wide still gives width-2 (never below 20).
+    if (this.wide) return Math.max(20, this.width - 2);
     return Math.max(20, Math.min(this.typo.measure, Math.max(40, this.width - 4)));
   }
 
@@ -128,6 +135,22 @@ export class ReaderSession {
 
   get isJustify(): boolean {
     return this.justify;
+  }
+
+  setWide(value: boolean): void {
+    if (value === this.wide) return;
+    this.wide = value;
+    // Width cap changes → layout must be rebuilt, not just invalidated, so
+    // setViewport is not enough (it skips rebuild when only height changes).
+    const offset = this.charOffset();
+    this.layout = this.buildLayout();
+    this.line = this.layout.lineForCharOffset(offset);
+    this.exactTotalLines = null;
+    this.scheduleTotalLines();
+  }
+
+  get isWide(): boolean {
+    return this.wide;
   }
 
   // ---- navigation ----

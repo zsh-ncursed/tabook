@@ -28,6 +28,7 @@ export type KeyAction =
   | 'toggle_simplified'
   | 'toggle_respect_css'
   | 'toggle_justify'
+  | 'toggle_wide'
   | 'toggle_recent';
 
 export const KEY_ACTIONS: readonly KeyAction[] = [
@@ -60,6 +61,7 @@ export const KEY_ACTIONS: readonly KeyAction[] = [
   'toggle_simplified',
   'toggle_respect_css',
   'toggle_justify',
+  'toggle_wide',
   'toggle_recent',
 ];
 
@@ -79,6 +81,7 @@ export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
   B: 'list_bookmarks',
   R: 'toggle_recent',
   J: 'toggle_justify',
+  W: 'toggle_wide',
   d: 'delete_from_library',
   t: 'toc',
   i: 'book_info',
