@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { BookRecord } from '../../db/db.js';
 import { Modal } from '../components/Modal.js';
 import { formatBytes } from '../../utils/text.js';
+import { imageLayer } from '../imageLayer.js';
+import { parseBookFile } from '../../formats/index.js';
 
 export interface BookDetailProps {
   book: BookRecord;
@@ -14,6 +16,40 @@ export interface BookDetailProps {
 
 export function BookDetail(props: BookDetailProps): React.JSX.Element {
   const { book, theme, onRead, onClose } = props;
+  const hasCover = !!book.coverKey;
+
+  // Load cover bytes from the book file so ueberzugpp can draw it. parseBookFile
+  // is synchronous and reads the whole file — acceptable here because it only
+  // runs when the detail modal is open, not on every keystroke.
+  const [coverData, setCoverData] = useState<Uint8Array | null>(null);
+  useEffect(() => {
+    if (!hasCover || !book.coverKey) {
+      setCoverData(null);
+      return;
+    }
+    try {
+      const parsed = parseBookFile(book.path);
+      setCoverData(parsed.resources.get(book.coverKey) ?? null);
+    } catch {
+      setCoverData(null);
+    }
+  }, [book.path, book.coverKey, hasCover]);
+
+  // Draw/clear the cover overlay while the modal is open.
+  useEffect(() => {
+    if (hasCover && coverData && coverData.length > 0 && book.coverKey) {
+      if (!imageLayer.start()) return;
+      const res = new Map<string, Uint8Array>();
+      res.set(book.coverKey, coverData);
+      imageLayer.update(
+        [{ identifier: 'cover', x: 2, y: 5, width: 16, height: 14, src: book.coverKey }],
+        res,
+      );
+    } else {
+      imageLayer.clear();
+    }
+    return () => imageLayer.clear();
+  }, [hasCover, coverData, book.coverKey]);
 
   useInput((input, key) => {
     if (key.return || input === 'o') {
@@ -42,28 +78,30 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
   if (book.progressPercent !== null) {
     lines.push(`Progress: ${book.progressPercent}%`);
   }
-  if (book.coverKey) {
-    lines.push('Cover: available (image display requires a graphical terminal protocol)');
-  }
+
+  const showCoverColumn = hasCover && coverData && coverData.length > 0;
 
   return (
-    <Modal theme={theme} title={book.title} width={72} footer="Enter — read · q — close">
-      <Box flexDirection="column">
-        {lines.map((line, i) => (
-          <Text key={i} color={theme.colors.text}>
-            {line}
-          </Text>
-        ))}
-        {book.annotation ? (
-          <Box flexDirection="column" marginTop={1}>
-            <Text color={theme.colors.heading} bold>
-              Annotation
+    <Modal theme={theme} title={book.title} width={80} footer="Enter — read · q — close">
+      <Box flexDirection="row">
+        {showCoverColumn ? <Box width={27} /> : null}
+        <Box flexDirection="column" flexGrow={1} paddingRight={1}>
+          {lines.map((line, i) => (
+            <Text key={i} color={theme.colors.text}>
+              {line}
             </Text>
-            <Text color={theme.colors.dim} dimColor>
-              {book.annotation}
-            </Text>
-          </Box>
-        ) : null}
+          ))}
+          {book.annotation ? (
+            <Box flexDirection="column" marginTop={1}>
+              <Text color={theme.colors.heading} bold>
+                Annotation
+              </Text>
+              <Text color={theme.colors.dim} dimColor>
+                {book.annotation}
+              </Text>
+            </Box>
+          ) : null}
+        </Box>
       </Box>
     </Modal>
   );
