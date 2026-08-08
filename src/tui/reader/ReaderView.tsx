@@ -645,7 +645,7 @@ function InfoModal(props: {
   return (
     <Modal theme={theme} title="Book Info" width={72} footer="Esc — close">
       <Box flexDirection="row">
-        {hasCover ? <Box width={26} /> : null}
+        {hasCover ? <Box width={28} /> : null}
         <Box flexDirection="column" flexGrow={1}>
           {lines.map((line, i) => (
             <Text key={i} color={theme.colors.text}>
