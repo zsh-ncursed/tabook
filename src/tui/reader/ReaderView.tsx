@@ -390,7 +390,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       const coverSrc = session.book.metadata.coverKey;
       if (coverSrc) {
         imageLayer.update(
-          [{ identifier: 'cover', x: 2, y: 5, width: 20, height: 14, src: coverSrc }],
+          [{ identifier: 'cover', x: 2, y: 5, width: 16, height: 14, src: coverSrc }],
           session.book.resources,
         );
       } else {
@@ -645,7 +645,7 @@ function InfoModal(props: {
   return (
     <Modal theme={theme} title="Book Info" width={72} footer="Esc — close">
       <Box flexDirection="row">
-        {hasCover ? <Box width={24} /> : null}
+        {hasCover ? <Box width={22} /> : null}
         <Box flexDirection="column" flexGrow={1}>
           {lines.map((line, i) => (
             <Text key={i} color={theme.colors.text}>
