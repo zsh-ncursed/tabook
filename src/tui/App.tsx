@@ -478,7 +478,7 @@ export function App(props: AppProps): React.JSX.Element {
         />
       ) : null}
       {promptOpenPath ? (
-        <Box paddingX={1}>
+        <Box paddingX={1} flexDirection="column">
           <TextPrompt
             theme={theme}
             prefix="open: "
@@ -491,6 +491,9 @@ export function App(props: AppProps): React.JSX.Element {
             }}
             onCancel={() => setPromptOpenPath(false)}
           />
+          <Text color={theme.colors.dim} dimColor>
+            Ctrl+V — paste from clipboard · esc — cancel
+          </Text>
         </Box>
       ) : null}
       {message ? (
