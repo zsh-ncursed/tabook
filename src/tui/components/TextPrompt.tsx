@@ -149,6 +149,15 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
       default:
         break;
     }
+    // Multi-char input = terminal paste (bracketed paste or clipboard).
+    // Insert the whole block at the cursor so paths from the clipboard work.
+    if (input && input.length > 1 && !key.ctrl && !key.meta) {
+      const c = cursorRef.current;
+      const next = valueRef.current.slice(0, c) + input + valueRef.current.slice(c);
+      setValue(next);
+      setCursor(c + input.length);
+      return;
+    }
     if (input && input.length === 1 && !key.ctrl && !key.meta) {
       const c = cursorRef.current;
       const next = valueRef.current.slice(0, c) + input + valueRef.current.slice(c);
