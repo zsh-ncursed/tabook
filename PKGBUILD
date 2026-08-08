@@ -21,6 +21,7 @@ build() {
   cd "${srcdir}/${pkgname}"
   npm ci
   npm run build
+  npm prune --production
 }
 
 package() {
@@ -29,6 +30,9 @@ package() {
   # App directory
   install -dm755 "${pkgdir}/usr/lib/${pkgname}"
   cp -r dist node_modules package.json "${pkgdir}/usr/lib/${pkgname}/"
+
+  # Strip better-sqlite3 prebuilds — keep only linux-x64
+  rm -f "${pkgdir}/usr/lib/${pkgname}/node_modules/better-sqlite3/prebuilds/"{darwin-*,win32-*,linuxmusl-*,linux-arm64}*
 
   # Binary wrapper
   install -dm755 "${pkgdir}/usr/bin"
