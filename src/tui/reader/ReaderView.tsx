@@ -390,7 +390,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       const coverSrc = session.book.metadata.coverKey;
       if (coverSrc) {
         imageLayer.update(
-          [{ identifier: 'cover', x: 2, y: 3, width: 24, height: 14, src: coverSrc }],
+          [{ identifier: 'cover', x: 2, y: 5, width: 24, height: 14, src: coverSrc }],
           session.book.resources,
         );
       } else {
