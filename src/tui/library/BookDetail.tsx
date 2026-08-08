@@ -3,7 +3,7 @@ import { Box, Text, useInput, useStdout } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { BookRecord } from '../../db/db.js';
 import { Modal } from '../components/Modal.js';
-import { formatBytes } from '../../utils/text.js';
+import { formatBytes, truncate } from '../../utils/text.js';
 import { imageLayer } from '../imageLayer.js';
 import { forceRedraw } from '../screenRefresh.js';
 import { parseBookFile } from '../../formats/index.js';
@@ -15,8 +15,9 @@ export interface BookDetailProps {
   onClose: () => void;
 }
 
-// Modal chrome: border(1) + paddingY(1) + title(1) + marginY(1) + footer(1) = 5
-const MODAL_CHROME = 5;
+// Modal chrome: border-top(1) + paddingY-top(1) + title(1) + marginY(1) +
+// footer(1) + paddingY-bottom(1) + border-bottom(1) = 7
+const MODAL_CHROME = 7;
 // Text column: modal 80 - border(2) - paddingX(2) - cover spacer(27) - right padding(1) = 48
 const TEXT_WIDTH = 48;
 
@@ -135,7 +136,7 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
   const showCoverColumn = hasCover && coverData && coverData.length > 0;
 
   return (
-    <Modal theme={theme} title={book.title} width={80} footer="Enter — read · esc — back · j/k scroll">
+    <Modal theme={theme} title={truncate(book.title, 76)} width={80} footer="Enter — read · esc — back · j/k scroll">
       <Box flexDirection="row" height={maxVisible}>
         {showCoverColumn ? <Box width={27} /> : null}
         <Box flexDirection="column" flexGrow={1} paddingRight={1}>
