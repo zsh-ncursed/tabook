@@ -641,24 +641,28 @@ function InfoModal(props: {
     );
     if (stats.lastReadAt) lines.push(`Last read: ${stats.lastReadAt}`);
   }
+  const hasCover = !!m.coverKey && session.book.resources.has(m.coverKey);
   return (
     <Modal theme={theme} title="Book Info" width={72} footer="Esc — close">
-      <Box flexDirection="column">
-        {lines.map((line, i) => (
-          <Text key={i} color={theme.colors.text}>
-            {line}
-          </Text>
-        ))}
-        {m.annotation ? (
-          <Box flexDirection="column" marginTop={1}>
-            <Text color={theme.colors.heading} bold>
-              Annotation
+      <Box flexDirection="row">
+        {hasCover ? <Box width={26} /> : null}
+        <Box flexDirection="column" flexGrow={1}>
+          {lines.map((line, i) => (
+            <Text key={i} color={theme.colors.text}>
+              {line}
             </Text>
-            <Text color={theme.colors.dim} dimColor>
-              {m.annotation}
-            </Text>
-          </Box>
-        ) : null}
+          ))}
+          {m.annotation ? (
+            <Box flexDirection="column" marginTop={1}>
+              <Text color={theme.colors.heading} bold>
+                Annotation
+              </Text>
+              <Text color={theme.colors.dim} dimColor>
+                {m.annotation}
+              </Text>
+            </Box>
+          ) : null}
+        </Box>
       </Box>
     </Modal>
   );
