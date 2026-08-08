@@ -643,10 +643,10 @@ function InfoModal(props: {
   }
   const hasCover = !!m.coverKey && session.book.resources.has(m.coverKey);
   return (
-    <Modal theme={theme} title="Book Info" width={72} footer="Esc — close">
+    <Modal theme={theme} title="Book Info" width={80} footer="Esc — close">
       <Box flexDirection="row">
-        {hasCover ? <Box width={22} /> : null}
-        <Box flexDirection="column" flexGrow={1}>
+        {hasCover ? <Box width={28} /> : null}
+        <Box flexDirection="column" flexGrow={1} paddingRight={2}>
           {lines.map((line, i) => (
             <Text key={i} color={theme.colors.text}>
               {line}
