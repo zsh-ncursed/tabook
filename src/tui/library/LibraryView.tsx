@@ -8,6 +8,7 @@ import { StatusBar } from '../components/StatusBar.js';
 import { TextPrompt } from '../components/TextPrompt.js';
 import { BookDetail } from './BookDetail.js';
 import { useTerminalSize } from '../useTerminalSize.js';
+import { forceRedraw } from '../screenRefresh.js';
 import { formatBytes, truncateW } from '../../utils/text.js';
 
 interface LibraryCommandBus {
@@ -345,6 +346,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           onClose={() => {
             setDetailBook(null);
             setMode('normal');
+            forceRedraw();
           }}
         />
       ) : null}

@@ -16,8 +16,8 @@ export interface BookDetailProps {
 }
 
 // Modal chrome: border-top(1) + paddingY-top(1) + title(1) + marginY(1) +
-// footer(1) + paddingY-bottom(1) + border-bottom(1) = 7
-const MODAL_CHROME = 7;
+// footer(1) + marginY(1) + paddingY-bottom(1) + border-bottom(1) = 8
+const MODAL_CHROME = 8;
 // Text column: modal 80 - border(2) - paddingX(2) - cover spacer(27) - right padding(1) = 48
 const TEXT_WIDTH = 48;
 
@@ -124,11 +124,11 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
       return;
     }
     if (input === 'j') {
-      setScroll((s) => Math.min(s + 1, maxScroll));
+      setScroll((s) => Math.min(s + 3, maxScroll));
       return;
     }
     if (input === 'k') {
-      setScroll((s) => Math.max(0, s - 1));
+      setScroll((s) => Math.max(0, s - 3));
       return;
     }
   });
