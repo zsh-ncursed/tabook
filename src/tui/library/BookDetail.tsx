@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useStdout } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { BookRecord } from '../../db/db.js';
 import { Modal } from '../components/Modal.js';
 import { formatBytes } from '../../utils/text.js';
 import { imageLayer } from '../imageLayer.js';
+import { forceRedraw } from '../screenRefresh.js';
 import { parseBookFile } from '../../formats/index.js';
 
 export interface BookDetailProps {
@@ -14,13 +15,41 @@ export interface BookDetailProps {
   onClose: () => void;
 }
 
+// Modal chrome: border(1) + paddingY(1) + title(1) + marginY(1) + footer(1) = 5
+const MODAL_CHROME = 5;
+// Text column: modal 80 - border(2) - paddingX(2) - cover spacer(27) - right padding(1) = 48
+const TEXT_WIDTH = 48;
+
+function wrapText(text: string, maxW: number): string[] {
+  const out: string[] = [];
+  for (const para of text.split('\n')) {
+    if (para === '') {
+      out.push('');
+      continue;
+    }
+    const words = para.split(/\s+/);
+    let line = '';
+    for (const word of words) {
+      if (line === '') {
+        line = word;
+      } else if (line.length + 1 + word.length <= maxW) {
+        line += ' ' + word;
+      } else {
+        out.push(line);
+        line = word;
+      }
+    }
+    if (line) out.push(line);
+  }
+  return out;
+}
+
 export function BookDetail(props: BookDetailProps): React.JSX.Element {
   const { book, theme, onRead, onClose } = props;
+  const { stdout } = useStdout();
+  const termHeight = stdout.rows ?? 24;
   const hasCover = !!book.coverKey;
 
-  // Load cover bytes from the book file so ueberzugpp can draw it. parseBookFile
-  // is synchronous and reads the whole file — acceptable here because it only
-  // runs when the detail modal is open, not on every keystroke.
   const [coverData, setCoverData] = useState<Uint8Array | null>(null);
   useEffect(() => {
     if (!hasCover || !book.coverKey) {
@@ -35,7 +64,6 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
     }
   }, [book.path, book.coverKey, hasCover]);
 
-  // Draw/clear the cover overlay while the modal is open.
   useEffect(() => {
     if (hasCover && coverData && coverData.length > 0 && book.coverKey) {
       if (!imageLayer.start()) return;
@@ -51,48 +79,38 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
     return () => imageLayer.clear();
   }, [hasCover, coverData, book.coverKey]);
 
-  const lines: string[] = [];
-  if (book.authorsText) lines.push(`Authors: ${book.authorsText}`);
-  if (book.seriesText) lines.push(`Series: ${book.seriesText}`);
-  if (book.genres.length > 0) lines.push(`Genres: ${book.genres.join(', ')}`);
+  // Build all text lines: metadata + wrapped annotation.
+  const metaLines: string[] = [];
+  if (book.authorsText) metaLines.push(`Authors: ${book.authorsText}`);
+  if (book.seriesText) metaLines.push(`Series: ${book.seriesText}`);
+  if (book.genres.length > 0) metaLines.push(`Genres: ${book.genres.join(', ')}`);
   const extras: string[] = [];
   if (book.publisher) extras.push(`Publisher: ${book.publisher}`);
   if (book.year) extras.push(`Year: ${book.year}`);
   if (book.isbn) extras.push(`ISBN: ${book.isbn}`);
   if (book.lang) extras.push(`Language: ${book.lang}`);
-  if (extras.length > 0) lines.push(extras.join(' · '));
-  lines.push(
+  if (extras.length > 0) metaLines.push(extras.join(' · '));
+  metaLines.push(
     `Format: ${book.format.toUpperCase()} · Size: ${formatBytes(book.size)} · Added: ${book.addedAt}`,
   );
   if (book.progressPercent !== null) {
-    lines.push(`Progress: ${book.progressPercent}%`);
+    metaLines.push(`Progress: ${book.progressPercent}%`);
   }
 
-  // Build the full text block (metadata lines + annotation section) and
-  // scroll it with j/k so long titles/annotations stay readable on short
-  // terminals.
-  const allLines: string[] = [...lines];
+  const allLines: string[] = [...metaLines];
   if (book.annotation) {
     allLines.push('');
-    allLines.push('Annotation');
-    // Wrap the annotation to the text column width (80 - 27 spacer - 1 right
-    // padding - 2 border/padding = 50).
-    const maxW = 50;
-    for (const para of book.annotation.split('\n')) {
-      if (para === '') {
-        allLines.push('');
-        continue;
-      }
-      let remaining = para;
-      while (remaining.length > maxW) {
-        allLines.push(remaining.slice(0, maxW));
-        remaining = remaining.slice(maxW);
-      }
-      allLines.push(remaining);
+    allLines.push('__annotation_header__');
+    for (const line of wrapText(book.annotation, TEXT_WIDTH)) {
+      allLines.push(line);
     }
   }
 
   const [scroll, setScroll] = useState(0);
+  const maxVisible = Math.max(1, termHeight - MODAL_CHROME);
+  const maxScroll = Math.max(0, allLines.length - maxVisible);
+  const clampedScroll = Math.min(scroll, maxScroll);
+  const visibleLines = allLines.slice(clampedScroll, clampedScroll + maxVisible);
 
   useInput((input, key) => {
     if (key.return || input === 'o') {
@@ -101,10 +119,11 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
     }
     if (key.escape) {
       onClose();
+      forceRedraw();
       return;
     }
     if (input === 'j') {
-      setScroll((s) => Math.min(s + 1, Math.max(0, allLines.length - 1)));
+      setScroll((s) => Math.min(s + 1, maxScroll));
       return;
     }
     if (input === 'k') {
@@ -114,18 +133,17 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
   });
 
   const showCoverColumn = hasCover && coverData && coverData.length > 0;
-  const visibleLines = allLines.slice(scroll);
 
   return (
     <Modal theme={theme} title={book.title} width={80} footer="Enter — read · esc — back · j/k scroll">
-      <Box flexDirection="row">
+      <Box flexDirection="row" height={maxVisible}>
         {showCoverColumn ? <Box width={27} /> : null}
         <Box flexDirection="column" flexGrow={1} paddingRight={1}>
           {visibleLines.map((line, i) => {
-            if (line === 'Annotation') {
+            if (line === '__annotation_header__') {
               return (
                 <Text key={i} color={theme.colors.heading} bold>
-                  {line}
+                  Annotation
                 </Text>
               );
             }
