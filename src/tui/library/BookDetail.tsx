@@ -51,17 +51,6 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
     return () => imageLayer.clear();
   }, [hasCover, coverData, book.coverKey]);
 
-  useInput((input, key) => {
-    if (key.return || input === 'o') {
-      onRead();
-      return;
-    }
-    if (input === 'q' || key.escape) {
-      onClose();
-      return;
-    }
-  });
-
   const lines: string[] = [];
   if (book.authorsText) lines.push(`Authors: ${book.authorsText}`);
   if (book.seriesText) lines.push(`Series: ${book.seriesText}`);
@@ -79,28 +68,76 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
     lines.push(`Progress: ${book.progressPercent}%`);
   }
 
+  // Build the full text block (metadata lines + annotation section) and
+  // scroll it with j/k so long titles/annotations stay readable on short
+  // terminals.
+  const allLines: string[] = [...lines];
+  if (book.annotation) {
+    allLines.push('');
+    allLines.push('Annotation');
+    // Wrap the annotation to the text column width (80 - 27 spacer - 1 right
+    // padding - 2 border/padding = 50).
+    const maxW = 50;
+    for (const para of book.annotation.split('\n')) {
+      if (para === '') {
+        allLines.push('');
+        continue;
+      }
+      let remaining = para;
+      while (remaining.length > maxW) {
+        allLines.push(remaining.slice(0, maxW));
+        remaining = remaining.slice(maxW);
+      }
+      allLines.push(remaining);
+    }
+  }
+
+  const [scroll, setScroll] = useState(0);
+
+  useInput((input, key) => {
+    if (key.return || input === 'o') {
+      onRead();
+      return;
+    }
+    if (key.escape) {
+      onClose();
+      return;
+    }
+    if (input === 'j') {
+      setScroll((s) => Math.min(s + 1, Math.max(0, allLines.length - 1)));
+      return;
+    }
+    if (input === 'k') {
+      setScroll((s) => Math.max(0, s - 1));
+      return;
+    }
+  });
+
   const showCoverColumn = hasCover && coverData && coverData.length > 0;
+  const visibleLines = allLines.slice(scroll);
 
   return (
-    <Modal theme={theme} title={book.title} width={80} footer="Enter — read · q — close">
+    <Modal theme={theme} title={book.title} width={80} footer="Enter — read · esc — back · j/k scroll">
       <Box flexDirection="row">
         {showCoverColumn ? <Box width={27} /> : null}
         <Box flexDirection="column" flexGrow={1} paddingRight={1}>
-          {lines.map((line, i) => (
-            <Text key={i} color={theme.colors.text}>
-              {line}
-            </Text>
-          ))}
-          {book.annotation ? (
-            <Box flexDirection="column" marginTop={1}>
-              <Text color={theme.colors.heading} bold>
-                Annotation
+          {visibleLines.map((line, i) => {
+            if (line === 'Annotation') {
+              return (
+                <Text key={i} color={theme.colors.heading} bold>
+                  {line}
+                </Text>
+              );
+            }
+            if (line === '') {
+              return <Box key={i} height={1} />;
+            }
+            return (
+              <Text key={i} color={theme.colors.text}>
+                {line}
               </Text>
-              <Text color={theme.colors.dim} dimColor>
-                {book.annotation}
-              </Text>
-            </Box>
-          ) : null}
+            );
+          })}
         </Box>
       </Box>
     </Modal>
