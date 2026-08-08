@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import { resolveKeyName } from '../keymap.js';
+import { execSync } from 'node:child_process';
 
 export interface TextPromptProps {
   theme: Theme;
@@ -17,6 +18,20 @@ export interface TextPromptProps {
 
 const HISTORY_MAX = 50;
 const histories = new Map<string, string[]>();
+
+function readClipboard(): string {
+  try {
+    if (process.env.WAYLAND_DISPLAY) {
+      return execSync('wl-paste --no-newline 2>/dev/null || wl-paste 2>/dev/null', { encoding: 'utf8' }).trimEnd();
+    }
+    if (process.env.DISPLAY) {
+      return execSync('xclip -selection clipboard -o 2>/dev/null || xsel --clipboard --output 2>/dev/null', { encoding: 'utf8' }).trimEnd();
+    }
+  } catch {
+    // clipboard tool not available
+  }
+  return '';
+}
 
 function getHistory(key: string): string[] {
   return histories.get(key) ?? [];
@@ -133,6 +148,18 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
       case 'ctrl+e':
         setCursor(valueRef.current.length);
         return;
+      case 'ctrl+v': {
+        // Read clipboard via system tool — terminal raw mode intercepts
+        // Ctrl+Shift+V, so we read the clipboard directly.
+        const clip = readClipboard();
+        if (clip) {
+          const c = cursorRef.current;
+          const next = valueRef.current.slice(0, c) + clip + valueRef.current.slice(c);
+          setValue(next);
+          setCursor(c + clip.length);
+        }
+        return;
+      }
       case 'ctrl+u':
         setValue('');
         setCursor(0);
