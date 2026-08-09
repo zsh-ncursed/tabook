@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Text, useApp, useInput, type Key } from 'ink';
+import { Box, Text, useApp, type Key } from 'ink';
 import type { LibraryDb, BookRecord, SortField } from '../db/db.js';
 import type { Config } from '../config/defaults.js';
 import { THEMES, themeNames } from '../themes/themes.js';
@@ -12,6 +12,7 @@ import { HelpView } from './help/HelpView.js';
 import { TextPrompt } from './components/TextPrompt.js';
 import { ListModal } from './components/ListModal.js';
 import { useTerminalSize } from './useTerminalSize.js';
+import { useInputDispatch } from './useInputDispatch.js';
 import { resolveKeyName } from './keymap.js';
 import { pickBookFile } from '../utils/open.js';
 import { shellSplit } from '../utils/text.js';
@@ -451,7 +452,7 @@ export function App(props: AppProps): React.JSX.Element {
   // it opens/closes rarely, the setRawMode race doesn't bite (unlike TOC which
   // reopens frequently during a reading session).
   const themeItems = themeNames();
-  const themeDispatchRef = useRef<(input: string, key: Key) => void>(() => {});
+  const themeDispatchRef = useInputDispatch(themePickerOpen);
   themeDispatchRef.current = (input: string, key: Key) => {
     const keyName = resolveKeyName(input, key);
     if (keyName === null) return;
@@ -490,22 +491,12 @@ export function App(props: AppProps): React.JSX.Element {
         return;
     }
   };
-  const handleThemeInput = useCallback(
-    (input: string, key: Key) => themeDispatchRef.current(input, key),
-    [],
-  );
-  useInput(handleThemeInput, { isActive: themePickerOpen });
 
   // Help overlay: Esc closes. Single useInput, active only when help is open.
-  const helpDispatchRef = useRef<(input: string, key: Key) => void>(() => {});
+  const helpDispatchRef = useInputDispatch(helpOpen);
   helpDispatchRef.current = (input: string, key: Key) => {
     if (resolveKeyName(input, key) === 'escape') setHelpOpen(false);
   };
-  const handleHelpInput = useCallback(
-    (input: string, key: Key) => helpDispatchRef.current(input, key),
-    [],
-  );
-  useInput(handleHelpInput, { isActive: helpOpen });
 
   // Navigate (preview) on cursor change.
   useEffect(() => {
