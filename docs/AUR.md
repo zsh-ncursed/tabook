@@ -6,6 +6,9 @@ The `aur-publish.yml` workflow runs when a `v*` tag is pushed to `main`.
 It runs the full test suite, then publishes the updated `PKGBUILD` + `.SRCINFO`
 to the AUR `tabook` package via SSH.
 
+The package ships better-sqlite3 prebuilds for both `x86_64` and `aarch64`, so it
+installs on either architecture.
+
 ## Prerequisites
 
 ### 1. Register on AUR
