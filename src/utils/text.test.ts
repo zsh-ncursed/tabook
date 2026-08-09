@@ -10,6 +10,8 @@ import {
   stripTags,
   ansiStrip,
   shellSplit,
+  splitChars,
+  formatLocalTimestamp,
 } from './text.js';
 import type { Inline } from '../formats/model.js';
 
@@ -146,5 +148,45 @@ describe('shellSplit', () => {
 
   it('collapses spaces and tabs', () => {
     expect(shellSplit('  a\t b  ')).toEqual(['a', 'b']);
+  });
+});
+
+describe('splitChars', () => {
+  it('splits by Unicode code point, not UTF-16 code unit', () => {
+    expect(splitChars('abc')).toEqual(['a', 'b', 'c']);
+    // CJK: single code unit each, but exercised for completeness.
+    expect(splitChars('汉字')).toEqual(['汉', '字']);
+  });
+
+  it('keeps surrogate pairs (emoji) intact', () => {
+    // 😀 is U+1F600, a surrogate pair in UTF-16 — split('') would tear it apart.
+    expect(splitChars('a😀b')).toEqual(['a', '😀', 'b']);
+    expect(splitChars('a😀b')).toHaveLength(3);
+  });
+
+  it('returns empty array for empty string', () => {
+    expect(splitChars('')).toEqual([]);
+  });
+});
+
+describe('formatLocalTimestamp', () => {
+  it('converts a UTC SQL timestamp to the given time zone', () => {
+    // SQLite datetime('now') stores UTC as "YYYY-MM-DD HH:MM:SS".
+    expect(formatLocalTimestamp('2026-08-09 10:00:00', 'UTC')).toBe('2026-08-09 10:00:00');
+    // Europe/Moscow is fixed UTC+3 (no DST since 2014).
+    expect(formatLocalTimestamp('2026-08-09 10:00:00', 'Europe/Moscow')).toBe(
+      '2026-08-09 13:00:00',
+    );
+  });
+
+  it('defaults to the local time zone', () => {
+    const local = formatLocalTimestamp('2026-08-09 10:00:00');
+    expect(local).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(local).not.toBe('');
+  });
+
+  it('returns invalid input unchanged', () => {
+    expect(formatLocalTimestamp('')).toBe('');
+    expect(formatLocalTimestamp('not a date')).toBe('not a date');
   });
 });

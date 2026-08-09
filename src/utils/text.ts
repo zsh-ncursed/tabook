@@ -220,3 +220,38 @@ export function truncateW(text: string, max: number): string {
   }
   return out + '…';
 }
+
+// Split a string into Unicode code points rather than UTF-16 code units, so
+// surrogate pairs (CJK, emoji) survive intact. input.split('') would tear a
+// pair like 😀 into two lone surrogates and produce garbage keypresses.
+export function splitChars(input: string): string[] {
+  return Array.from(input);
+}
+
+// Format a SQLite UTC timestamp ("YYYY-MM-DD HH:MM:SS" from datetime('now'))
+// in the given IANA time zone (default: the local one), e.g. for the book
+// info card. Invalid/empty input is returned unchanged.
+export function formatLocalTimestamp(
+  utcSql: string,
+  timeZone: string = Intl.DateTimeFormat().resolvedOptions().timeZone,
+): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(utcSql);
+  if (!m) return utcSql;
+  const [, y, mo, d, h, mi, s] = m;
+  const date = new Date(
+    Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)),
+  );
+  if (Number.isNaN(date.getTime())) return utcSql;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
+}

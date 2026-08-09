@@ -91,7 +91,6 @@ EOF
 
       - name: Update AUR files
         run: |
-          cp aur-repo/.git aur-repo/.git  # keep AUR git history
           cp PKGBUILD aur-repo/
           cp .SRCINFO aur-repo/
           cd aur-repo

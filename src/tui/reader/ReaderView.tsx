@@ -13,7 +13,7 @@ import { renderLine } from '../renderLines.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { forceRedraw } from '../screenRefresh.js';
 import { imageLayer, type ImagePlacement, IMAGE_ROWS } from '../imageLayer.js';
-import { formatBytes, truncate } from '../../utils/text.js';
+import { formatBytes, truncate, splitChars, formatLocalTimestamp } from '../../utils/text.js';
 import { joinAuthors, formatSeries } from '../../formats/model.js';
 
 export interface ReaderViewProps {
@@ -85,10 +85,13 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   // to the pre-modal one (in our reader the underlying page is unchanged, so the
   // modal stays on screen until the next keystroke). Pieces an explicit clear +
   // re-render so the closing frame always paints immediately.
-  const closeModal = useCallback((next: Mode) => {
-    setMode(next);
-    forceRedraw();
-  }, [setMode]);
+  const closeModal = useCallback(
+    (next: Mode) => {
+      setMode(next);
+      forceRedraw();
+    },
+    [setMode],
+  );
 
   useEffect(() => {
     session.setViewport(width, height);
@@ -364,21 +367,20 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   };
 
   const dispatchChunk = (input: string): void => {
-    for (const ch of input.split('')) {
+    // Iterate code points, not UTF-16 code units: split('') would tear CJK /
+    // emoji surrogate pairs into lone halves and dispatch garbage keys.
+    for (const ch of splitChars(input)) {
       dispatchRef.current(ch, charKey(ch));
     }
   };
 
-  const handleMainInput = useCallback(
-    (input: string, key: Key) => {
-      if (input.length > 1 && !key.ctrl && !key.meta) {
-        dispatchChunk(input);
-        return;
-      }
-      dispatchRef.current(input, key);
-    },
-    [],
-  );
+  const handleMainInput = useCallback((input: string, key: Key) => {
+    if (input.length > 1 && !key.ctrl && !key.meta) {
+      dispatchChunk(input);
+      return;
+    }
+    dispatchRef.current(input, key);
+  }, []);
   useInput(handleMainInput, { isActive: !inputDisabled });
 
   const lines = session.viewportLines();
@@ -641,7 +643,7 @@ function InfoModal(props: {
     lines.push(
       `Reading time: ${formatDuration(stats.totalSeconds)} · Pages read: ${stats.totalPages} · Sessions: ${stats.sessionCount}`,
     );
-    if (stats.lastReadAt) lines.push(`Last read: ${stats.lastReadAt}`);
+    if (stats.lastReadAt) lines.push(`Last read: ${formatLocalTimestamp(stats.lastReadAt)}`);
   }
   const hasCover = !!m.coverKey && session.book.resources.has(m.coverKey);
   return (
