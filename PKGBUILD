@@ -16,6 +16,8 @@ options=(!strip !debug)
 makedepends=('npm' 'git' 'python' 'gcc' 'make')
 optdepends=(
   'ueberzugpp: display book cover images in supported terminals'
+  'zenity: graphical file picker for the `o` open-file dialog'
+  'kdialog: graphical file picker (KDE alternative to zenity)'
 )
 source=("${pkgname}::git+${url}.git#tag=v${pkgver}")
 sha256sums=('SKIP')
