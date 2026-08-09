@@ -80,7 +80,7 @@ jobs:
           Host aur.archlinux.org
             IdentityFile ~/.ssh/aur_key
             User ${{ secrets.AUR_USERNAME }}
-EOF
+          EOF
 
       - name: Clone AUR repository
         run: |
