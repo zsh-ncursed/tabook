@@ -190,7 +190,7 @@ describe('ReaderView modal escape behavior', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(props.onClose).not.toHaveBeenCalled();
   });
-it('TOC: navigate with j, close with esc, reopen, esc still closes', async () => {
+  it('TOC: navigate with j, close with esc, reopen, esc still closes', async () => {
     // Reproduce the exact user scenario: open TOC, move cursor down (j),
     // close with esc, reopen, esc again. The second esc must close — not
     // be swallowed by a stale useInput handler after the cursor re-render.

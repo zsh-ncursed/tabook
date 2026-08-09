@@ -136,7 +136,12 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
   const showCoverColumn = hasCover && coverData && coverData.length > 0;
 
   return (
-    <Modal theme={theme} title={truncate(book.title, 76)} width={80} footer="Enter — read · esc — back · j/k scroll">
+    <Modal
+      theme={theme}
+      title={truncate(book.title, 76)}
+      width={80}
+      footer="Enter — read · esc — back · j/k scroll"
+    >
       <Box flexDirection="row" height={maxVisible}>
         {showCoverColumn ? <Box width={27} /> : null}
         <Box flexDirection="column" flexGrow={1} paddingRight={1}>

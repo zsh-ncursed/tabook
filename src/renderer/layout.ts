@@ -178,7 +178,24 @@ export function applyHighlights(spans: StyledSpan[], highlights: HighlightRange[
 }
 
 // Vowel characters used by the (dictionary-free) hyphenation heuristic.
-const VOWELS = new Set(['a', 'e', 'i', 'o', 'u', 'y', 'а', 'е', 'ё', 'и', 'о', 'у', 'ы', 'э', 'ю', 'я']);
+const VOWELS = new Set([
+  'a',
+  'e',
+  'i',
+  'o',
+  'u',
+  'y',
+  'а',
+  'е',
+  'ё',
+  'и',
+  'о',
+  'у',
+  'ы',
+  'э',
+  'ю',
+  'я',
+]);
 
 // Find the best break point for hyphenating a long word. Prefers a
 // vowel→consonant boundary (e.g. "hyphen-ate", "su-per") scanning from the
@@ -232,9 +249,7 @@ export function wrapSpans(
   const wrapped = wrapChars(chars, maxWidth, hyphenate);
   return {
     lines: wrapped.map(charsToSpans),
-    originalLengths: wrapped.map((line) =>
-      line.reduce((n, c) => n + (c.offset >= 0 ? 1 : 0), 0),
-    ),
+    originalLengths: wrapped.map((line) => line.reduce((n, c) => n + (c.offset >= 0 ? 1 : 0), 0)),
   };
 }
 

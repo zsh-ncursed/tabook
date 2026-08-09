@@ -23,12 +23,15 @@ interface FoldedBlock {
 function foldText(text: string): FoldedBlock {
   let folded = '';
   const foldToOrig: number[] = [];
-  for (let i = 0; i < text.length; ) {
+  for (let i = 0; i < text.length;) {
     const cp = text.codePointAt(i)!;
     const ch = String.fromCodePoint(cp);
     // Lowercase, decompose, then strip combining marks: 'İ' folds to 'i' (not
     // 'i̇'), so 'istanbul' matches 'İstanbul' and fold lengths stay stable.
-    const lc = ch.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+    const lc = ch
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '');
     folded += lc;
     for (let k = 0; k < lc.length; k++) foldToOrig.push(i);
     i += ch.length;

@@ -28,10 +28,10 @@ Paste the contents of `~/.ssh/aur_tabook.pub`.
 
 Go to repo → Settings → Secrets and variables → Actions → New repository secret:
 
-| Secret name | Value |
-|---|---|
+| Secret name           | Value                                             |
+| --------------------- | ------------------------------------------------- |
 | `AUR_SSH_PRIVATE_KEY` | Contents of `~/.ssh/aur_tabook` (the private key) |
-| `AUR_USERNAME` | Your AUR username (e.g. `zsh-ncursed`) |
+| `AUR_USERNAME`        | Your AUR username (e.g. `zsh-ncursed`)            |
 
 ### 5. Create the AUR package (first time only)
 

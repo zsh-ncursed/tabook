@@ -22,10 +22,15 @@ const histories = new Map<string, string[]>();
 function readClipboard(): string {
   try {
     if (process.env.WAYLAND_DISPLAY) {
-      return execSync('wl-paste --no-newline 2>/dev/null || wl-paste 2>/dev/null', { encoding: 'utf8' }).trimEnd();
+      return execSync('wl-paste --no-newline 2>/dev/null || wl-paste 2>/dev/null', {
+        encoding: 'utf8',
+      }).trimEnd();
     }
     if (process.env.DISPLAY) {
-      return execSync('xclip -selection clipboard -o 2>/dev/null || xsel --clipboard --output 2>/dev/null', { encoding: 'utf8' }).trimEnd();
+      return execSync(
+        'xclip -selection clipboard -o 2>/dev/null || xsel --clipboard --output 2>/dev/null',
+        { encoding: 'utf8' },
+      ).trimEnd();
     }
   } catch {
     // clipboard tool not available
