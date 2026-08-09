@@ -10,4 +10,3 @@ export { parseEpubBuffer } from './formats/epub/parser.js';
 export { BookLayout, wrapSpans, layoutBlock } from './renderer/layout.js';
 export { simplifyBlocks } from './renderer/simplify.js';
 export { BookSearchIndex } from './search/index.js';
-export { BookmarksManager } from './bookmarks/index.js';

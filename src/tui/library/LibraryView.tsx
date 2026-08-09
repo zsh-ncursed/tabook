@@ -9,7 +9,7 @@ import { TextPrompt } from '../components/TextPrompt.js';
 import { BookDetail } from './BookDetail.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { forceRedraw } from '../screenRefresh.js';
-import { formatBytes, truncateW } from '../../utils/text.js';
+import { truncateW } from '../../utils/text.js';
 
 interface LibraryCommandBus {
   sort?: SortField;
@@ -507,8 +507,4 @@ function DeleteConfirm(props: {
       </Text>
     </Box>
   );
-}
-
-export function bytesText(size: number): string {
-  return formatBytes(size);
 }

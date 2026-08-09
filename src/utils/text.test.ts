@@ -6,9 +6,6 @@ import {
   truncate,
   displayWidth,
   formatBytes,
-  slugify,
-  stripTags,
-  ansiStrip,
   shellSplit,
   splitChars,
   formatLocalTimestamp,
@@ -107,31 +104,6 @@ describe('formatBytes', () => {
     expect(formatBytes(2048)).toBe('2.0 KB');
     expect(formatBytes(3 * 1024 * 1024)).toBe('3.0 MB');
     expect(formatBytes(1024 ** 3)).toBe('1.0 GB');
-  });
-});
-
-describe('slugify', () => {
-  it('produces url-safe slugs', () => {
-    expect(slugify('Hello, World!')).toBe('hello-world');
-    expect(slugify('  spaced  out  ')).toBe('spaced-out');
-  });
-
-  it('keeps cyrillic letters', () => {
-    expect(slugify('Привет, Мир!')).toBe('привет-мир');
-  });
-});
-
-describe('stripTags', () => {
-  it('removes html tags', () => {
-    expect(stripTags('<p>Hello <b>world</b></p>')).toBe('Hello world');
-    expect(stripTags('no tags here')).toBe('no tags here');
-  });
-});
-
-describe('ansiStrip', () => {
-  it('removes ANSI color codes', () => {
-    expect(ansiStrip('\x1b[31mred\x1b[0m')).toBe('red');
-    expect(ansiStrip('plain')).toBe('plain');
   });
 });
 

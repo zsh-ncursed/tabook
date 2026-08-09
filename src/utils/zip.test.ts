@@ -11,13 +11,6 @@ describe('openZip', () => {
     expect(Buffer.from(data).toString('utf8')).toContain('<FictionBook');
   });
 
-  it('reads via readEntry', () => {
-    const zip = openZip(makeFb2Zip(FB2_SAMPLE));
-    const first = zip.entries[0]!;
-    const data = zip.readEntry(first);
-    expect(Buffer.from(data).toString('utf8')).toContain('<FictionBook');
-  });
-
   it('throws a ParseError for an invalid zip', () => {
     expect(() => openZip(Buffer.from('not a zip at all'))).toThrow(ParseError);
   });

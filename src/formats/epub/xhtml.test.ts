@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseXhtmlBlocks, extractBody } from './xhtml.js';
+import { parseXhtmlBlocks } from './xhtml.js';
 import { parseXml } from '../xml.js';
 
 function parse(fragment: string) {
@@ -62,17 +62,5 @@ describe('parseXhtmlBlocks', () => {
     const { blocks } = parse('<custom-tag><p>inner</p></custom-tag>');
     expect(blocks).toHaveLength(1);
     expect(blocks[0]).toMatchObject({ type: 'paragraph' });
-  });
-});
-
-describe('extractBody', () => {
-  it('returns the children of a body element', () => {
-    const children = parseXml('<body><p>a</p><p>b</p></body>');
-    expect(extractBody(children)).toHaveLength(2);
-  });
-
-  it('returns the input when there is no body element', () => {
-    const children = parseXml('<p>a</p>');
-    expect(extractBody(children)).toHaveLength(1);
   });
 });

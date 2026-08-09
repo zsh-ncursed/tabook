@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { blockToPlainText, blockTextLength } from './blocks.js';
+import { blockToPlainText } from './blocks.js';
 import type { Block, Inline } from '../formats/model.js';
 
 function t(text: string): Inline {
@@ -42,10 +42,6 @@ describe('blockToPlainText', () => {
   it('returns alt text for images and empty string for empty blocks', () => {
     expect(blockToPlainText({ type: 'image', src: 'x', alt: 'cover' })).toBe('cover');
     expect(blockToPlainText({ type: 'empty' })).toBe('');
-  });
-
-  it('measures text length', () => {
-    expect(blockTextLength({ type: 'paragraph', children: [t('hello')] })).toBe(5);
   });
 });
 

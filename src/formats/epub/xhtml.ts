@@ -180,13 +180,3 @@ function findFirstContentBlock(state: XhtmlState, from: number): number | undefi
   }
   return undefined;
 }
-
-export function extractBody(children: XmlChildren): XmlChildren {
-  for (const node of children) {
-    const tag = tagOf(node);
-    if (tag === 'body') {
-      return childrenOf(node);
-    }
-  }
-  return children;
-}

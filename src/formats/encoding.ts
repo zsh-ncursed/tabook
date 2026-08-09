@@ -1,5 +1,3 @@
-import { ParseError } from '../utils/errors.js';
-
 const UTF8_BOM = [0xef, 0xbb, 0xbf];
 const UTF16LE_BOM = [0xff, 0xfe];
 const UTF16BE_BOM = [0xfe, 0xff];
@@ -73,14 +71,6 @@ export function decodeXmlBuffer(data: Uint8Array): string {
   }
 }
 
-export function tryParseJson<T>(input: string): T | undefined {
-  try {
-    return JSON.parse(input) as T;
-  } catch {
-    return undefined;
-  }
-}
-
 export function fileExtension(name: string): string {
   const dot = name.lastIndexOf('.');
   return dot === -1 ? '' : name.slice(dot + 1).toLowerCase();
@@ -88,8 +78,4 @@ export function fileExtension(name: string): string {
 
 export function isZipBuffer(data: Uint8Array): boolean {
   return data.length >= 4 && data[0] === 0x50 && data[1] === 0x4b;
-}
-
-export function zlibRequired(): void {
-  throw new ParseError('This build requires zlib support for reading ZIP archives');
 }

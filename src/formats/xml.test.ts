@@ -6,12 +6,9 @@ import {
   childrenOf,
   findChildren,
   firstChild,
-  hasChild,
   textOf,
   attributesOf,
   attrOf,
-  asArray,
-  directText,
   fullTextOf,
 } from './xml.js';
 import type { XmlNode } from './xml.js';
@@ -44,7 +41,7 @@ describe('tagOf / childrenOf', () => {
   });
 });
 
-describe('findChildren / firstChild / hasChild', () => {
+describe('findChildren / firstChild', () => {
   it('finds children by normalized tag name', () => {
     const node = parseXml('<root><item>A</item><fb:item>B</fb:item></root>')[0]!;
     expect(findChildren(node, 'item')).toHaveLength(2);
@@ -55,8 +52,6 @@ describe('findChildren / firstChild / hasChild', () => {
     const node = parseXml('<p><a>1</a></p>')[0]!;
     expect(firstChild(node, 'a')).toBeDefined();
     expect(firstChild(node, 'missing')).toBeUndefined();
-    expect(hasChild(node, 'a')).toBe(true);
-    expect(hasChild(node, 'z')).toBe(false);
   });
 });
 
@@ -88,21 +83,7 @@ describe('attributesOf / attrOf', () => {
   });
 });
 
-describe('asArray', () => {
-  it('normalizes values to arrays', () => {
-    expect(asArray(undefined)).toEqual([]);
-    expect(asArray(null)).toEqual([]);
-    expect(asArray('a')).toEqual(['a']);
-    expect(asArray(['a', 'b'])).toEqual(['a', 'b']);
-  });
-});
-
-describe('directText / fullTextOf', () => {
-  it('returns direct text', () => {
-    expect(directText(undefined)).toBe('');
-    expect(directText(parseXml('<p>hi</p>')[0]!)).toBe('hi');
-  });
-
+describe('fullTextOf', () => {
   it('recurses into nested elements', () => {
     const nested = parseXml('<p>a<strong>b</strong>c</p>')[0]!;
     expect(fullTextOf(nested)).toBe('abc');

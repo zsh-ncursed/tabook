@@ -28,10 +28,6 @@ function inlineToText(inline: Inline): string {
   }
 }
 
-export function stripTags(input: string): string {
-  return input.replace(/<[^>]*>/g, '');
-}
-
 const NAMED_ENTITIES: Record<string, string> = {
   amp: '&',
   lt: '<',
@@ -140,10 +136,6 @@ export function truncate(input: string, maxLength: number, suffix = '...'): stri
   return input.slice(0, maxLength - suffix.length) + suffix;
 }
 
-export function ansiStrip(input: string): string {
-  return input.replace(/\x1b\[[0-9;]*m/g, '');
-}
-
 export function displayWidth(input: string): number {
   let width = 0;
   for (const ch of input) {
@@ -160,14 +152,6 @@ export function displayWidth(input: string): number {
     else width += 1;
   }
   return width;
-}
-
-export function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9а-яё]+/gi, '-')
-    .replace(/^-+|-+$/g, '');
 }
 
 export function formatBytes(bytes: number): string {

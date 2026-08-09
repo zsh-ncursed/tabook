@@ -66,7 +66,3 @@ export function blockToPlainText(block: Block): string {
       return '';
   }
 }
-
-export function blockTextLength(block: Block): number {
-  return blockToPlainText(block).length;
-}

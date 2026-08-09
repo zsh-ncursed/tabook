@@ -10,7 +10,6 @@ export interface ZipEntryInfo {
 export interface ZipArchive {
   entries: ZipEntryInfo[];
   read(name: string): Uint8Array;
-  readEntry(entry: ZipEntryInfo): Uint8Array;
 }
 
 export function openZip(data: Uint8Array): ZipArchive {
@@ -52,9 +51,6 @@ export function openZip(data: Uint8Array): ZipArchive {
       } catch (err) {
         throw new ParseError(`Cannot read ZIP entry ${name}: ${String(err)}`, { cause: err });
       }
-    },
-    readEntry(entry: ZipEntryInfo): Uint8Array {
-      return this.read(entry.name);
     },
   };
 }

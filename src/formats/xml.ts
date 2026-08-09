@@ -62,10 +62,6 @@ export function firstChild(node: XmlNode | undefined, tag: string): XmlNode | un
   return findChildren(node, tag)[0];
 }
 
-export function hasChild(node: XmlNode, tag: string): boolean {
-  return findChildren(node, tag).length > 0;
-}
-
 export function textOf(node: XmlNode | undefined): string {
   if (!node) return '';
   const kids = childrenOf(node);
@@ -117,15 +113,6 @@ function normalizeAttrName(name: string): string {
 function normalizeTag(tag: string): string {
   const idx = tag.indexOf(':');
   return idx === -1 ? tag : tag.slice(idx + 1);
-}
-
-export function asArray<T>(value: T | T[] | undefined): T[] {
-  if (value === undefined || value === null) return [];
-  return Array.isArray(value) ? value : [value];
-}
-
-export function directText(node: XmlNode | undefined): string {
-  return textOf(node);
 }
 
 export function fullTextOf(node: XmlNode | undefined): string {
