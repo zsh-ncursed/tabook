@@ -4,3 +4,5 @@ coverage/
 *.tsbuildinfo
 *.log
 .DS_Store
+bugs.md
+bugs-low.md
