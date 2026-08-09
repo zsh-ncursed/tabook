@@ -43,6 +43,11 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     container: archlinux:latest
+    # AUR's SSH server answers every package under the AUR account username.
+    # Point ssh at the deploy key and let the first connection accept and
+    # record the host key (ssh-keyscan inside the container proved unreliable).
+    env:
+      GIT_SSH_COMMAND: ssh -i ~/.ssh/aur_key -l ${{ secrets.AUR_USERNAME }} -o StrictHostKeyChecking=accept-new
 
     steps:
       - name: Checkout
@@ -78,14 +83,13 @@ jobs:
       - name: Setup SSH for AUR
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/aur_key
           chmod 600 ~/.ssh/aur_key
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
-          cat >> ~/.ssh/config <<EOF
-          Host aur.archlinux.org
-            IdentityFile ~/.ssh/aur_key
-            User ${{ secrets.AUR_USERNAME }}
-          EOF
+          # Pre-populate known_hosts so the clone step doesn't fail on
+          # StrictHostKeyChecking. accept-new proved unreliable inside the
+          # archlinux container, so trust the key explicitly.
+          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
 
       - name: Clone AUR repository
         run: |
