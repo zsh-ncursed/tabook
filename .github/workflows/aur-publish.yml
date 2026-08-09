@@ -63,7 +63,12 @@ jobs:
       - name: Generate .SRCINFO
         run: |
           sed -i "s/^pkgver=.*/pkgver=${{ steps.version.outputs.version }}/" PKGBUILD
-          makepkg --printsrcinfo > .SRCINFO
+          # makepkg refuses to run as root, but the container's default user is
+          # root (needed earlier for pacman). Create a builder user, hand it the
+          # checkout, and generate .SRCINFO as that user.
+          useradd -m builder
+          chown -R builder:builder .
+          su builder -c 'makepkg --printsrcinfo' > .SRCINFO
           echo "=== .SRCINFO ==="
           cat .SRCINFO
 
