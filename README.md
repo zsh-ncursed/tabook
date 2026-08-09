@@ -14,7 +14,7 @@ vim-like controls. Built with TypeScript, React + Ink and SQLite.
 - Bookmarks (`b`) with text previews and a bookmark list (`B`).
 - Table of contents navigation (`t`), book info (`i`) and a help screen (`?`).
 - Simplified reading mode (`toggle_simplified`) that flattens lists, poems and tables into paragraphs.
-- 14 built-in color themes and a user config file (`config.toml`).
+- 41 built-in color themes and a user config file (`config.toml`).
 - Vim-like multi-key bindings (e.g. `gg` / `G`) with a command line (`:`).
 
 ## Requirements
@@ -104,6 +104,9 @@ tabook --config ~/.config/tabook/config.toml  # use a specific config file
 (default `~/.config/tabook/config.toml`). The default database is
 `$XDG_CONFIG_HOME/tabook/library.db`.
 
+See **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** for the full reference:
+every option, keybinding rules, ranges and the in-app command line.
+
 ```toml
 # config.toml
 theme = "dracula"
@@ -133,9 +136,8 @@ The sample TOML above is the complete set of supported options. Drop it into
 
 ## Themes
 
-Built-in themes: `dracula`, `monokai`, `ayu-dark`, `ayu-light`, `github-dark`,
-`github-light`, `gruvbox-dark`, `gruvbox-light`, `nord`, `solarized-dark`,
-`solarized-light`, `one-dark`, `catppuccin-mocha`, `catppuccin-latte`.
+See **[docs/THEMES.md](docs/THEMES.md)** for the full catalog of the 41
+built-in themes (36 dark, 5 light) and how to switch them.
 
 ## Development
 
@@ -147,6 +149,9 @@ npm run lint                  # eslint
 npm run typecheck             # tsc --noEmit
 npm run build                 # compile to dist/
 ```
+
+See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for an overview of the
+module layout, data flow and rendering pipeline.
 
 ## Project layout
 
