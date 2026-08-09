@@ -39,7 +39,8 @@ describe('inlineToSpans', () => {
 describe('wrapSpans', () => {
   it('wraps long lines on word boundaries', () => {
     const spans = inlineToSpans([t('one two three four')]);
-    const lines = wrapSpans(spans, 8);
+    const wrapped = wrapSpans(spans, 8);
+    const lines = wrapped.lines;
     expect(lines.length).toBeGreaterThan(1);
     const texts = lines.map((l) => l.map((s) => s.text).join(''));
     for (const line of texts) expect(line.length).toBeLessThanOrEqual(8);
@@ -47,7 +48,8 @@ describe('wrapSpans', () => {
 
   it('breaks a single long word without losing text', () => {
     const spans = inlineToSpans([t('supercalifragilistic')]);
-    const lines = wrapSpans(spans, 5);
+    const wrapped = wrapSpans(spans, 5);
+    const lines = wrapped.lines;
     const joined = lines.map((l) => l.map((s) => s.text).join('')).join('');
     expect(joined).toBe('supercalifragilistic');
     for (const line of lines) {
@@ -57,9 +59,46 @@ describe('wrapSpans', () => {
 
   it('applies highlight ranges', () => {
     const spans = inlineToSpans([t('abcdef')]);
-    const lines = wrapSpans(spans, 20, [{ start: 1, end: 4 }]);
-    const highlighted = lines[0]!.filter((s) => s.highlight);
+    const wrapped = wrapSpans(spans, 20, [{ start: 1, end: 4 }]);
+    const highlighted = wrapped.lines[0]!.filter((s) => s.highlight);
     expect(highlighted.map((s) => s.text).join('')).toBe('bcd');
+  });
+
+  it('hyphenates long words when enabled', () => {
+    const spans = inlineToSpans([t('supercalifragilistic')]);
+    const wrapped = wrapSpans(spans, 6, [], true);
+    const texts = wrapped.lines.map((l) => l.map((s) => s.text).join(''));
+    expect(texts.join('')).toBe('supe-rca-li-fra-gili-stic');
+    for (const line of wrapped.lines) {
+      expect(line.map((s) => s.text).join('').length).toBeLessThanOrEqual(6);
+    }
+  });
+
+  it('does not hyphenate when disabled', () => {
+    const spans = inlineToSpans([t('supercalifragilistic')]);
+    const wrapped = wrapSpans(spans, 6);
+    const texts = wrapped.lines.map((l) => l.map((s) => s.text).join(''));
+    expect(texts.join('')).toBe('supercalifragilistic');
+    expect(texts.join('')).not.toContain('-');
+  });
+
+  it('reports original lengths excluding inserted hyphens', () => {
+    const spans = inlineToSpans([t('supercalifragilistic')]);
+    const wrapped = wrapSpans(spans, 6, [], true);
+    const orig = wrapped.originalLengths.reduce((a, b) => a + b, 0);
+    expect(orig).toBe('supercalifragilistic'.length);
+    const rendered = wrapped.lines.map((l) => l.map((s) => s.text).join('')).join('');
+    expect(rendered.length).toBe(orig + 5); // 5 hyphens inserted
+  });
+
+  it('does not crash hyphenating at a tiny width', () => {
+    // maxWidth - 1 <= 1 used to fall through to an empty kept array and
+    // crash on the style read; the keep width is floored at 1.
+    const spans = inlineToSpans([t('supercalifragilistic')]);
+    const wrapped = wrapSpans(spans, 2, [], true);
+    expect(wrapped.lines.length).toBeGreaterThan(0);
+    const rendered = wrapped.lines.map((l) => l.map((s) => s.text).join('')).join('');
+    expect(rendered.replace(/-/g, '')).toBe('supercalifragilistic');
   });
 });
 
@@ -431,8 +470,8 @@ describe('wrapSpans edge cases', () => {
   it('trims trailing whitespace when hard-breaking a line', () => {
     // 'a  ' at width 1: the second space overflows and is flushed with its line
     const spans = inlineToSpans([t('a  ')]);
-    const lines = wrapSpans(spans, 1);
-    expect(lines.map((l) => l.map((s) => s.text).join('')).join('')).toBe('a');
+    const wrapped = wrapSpans(spans, 1);
+    expect(wrapped.lines.map((l) => l.map((s) => s.text).join('')).join('')).toBe('a');
   });
 });
 

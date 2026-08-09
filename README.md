@@ -120,9 +120,7 @@ measure = 80            # characters per line (20-500)
 line_spacing = 0        # blank lines between text lines (0-5)
 paragraph_indent = 0    # indent for the first line of a paragraph (0-20)
 paragraph_spacing = 1   # blank lines between paragraphs (0-5)
-hyphenation = false
-font_family = "monospace"
-ligatures = false
+hyphenation = false     # hyphenate long words at line breaks
 
 [display]
 simplified_mode = false

@@ -104,8 +104,6 @@ export interface TypographyConfig {
   paragraphIndent: number;
   paragraphSpacing: number;
   hyphenation: boolean;
-  fontFamily: string;
-  ligatures: boolean;
   justify: boolean;
 }
 
@@ -134,8 +132,6 @@ export function defaultConfig(): Config {
       paragraphIndent: 0,
       paragraphSpacing: 1,
       hyphenation: false,
-      fontFamily: 'monospace',
-      ligatures: false,
       justify: false,
     },
     display: {

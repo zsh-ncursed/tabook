@@ -107,10 +107,14 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
     const groups = new Map<string, BookRecord[]>();
     const standalone: BookRecord[] = [];
     for (const book of bookList) {
-      if (book.seriesText) {
-        const arr = groups.get(book.seriesText) ?? [];
+      // Group by the series *name* — not seriesText, which embeds the volume
+      // number ('Trilogy #1'), so numbered volumes would each form their own
+      // single-book group instead of one 'Trilogy' group.
+      const groupKey = book.series?.name || book.seriesText;
+      if (groupKey) {
+        const arr = groups.get(groupKey) ?? [];
         arr.push(book);
-        groups.set(book.seriesText, arr);
+        groups.set(groupKey, arr);
       } else {
         standalone.push(book);
       }

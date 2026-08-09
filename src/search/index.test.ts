@@ -53,4 +53,35 @@ describe('BookSearchIndex', () => {
     const index = new BookSearchIndex(blocks);
     expect(index.search('zebra')).toEqual([]);
   });
+
+  it('keeps Unicode offsets in original-text coordinates', () => {
+    // 'İ' (U+0130) lowercases to 'i̇' (i + combining dot) — two code points
+    // from one. A naive toLowerCase() of the whole text would shift all
+    // following offsets; the fold map must map back to the original text.
+    const unicodeBlocks: Block[] = [para('xİstanbul y')];
+    const index = new BookSearchIndex(unicodeBlocks);
+    const matches = index.search('istanbul');
+    expect(matches).toHaveLength(1);
+    expect(matches[0]!.start).toBe(1);
+    expect(matches[0]!.end).toBe(9);
+    // Offset 9 is within the original text ('xİstanbul y'.length === 11).
+    expect('xİstanbul y'.length).toBe(11);
+  });
+
+  it('highlights a Unicode term at the correct range', () => {
+    const unicodeBlocks: Block[] = [para('İstanbul')];
+    const index = new BookSearchIndex(unicodeBlocks);
+    const ranges = index.blockHighlights('istanbul', 0);
+    expect(ranges).toEqual([{ start: 0, end: 8 }]);
+    // 'İstanbul'.length === 8 in JS code units.
+    expect('İstanbul'.length).toBe(8);
+  });
+
+  it('computes block highlights lazily per block', () => {
+    const index = new BookSearchIndex(blocks);
+    // Only the blocks that contain the term are scanned on demand.
+    expect(index.blockHighlights('fox', 0)).toEqual([{ start: 16, end: 19 }]);
+    expect(index.blockHighlights('fox', 3)).toEqual([]);
+    expect(index.blockHighlights('', 0)).toEqual([]);
+  });
 });

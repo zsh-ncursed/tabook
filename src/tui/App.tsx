@@ -15,9 +15,10 @@ import { useTerminalSize } from './useTerminalSize.js';
 import { resolveKeyName } from './keymap.js';
 import { pickBookFile } from '../utils/open.js';
 import { shellSplit } from '../utils/text.js';
-import { serializeConfig } from '../config/config.js';
+import { loadConfig, serializeConfig } from '../config/config.js';
 import { defaultConfig } from '../config/defaults.js';
 import { defaultConfigPath } from '../utils/paths.js';
+import { forceRedraw } from './screenRefresh.js';
 import * as fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
@@ -38,6 +39,9 @@ export function App(props: AppProps): React.JSX.Element {
   const { db, config } = props;
   const configPathRef = useRef(props.configPath);
   const { exit } = useApp();
+  // Live copy of the config so :config edit can reload the file without a
+  // restart. The prop is only the initial value.
+  const [liveConfig, setLiveConfig] = useState<Config>(config);
   const [width, height] = useTerminalSize();
   const [screen, setScreen] = useState<'library' | 'reader'>('library');
   const [session, setSession] = useState<ReaderSession | null>(null);
@@ -68,13 +72,13 @@ export function App(props: AppProps): React.JSX.Element {
       const p = configPathRef.current;
       if (!p) return;
       try {
-        const updated = { ...config, theme: newTheme };
+        const updated = { ...liveConfig, theme: newTheme };
         fs.writeFileSync(p, serializeConfig(updated), 'utf8');
       } catch {
         // ponytail: persist is best-effort; if file isn't writable, skip silently
       }
     },
-    [config],
+    [liveConfig],
   );
 
   useEffect(() => {
@@ -87,8 +91,8 @@ export function App(props: AppProps): React.JSX.Element {
     (book: ParsedBook, bookId: number | null): void => {
       const progress = bookId !== null ? db.getProgress(bookId) : undefined;
       const readerSession = new ReaderSession(book, {
-        typo: config.typography,
-        simplified: config.display.simplifiedMode,
+        typo: liveConfig.typography,
+        simplified: liveConfig.display.simplifiedMode,
         width,
         height,
         db,
@@ -103,7 +107,7 @@ export function App(props: AppProps): React.JSX.Element {
       setSession(readerSession);
       setScreen('reader');
     },
-    [db, config, width, height],
+    [db, liveConfig, width, height],
   );
 
   const openBookPath = useCallback(
@@ -131,19 +135,25 @@ export function App(props: AppProps): React.JSX.Element {
     [openParsedBook, notify],
   );
 
-  const closeReader = useCallback((): void => {
-    if (session) {
-      session.saveProgress();
-      if (session.bookId !== null && sessionStartRef.current !== null) {
-        const pages = Math.abs(session.pageNumber - startPageRef.current);
-        db.endSession(sessionStartRef.current, pages);
-        sessionStartRef.current = null;
-      }
+  // Save progress and close the reading-session row (so it is not left
+  // without ended_at, which would permanently exclude it from stats). Shared
+  // by the normal close path and the SIGTERM/SIGHUP handlers.
+  const flushSession = useCallback((): void => {
+    if (!session) return;
+    session.saveProgress();
+    if (session.bookId !== null && sessionStartRef.current !== null) {
+      const pages = Math.abs(session.pageNumber - startPageRef.current);
+      db.endSession(sessionStartRef.current, pages);
+      sessionStartRef.current = null;
     }
+  }, [session, db]);
+
+  const closeReader = useCallback((): void => {
+    flushSession();
     setSession(null);
     setScreen('library');
     setLibraryRefresh((c) => c + 1);
-  }, [session, db]);
+  }, [flushSession]);
 
   const saveToLibrary = useCallback((): number | null => {
     if (!session) return null;
@@ -294,8 +304,44 @@ export function App(props: AppProps): React.JSX.Element {
             const p = configPathRef.current || defaultConfigPath();
             const editor = process.env.EDITOR || process.env.VISUAL || 'vi';
             try {
-              spawnSync(editor, [p], { stdio: 'inherit' });
+              // Ink holds the terminal in raw mode while rendering; a TUI
+              // editor needs a cooked terminal. Pause stdin and drop raw
+              // mode for the duration of the editor, then restore.
+              process.stdin.pause();
+              process.stdin.setRawMode(false);
+              const result = spawnSync(editor, [p], { stdio: 'inherit' });
+              process.stdin.setRawMode(true);
+              process.stdin.resume();
+              forceRedraw();
+              if (result.error) {
+                notify(`Cannot open editor: ${result.error.message}`);
+                break;
+              }
+              if (result.status !== 0) {
+                notify(`Editor exited with status ${result.status ?? 'unknown'}`);
+                break;
+              }
+              // Reload the config so edits apply immediately, without a
+              // restart. Also sync the theme when the file changed it.
+              try {
+                const loaded = loadConfig(p);
+                setLiveConfig(loaded.config);
+                if (!props.themeOverride && loaded.config.theme !== themeName) {
+                  setThemeName(loaded.config.theme);
+                }
+                notify('Config reloaded');
+              } catch (reloadErr) {
+                notify(
+                  `Cannot reload config: ${reloadErr instanceof Error ? reloadErr.message : String(reloadErr)}`,
+                );
+              }
             } catch (err) {
+              try {
+                process.stdin.setRawMode(true);
+                process.stdin.resume();
+              } catch {
+                // stdin may already be restored; best-effort
+              }
               notify(`Cannot open editor: ${err instanceof Error ? err.message : String(err)}`);
             }
           } else {
@@ -316,6 +362,7 @@ export function App(props: AppProps): React.JSX.Element {
       notify,
       themeName,
       persistConfig,
+      props.themeOverride,
     ],
   );
 
@@ -374,18 +421,30 @@ export function App(props: AppProps): React.JSX.Element {
     return () => clearInterval(timer);
   }, [session]);
 
-  // Save on graceful termination signals too. Ink's exit() path is not
-  // guaranteed to run before the process dies on SIGHUP (e.g. ssh closed).
+  // On graceful termination signals, flush progress AND end the reading
+  // session so no row is left dangling without ended_at. Ink's exit() path
+  // is not guaranteed to run before the process dies on SIGHUP (e.g. ssh
+  // closed), so the synchronous better-sqlite3 writes happen here. SIGINT is
+  // included too: Ctrl+C is the most common way to quit a TUI.
+  //
+  // Registering a listener suppresses Node's default termination, so the
+  // handler must exit explicitly — otherwise `kill -INT` (or SIGTERM from a
+  // script) would flush and then hang forever.
   useEffect(() => {
     if (!session) return undefined;
-    const save = (): void => session.saveProgress();
-    process.on('SIGTERM', save);
-    process.on('SIGHUP', save);
-    return () => {
-      process.off('SIGTERM', save);
-      process.off('SIGHUP', save);
+    const flushAndExit = (): void => {
+      flushSession();
+      exit();
     };
-  }, [session]);
+    process.on('SIGTERM', flushAndExit);
+    process.on('SIGHUP', flushAndExit);
+    process.on('SIGINT', flushAndExit);
+    return () => {
+      process.off('SIGTERM', flushAndExit);
+      process.off('SIGHUP', flushAndExit);
+      process.off('SIGINT', flushAndExit);
+    };
+  }, [session, flushSession, exit]);
 
   // Theme picker input dispatch. Single useInput, active only when picker is
   // open — but since the picker is the only overlay that needs keys here and
@@ -463,7 +522,7 @@ export function App(props: AppProps): React.JSX.Element {
       {screen === 'library' ? (
         <LibraryView
           db={db}
-          config={config}
+          config={liveConfig}
           theme={theme}
           refreshTrigger={libraryRefresh}
           cmdBus={libraryCmdRef.current}
@@ -480,7 +539,7 @@ export function App(props: AppProps): React.JSX.Element {
       ) : session ? (
         <ReaderView
           session={session}
-          config={config}
+          config={liveConfig}
           theme={theme}
           db={db}
           notify={notify}
@@ -493,7 +552,7 @@ export function App(props: AppProps): React.JSX.Element {
           inputDisabled={promptOpenPath || helpOpen || themePickerOpen}
         />
       ) : null}
-      {helpOpen ? <HelpView config={config} theme={theme} /> : null}
+      {helpOpen ? <HelpView config={liveConfig} theme={theme} /> : null}
       {themePickerOpen ? (
         <ListModal
           theme={theme}

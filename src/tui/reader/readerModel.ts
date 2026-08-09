@@ -1,6 +1,6 @@
 import type { Block, ParsedBook } from '../../formats/model.js';
 import type { LibraryDb } from '../../db/db.js';
-import { BookLayout, type HighlightRange, type TextLine } from '../../renderer/layout.js';
+import { BookLayout, type TextLine } from '../../renderer/layout.js';
 import { simplifyBlocks } from '../../renderer/simplify.js';
 import { BookSearchIndex, type SearchMatch } from '../../search/index.js';
 import type { TypographyConfig } from '../../config/defaults.js';
@@ -20,8 +20,6 @@ export interface SearchState {
   current: number;
 }
 
-const TOTAL_LINES_DELAY_MS = 50;
-
 export class ReaderSession {
   readonly book: ParsedBook;
   search: BookSearchIndex;
@@ -40,11 +38,9 @@ export class ReaderSession {
   private width: number;
   private height: number;
   private line = 0;
-  private highlights = new Map<number, HighlightRange[]>();
   private matches: SearchMatch[] = [];
   private currentMatch = -1;
   private query = '';
-  private exactTotalLines: number | null = null;
 
   constructor(book: ParsedBook, opts: ReaderOptions) {
     this.book = book;
@@ -57,24 +53,20 @@ export class ReaderSession {
     this.width = opts.width;
     this.height = opts.height;
     this.blocks = opts.simplified ? simplifyBlocks(book.content) : book.content;
-    this.layout = this.buildLayout();
     this.search = new BookSearchIndex(this.blocks);
-    this.scheduleTotalLines();
+    this.layout = this.buildLayout();
   }
 
   private buildLayout(): BookLayout {
     return new BookLayout(this.blocks, {
       typo: this.typo,
       width: this.contentWidth(),
-      getHighlights: (blockIndex) => this.highlights.get(blockIndex),
+      // Highlights are computed lazily per block — the layout only requests
+      // them for blocks it actually renders, so a book-wide scan is avoided.
+      getHighlights: (blockIndex) =>
+        this.query === '' ? undefined : this.search.blockHighlights(this.query, blockIndex),
       justify: this.justify,
     });
-  }
-
-  private scheduleTotalLines(): void {
-    setTimeout(() => {
-      this.exactTotalLines = this.layout.lineCount();
-    }, TOTAL_LINES_DELAY_MS);
   }
 
   contentWidth(): number {
@@ -105,16 +97,13 @@ export class ReaderSession {
   private rebuild(): void {
     const offset = this.charOffset();
     this.blocks = this.simplified ? simplifyBlocks(this.book.content) : this.book.content;
-    this.layout = this.buildLayout();
     this.search = new BookSearchIndex(this.blocks);
+    this.layout = this.buildLayout();
     if (this.query !== '') {
       this.matches = this.search.search(this.query);
-      this.highlights = this.search.highlightRanges(this.query);
       this.currentMatch = -1;
     }
     this.line = this.layout.lineForCharOffset(offset);
-    this.exactTotalLines = null;
-    this.scheduleTotalLines();
   }
 
   setSimplified(value: boolean): void {
@@ -145,8 +134,6 @@ export class ReaderSession {
     const offset = this.charOffset();
     this.layout = this.buildLayout();
     this.line = this.layout.lineForCharOffset(offset);
-    this.exactTotalLines = null;
-    this.scheduleTotalLines();
   }
 
   get isWide(): boolean {
@@ -201,8 +188,11 @@ export class ReaderSession {
       this.goToEnd();
       return;
     }
-    const total = this.exactTotalLines ?? this.layout.estimateLineCount();
-    this.line = this.clampLine(Math.floor((total - 1) * (clamped / 100)));
+    // Percent targets are exact via char offsets: lineForCharOffset only
+    // lays out blocks up to the target, so no full-book lineCount() is
+    // needed (estimateLineCount would drift on short-paragraph books).
+    const target = Math.floor(((this.layout.totalChars - 1) * clamped) / 100);
+    this.line = this.clampLine(this.layout.lineForCharOffset(target));
   }
 
   setLine(target: number): void {
@@ -226,7 +216,7 @@ export class ReaderSession {
   }
 
   totalPages(): number {
-    const total = this.exactTotalLines ?? this.layout.estimateLineCount();
+    const total = this.layout.estimateLineCount();
     return Math.max(1, Math.ceil(total / this.pageHeight()));
   }
 
@@ -258,13 +248,12 @@ export class ReaderSession {
     this.query = normalized;
     if (normalized === '') {
       this.matches = [];
-      this.highlights = new Map();
       this.currentMatch = -1;
     } else {
       this.matches = this.search.search(normalized);
-      this.highlights = this.search.highlightRanges(normalized);
       this.currentMatch = -1;
     }
+    // Highlights are pulled lazily via getHighlights on the next layout pass.
     this.layout.invalidate();
   }
 

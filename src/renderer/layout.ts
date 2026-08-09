@@ -177,11 +177,38 @@ export function applyHighlights(spans: StyledSpan[], highlights: HighlightRange[
   return charsToSpans(chars);
 }
 
+// Vowel characters used by the (dictionary-free) hyphenation heuristic.
+const VOWELS = new Set(['a', 'e', 'i', 'o', 'u', 'y', 'а', 'е', 'ё', 'и', 'о', 'у', 'ы', 'э', 'ю', 'я']);
+
+// Find the best break point for hyphenating a long word. Prefers a
+// vowel→consonant boundary (e.g. "hyphen-ate", "su-per") scanning from the
+// end of the keep window towards the start, leaving at least two chars on
+// the current line so the hyphen doesn't dangle. Falls back to the full
+// keep width (plain hard break) when no boundary is found.
+function hyphenBreakAt(line: Char[], max: number): number {
+  const limit = Math.min(max, line.length);
+  for (let i = limit - 1; i >= 2; i--) {
+    const prev = line[i - 1]!.ch.toLowerCase();
+    const cur = line[i]!.ch.toLowerCase();
+    if (VOWELS.has(prev) && !VOWELS.has(cur)) return i;
+  }
+  return limit;
+}
+
+export interface WrappedLines {
+  lines: StyledSpan[][];
+  // Number of original (non-inserted) chars per line. Hyphenation inserts a
+  // '-' that does not exist in the source text; offset bookkeeping must count
+  // only original chars or search/progress offsets drift.
+  originalLengths: number[];
+}
+
 export function wrapSpans(
   spans: StyledSpan[],
   maxWidth: number,
   highlights: HighlightRange[] = [],
-): StyledSpan[][] {
+  hyphenate = false,
+): WrappedLines {
   const styled = applyHighlights(spans, highlights);
   const chars: Char[] = [];
   let offset = 0;
@@ -202,11 +229,16 @@ export function wrapSpans(
       offset += 1;
     }
   }
-  const wrapped = wrapChars(chars, maxWidth);
-  return wrapped.map(charsToSpans);
+  const wrapped = wrapChars(chars, maxWidth, hyphenate);
+  return {
+    lines: wrapped.map(charsToSpans),
+    originalLengths: wrapped.map((line) =>
+      line.reduce((n, c) => n + (c.offset >= 0 ? 1 : 0), 0),
+    ),
+  };
 }
 
-function wrapChars(chars: Char[], maxWidth: number): Char[][] {
+function wrapChars(chars: Char[], maxWidth: number, hyphenate: boolean): Char[][] {
   const lines: Char[][] = [];
   let line: Char[] = [];
   let width = 0;
@@ -231,6 +263,31 @@ function wrapChars(chars: Char[], maxWidth: number): Char[][] {
         line = line.slice(lastSpace + 1);
         width = line.reduce((acc, c) => acc + displayWidth(c.ch), 0);
         // The remainder starts after the last space, so it can never contain one.
+        lastSpace = -1;
+      } else if (
+        hyphenate &&
+        char.ch !== ' ' &&
+        line.length > 1 &&
+        line[0]!.ch !== ' ' &&
+        line[line.length - 1]!.ch !== ' '
+      ) {
+        // A single word longer than the line: keep as many chars as fit
+        // (leaving room for the hyphen), append '-', and continue the word
+        // on the next line. The inserted hyphen gets offset -1 so it never
+        // counts toward original-text offsets.
+        // Guard against maxWidth - 1 <= 1: hyphenBreakAt would fall through
+        // to limit 0, producing an empty kept array (and a style read off the
+        // end of it). Never keep fewer than one char.
+        const keep = hyphenBreakAt(line, Math.max(1, maxWidth - 1));
+        const kept = line.slice(0, keep);
+        const hyphen: Char = {
+          ch: '-',
+          style: { ...kept[kept.length - 1]!.style, highlight: false },
+          offset: -1,
+        };
+        lines.push([...kept, hyphen]);
+        line = line.slice(keep);
+        width = line.reduce((acc, c) => acc + displayWidth(c.ch), 0);
         lastSpace = -1;
       } else {
         flushLine();
@@ -411,27 +468,31 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
       return lines;
     case 'heading': {
       const spans = inlineToSpans(block.children);
-      const plain = spansToPlain(spans);
-      const wrapped = wrapSpans(spans, width, highlights);
-      for (const line of wrapped) {
-        const offset = findOffsetOfLine(spans, line, 0, plain);
+      const wrapped = wrapSpans(spans, width, highlights, typo.hyphenation);
+      let running = 0;
+      for (let i = 0; i < wrapped.lines.length; i++) {
+        const line = wrapped.lines[i]!;
+        const text = spansToPlain(line);
+        const offset = findOffsetOfLine(spans, line, running, text);
+        running += wrapped.originalLengths[i]!;
         emit(`heading${Math.min(block.level, 6)}` as LineRole, line, 0, '', offset);
       }
       return justify ? applyJustify(lines, width) : lines;
     }
     case 'paragraph': {
       const spans = inlineToSpans(block.children);
-      const wrapped = wrapSpans(spans, width, highlights);
+      const wrapped = wrapSpans(spans, width, highlights, typo.hyphenation);
       let first = true;
       let running = 0;
-      for (const line of wrapped) {
+      for (let i = 0; i < wrapped.lines.length; i++) {
+        const line = wrapped.lines[i]!;
         const text = spansToPlain(line);
         const offset = findOffsetOfLine(spans, line, running, text);
-        running += text.length;
+        running += wrapped.originalLengths[i]!;
         emit('paragraph', line, first ? typo.paragraphIndent : 0, '', offset);
         first = false;
       }
-      if (typo.paragraphSpacing > 0 && wrapped.length > 0) {
+      if (typo.paragraphSpacing > 0 && wrapped.lines.length > 0) {
         for (let i = 0; i < typo.paragraphSpacing; i++) {
           lines.push({
             role: 'empty',
@@ -447,34 +508,31 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
     }
     case 'quote': {
       const spans = inlineToSpans(block.children);
-      const wrapped = wrapSpans(spans, width - 4, highlights);
+      const wrapped = wrapSpans(spans, width - 4, highlights, typo.hyphenation);
       let running = 0;
-      for (const line of wrapped) {
-        const text = spansToPlain(line);
-        emit('quote', line, 4, '', running);
-        running += text.length;
+      for (let i = 0; i < wrapped.lines.length; i++) {
+        emit('quote', wrapped.lines[i]!, 4, '', running);
+        running += wrapped.originalLengths[i]!;
       }
       return justify ? applyJustify(lines, width) : lines;
     }
     case 'epigraph': {
       const spans = inlineToSpans(block.children);
-      const wrapped = wrapSpans(spans, width - 6, highlights);
+      const wrapped = wrapSpans(spans, width - 6, highlights, typo.hyphenation);
       let running = 0;
-      for (const line of wrapped) {
-        const text = spansToPlain(line);
-        emit('epigraph', line, 6, '', running);
-        running += text.length;
+      for (let i = 0; i < wrapped.lines.length; i++) {
+        emit('epigraph', wrapped.lines[i]!, 6, '', running);
+        running += wrapped.originalLengths[i]!;
       }
       return justify ? applyJustify(lines, width) : lines;
     }
     case 'annotation': {
       const spans = inlineToSpans(block.children);
-      const wrapped = wrapSpans(spans, width, highlights);
+      const wrapped = wrapSpans(spans, width, highlights, typo.hyphenation);
       let running = 0;
-      for (const line of wrapped) {
-        const text = spansToPlain(line);
-        emit('annotation', line, 0, '', running);
-        running += text.length;
+      for (let i = 0; i < wrapped.lines.length; i++) {
+        emit('annotation', wrapped.lines[i]!, 0, '', running);
+        running += wrapped.originalLengths[i]!;
       }
       return justify ? applyJustify(lines, width) : lines;
     }
@@ -495,8 +553,8 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
           const plain = spansToPlain(spans);
           const start = offsets.push(plain);
           const hls = sliceHighlights(highlights, start, plain.length);
-          const wrapped = wrapSpans(spans, width - indent - markerWidth, hls);
-          if (wrapped.length === 0) {
+          const wrapped = wrapSpans(spans, width - indent - markerWidth, hls, typo.hyphenation);
+          if (wrapped.lines.length === 0) {
             lines.push({
               role: 'listItem',
               spans: [],
@@ -507,17 +565,16 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
             });
           }
           let running = 0;
-          for (let i = 0; i < wrapped.length; i++) {
-            const text = spansToPlain(wrapped[i]!);
+          for (let i = 0; i < wrapped.lines.length; i++) {
             lines.push({
               role: 'listItem',
-              spans: wrapped[i]!,
+              spans: wrapped.lines[i]!,
               indent,
               prefix: i === 0 ? `${marker} ` : ' '.repeat(markerWidth),
               blockIndex,
               charOffset: Math.max(0, start) + running,
             });
-            running += text.length;
+            running += wrapped.originalLengths[i]!;
           }
           for (const nested of item.nested) {
             if (nested.type === 'list') {
@@ -547,12 +604,11 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
           const plain = spansToPlain(spans);
           const start = offsets.push(plain);
           const hls = sliceHighlights(highlights, start, plain.length);
-          const wrapped = wrapSpans(spans, width - 6, hls);
+          const wrapped = wrapSpans(spans, width - 6, hls, typo.hyphenation);
           let running = 0;
-          for (const line of wrapped) {
-            const text = spansToPlain(line);
-            emit('poemLine', line, 6, '', Math.max(0, start) + running);
-            running += text.length;
+          for (let i = 0; i < wrapped.lines.length; i++) {
+            emit('poemLine', wrapped.lines[i]!, 6, '', Math.max(0, start) + running);
+            running += wrapped.originalLengths[i]!;
           }
         }
       });
@@ -594,7 +650,10 @@ function findOffsetOfLine(
   const plain = mergeSpanLines([spans])
     .map((s) => s.text)
     .join('');
-  const linePlain = line.map((s) => s.text).join('');
+  let linePlain = line.map((s) => s.text).join('');
+  // A hyphenation pass appends a '-' that is not part of the source text;
+  // strip it so the plain-text search still finds the word start.
+  if (linePlain.endsWith('-')) linePlain = linePlain.slice(0, -1);
   const trimmed = linePlain.trim();
   // baseOffset is the running sum of previous line text lengths (without
   // inter-line break spaces), which is always ≤ the actual offset in the full
@@ -650,11 +709,11 @@ function layoutTable(
       const cell = row.cells[c] ?? '';
       const w = colWidths[c]!;
       if (row.isHeader) {
-        return wrapSpans([{ text: cell }], w, []);
+        return wrapSpans([{ text: cell }], w, []).lines;
       }
       // Non-header rows always fill one entry per column above.
       const hls = sliceHighlights(highlights, cellStartOffsets[c]!, cell.length);
-      return wrapSpans(highlightPlain(cell, hls), w, []);
+      return wrapSpans(highlightPlain(cell, hls), w, []).lines;
     });
     const rowHeight = Math.max(1, ...wrappedCells.map((ws) => ws.length));
     for (let r = 0; r < rowHeight; r++) {

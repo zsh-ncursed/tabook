@@ -118,8 +118,6 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
     if (typeof t.paragraph_spacing === 'number')
       typo.paragraphSpacing = clampInt(t.paragraph_spacing, 0, 5, warnings, 'paragraph_spacing');
     if (typeof t.hyphenation === 'boolean') typo.hyphenation = t.hyphenation;
-    if (typeof t.font_family === 'string') typo.fontFamily = t.font_family;
-    if (typeof t.ligatures === 'boolean') typo.ligatures = t.ligatures;
     if (typeof t.justify === 'boolean') typo.justify = t.justify;
     config.typography = typo;
   }
@@ -188,8 +186,6 @@ export function serializeConfig(config: Config): string {
       paragraph_indent: config.typography.paragraphIndent,
       paragraph_spacing: config.typography.paragraphSpacing,
       hyphenation: config.typography.hyphenation,
-      font_family: config.typography.fontFamily,
-      ligatures: config.typography.ligatures,
       justify: config.typography.justify,
     },
     display: {
