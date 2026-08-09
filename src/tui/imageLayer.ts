@@ -21,6 +21,49 @@ export interface ImagePlacement {
   src: string;
 }
 
+// Geometry of an image currently on screen, keyed by identifier. Used to
+// diff placements so unchanged images aren't re-sent over stdin on every
+// reader render (lines is a fresh array each frame). Diff is geometry-only
+// by design: callers keep `src` stable per identifier (block.src / coverKey),
+// and resolvePath caches the extracted file by src, so the geometry-only
+// comparison is safe.
+export type ShownGeometry = Pick<ImagePlacement, 'x' | 'y' | 'width' | 'height'>;
+
+export interface LayerReconcile {
+  /** Identifiers that scrolled out of view and must be removed. */
+  toRemove: string[];
+  /** Placements to (re)send: new identifiers or changed geometry. */
+  toAdd: ImagePlacement[];
+}
+
+// Pure diff used by ImageLayer.update: given what is currently shown and the
+// new placements, decide which images to remove and which to add/reposition.
+// Extracted as a pure function so the diffing is unit-testable without a
+// ueberzugpp process.
+export function reconcile(
+  shown: ReadonlyMap<string, ShownGeometry>,
+  placements: ImagePlacement[],
+): LayerReconcile {
+  const toRemove: string[] = [];
+  for (const id of shown.keys()) {
+    if (!placements.some((p) => p.identifier === id)) toRemove.push(id);
+  }
+  const toAdd: ImagePlacement[] = [];
+  for (const p of placements) {
+    const prev = shown.get(p.identifier);
+    if (
+      !prev ||
+      prev.x !== p.x ||
+      prev.y !== p.y ||
+      prev.width !== p.width ||
+      prev.height !== p.height
+    ) {
+      toAdd.push(p);
+    }
+  }
+  return { toRemove, toAdd };
+}
+
 // How many terminal rows an image overlay occupies. Layout reserves this
 // many blank lines under the placeholder so the overlay doesn't cover text,
 // and ReaderView caps the overlay height to the same value. Kept here so
@@ -30,7 +73,7 @@ export const IMAGE_ROWS = 10;
 class ImageLayer {
   private proc: ChildProcessWithoutNullStreams | null = null;
   private cache = new Map<string, string>(); // resource id -> temp file path
-  private shown = new Set<string>(); // identifiers currently on screen
+  private shown = new Map<string, ShownGeometry>(); // identifier -> geometry on screen
   private tmpDir = '';
   private pidFile = '';
   private exitHandler: (() => void) | null = null;
@@ -43,9 +86,13 @@ class ImageLayer {
     mkdirSync(this.tmpDir, { recursive: true });
     this.pidFile = join(tmpdir(), `tabook-ueberzug-${process.pid}.pid`);
     try {
-      this.proc = spawn('ueberzugpp', ['layer', '-o', output, '--silent', '--pid-file', this.pidFile], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+      this.proc = spawn(
+        'ueberzugpp',
+        ['layer', '-o', output, '--silent', '--pid-file', this.pidFile],
+        {
+          stdio: ['pipe', 'pipe', 'pipe'],
+        },
+      );
     } catch {
       this.proc = null;
       return false;
@@ -79,18 +126,18 @@ class ImageLayer {
     return path;
   }
 
-  // Reconcile the visible set: remove images that scrolled out, add new ones.
+  // Reconcile the visible set: remove images that scrolled out, add or
+  // reposition only the ones whose geometry changed. update() runs on every
+  // reader render, so diffing keeps unchanged images from being re-sent
+  // (ueberzugpp replaces in place by identifier, but only when told to).
   update(placements: ImagePlacement[], resources: Map<string, Uint8Array>): void {
     if (!this.proc) return;
-    const next = new Set<string>();
-    for (const p of placements) next.add(p.identifier);
-    for (const id of this.shown) {
-      if (!next.has(id)) this.send({ action: 'remove', identifier: id });
+    const { toRemove, toAdd } = reconcile(this.shown, placements);
+    for (const id of toRemove) {
+      this.send({ action: 'remove', identifier: id });
+      this.shown.delete(id);
     }
-    // Always re-send add: an image already on screen may have moved or
-    // resized as the viewport scrolled (ueberzugpp replaces in place by
-    // identifier). Skipping it would freeze it at the size it first appeared.
-    for (const p of placements) {
+    for (const p of toAdd) {
       const path = this.resolvePath(p.src, resources);
       if (!path) continue;
       this.send({
@@ -104,13 +151,13 @@ class ImageLayer {
         scaler: 'fit_contain',
         draw: true,
       });
+      this.shown.set(p.identifier, { x: p.x, y: p.y, width: p.width, height: p.height });
     }
-    this.shown = next;
   }
 
   clear(): void {
     if (!this.proc) return;
-    for (const id of this.shown) this.send({ action: 'remove', identifier: id });
+    for (const id of this.shown.keys()) this.send({ action: 'remove', identifier: id });
     this.shown.clear();
   }
 
