@@ -31,8 +31,10 @@ package() {
   install -dm755 "${pkgdir}/usr/lib/${pkgname}"
   cp -r dist node_modules package.json "${pkgdir}/usr/lib/${pkgname}/"
 
-  # Strip better-sqlite3 prebuilds — keep only linux-x64
-  rm -f "${pkgdir}/usr/lib/${pkgname}/node_modules/better-sqlite3/prebuilds/"{darwin-*,win32-*,linuxmusl-*,linux-arm64}*
+  # Strip better-sqlite3 prebuilds for other OSes — keep both linux-x64 and
+  # linux-arm64 so the same package works on x86_64 and aarch64 (the runtime
+  # loader in lib/binding.js picks the .node file by process.platform+arch).
+  rm -f "${pkgdir}/usr/lib/${pkgname}/node_modules/better-sqlite3/prebuilds/"{darwin-*,win32-*,linuxmusl-*}*
 
   # Binary wrapper
   install -dm755 "${pkgdir}/usr/bin"
