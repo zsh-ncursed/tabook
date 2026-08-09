@@ -131,7 +131,8 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       case 'search_next':
         if (session.nextMatch()) {
           forceTick();
-          notify(`Match ${searchState.current + 1} of ${searchState.matches}`);
+          const st = session.searchState();
+          notify(`Match ${st.current + 1} of ${st.matches}`);
         } else {
           notify('No search results');
         }
@@ -139,7 +140,8 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       case 'search_prev':
         if (session.prevMatch()) {
           forceTick();
-          notify(`Match ${searchState.current + 1} of ${searchState.matches}`);
+          const st = session.searchState();
+          notify(`Match ${st.current + 1} of ${st.matches}`);
         } else {
           notify('No search results');
         }
@@ -181,7 +183,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         notify(`Simplified mode: ${session.isSimplified ? 'on' : 'off'}`);
         break;
       case 'toggle_respect_css':
-        notify('Publisher CSS option saved to config; CSS engine lands in a later stage');
+        notify('Publisher CSS is not implemented yet; no setting was changed');
         break;
       case 'toggle_justify':
         session.setJustify(!session.isJustify);

@@ -29,6 +29,11 @@ export interface AppProps {
   themeOverride?: string;
 }
 
+// How often reading position is flushed to the database while a book is open.
+// Writing on every keystroke is wasteful; this bound caps the worst-case loss
+// after a crash or SIGKILL to a few seconds of reading.
+const AUTO_SAVE_INTERVAL_MS = 5000;
+
 export function App(props: AppProps): React.JSX.Element {
   const { db, config } = props;
   const configPathRef = useRef(props.configPath);
@@ -357,6 +362,28 @@ export function App(props: AppProps): React.JSX.Element {
   useEffect(() => {
     return () => {
       if (session) session.saveProgress();
+    };
+  }, [session]);
+
+  // Periodic auto-save so an abrupt exit (SIGKILL, terminal close, power loss)
+  // doesn't discard an entire reading session. The cleanup above only fires on
+  // a normal unmount, which the process may never reach.
+  useEffect(() => {
+    if (!session) return undefined;
+    const timer = setInterval(() => session.saveProgress(), AUTO_SAVE_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [session]);
+
+  // Save on graceful termination signals too. Ink's exit() path is not
+  // guaranteed to run before the process dies on SIGHUP (e.g. ssh closed).
+  useEffect(() => {
+    if (!session) return undefined;
+    const save = (): void => session.saveProgress();
+    process.on('SIGTERM', save);
+    process.on('SIGHUP', save);
+    return () => {
+      process.off('SIGTERM', save);
+      process.off('SIGHUP', save);
     };
   }, [session]);
 

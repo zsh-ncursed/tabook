@@ -39,7 +39,6 @@ interface Row {
   kind: 'header' | 'book';
   label?: string;
   book?: BookRecord;
-  bookIdx?: number;
 }
 
 const SORT_FIELDS: SortField[] = ['title', 'author', 'added', 'progress'];
@@ -103,7 +102,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
 
   const rows = useMemo<Row[]>(() => {
     if (!groupBySeries) {
-      return bookList.map((book, i) => ({ kind: 'book', book, bookIdx: i }));
+      return bookList.map((book) => ({ kind: 'book', book }));
     }
     const groups = new Map<string, BookRecord[]>();
     const standalone: BookRecord[] = [];
@@ -128,43 +127,57 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       });
       result.push({ kind: 'header', label: `${name} (${arr.length})` });
       for (const book of arr) {
-        result.push({ kind: 'book', book, bookIdx: bookList.indexOf(book) });
+        result.push({ kind: 'book', book });
       }
     }
     if (standalone.length > 0) {
       result.push({ kind: 'header', label: `Standalone (${standalone.length})` });
       for (const book of standalone) {
-        result.push({ kind: 'book', book, bookIdx: bookList.indexOf(book) });
+        result.push({ kind: 'book', book });
       }
     }
     return result;
   }, [bookList, groupBySeries]);
 
   useEffect(() => {
-    if (cursor >= bookList.length) setCursor(Math.max(0, bookList.length - 1));
-  }, [bookList.length, cursor]);
+    if (cursor >= rows.length) setCursor(Math.max(0, rows.length - 1));
+  }, [rows.length, cursor]);
 
-  const selectedBook = bookList[cursor];
+  // Keep the cursor on a book row. In grouped view the first/last rows may be
+  // group headers; when the list shrinks (filter, delete) the cursor can end up
+  // pointing at a header, which has no selectable book.
+  useEffect(() => {
+    if (rows.length === 0) return;
+    const row = rows[cursor];
+    if (!row || row.kind !== 'book') {
+      setCursor(snapToBook(rows, cursor >= rows.length ? rows.length - 1 : cursor));
+    }
+  }, [rows, cursor]);
+
+  const selectedBook = (() => {
+    const row = rows[cursor];
+    return row && row.kind === 'book' ? row.book : undefined;
+  })();
 
   const handleAction = (action: KeyAction | undefined): void => {
     switch (action) {
       case 'move_cursor_down':
-        setCursor((c) => Math.min(bookList.length - 1, c + 1));
+        setCursor((c) => nextBook(rows, c));
         break;
       case 'move_cursor_up':
-        setCursor((c) => Math.max(0, c - 1));
+        setCursor((c) => prevBook(rows, c));
         break;
       case 'page_down':
-        setCursor((c) => Math.min(bookList.length - 1, c + Math.max(1, height - 6)));
+        setCursor((c) => snapToBook(rows, Math.min(c + Math.max(1, height - 6), rows.length - 1)));
         break;
       case 'page_up':
-        setCursor((c) => Math.max(0, c - Math.max(1, height - 6)));
+        setCursor((c) => snapToBook(rows, Math.max(0, c - Math.max(1, height - 6))));
         break;
       case 'go_to_start':
-        setCursor(0);
+        setCursor(snapToBook(rows, 0));
         break;
       case 'go_to_end':
-        setCursor(bookList.length - 1);
+        setCursor(snapToBook(rows, rows.length - 1));
         break;
       case 'select':
         if (selectedBook) {
@@ -276,7 +289,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
               );
             }
             const book = row.book!;
-            const selected = row.bookIdx === cursor;
+            const selected = absolute === cursor;
             const titleW = Math.max(10, width - 46);
             const title = truncateW(book.title, titleW);
             const meta = [
@@ -395,6 +408,33 @@ function compareBooks(a: BookRecord, b: BookRecord, field: SortField): number {
       return pb - pa;
     }
   }
+}
+
+// Cursor navigation operates on the full row list (group headers + book rows).
+// Headers are not selectable, so directional moves skip over them.
+function nextBook(rows: Row[], from: number): number {
+  for (let i = from + 1; i < rows.length; i++) {
+    if (rows[i]!.kind === 'book') return i;
+  }
+  return from;
+}
+
+function prevBook(rows: Row[], from: number): number {
+  for (let i = from - 1; i >= 0; i--) {
+    if (rows[i]!.kind === 'book') return i;
+  }
+  return from;
+}
+
+// Snap an arbitrary row index to the nearest selectable book row. Used by
+// page/start/end moves where the target may land on a header.
+function snapToBook(rows: Row[], idx: number): number {
+  const clamped = Math.max(0, Math.min(idx, rows.length - 1));
+  const down = nextBook(rows, clamped - 1);
+  if (down > clamped) return down;
+  const up = prevBook(rows, clamped + 1);
+  if (up < clamped) return up;
+  return rows[clamped]!.kind === 'book' ? clamped : Math.max(0, clamped - 1);
 }
 
 function hintBar(config: Config, view: string): string {

@@ -8,6 +8,7 @@ import {
   defaultDbPath,
   defaultConfigPath,
   ensureDir,
+  expandTilde,
 } from './paths.js';
 
 const HOME = os.homedir();
@@ -42,5 +43,12 @@ describe('paths', () => {
     const dir = path.join(os.tmpdir(), 'tabook-paths-test', 'nested');
     ensureDir(dir);
     expect(require('node:fs').existsSync(dir)).toBe(true);
+  });
+
+  it('expandTilde resolves a leading tilde to the home dir', () => {
+    expect(expandTilde('~')).toBe(HOME);
+    expect(expandTilde('~/books/library.db')).toBe(path.join(HOME, 'books', 'library.db'));
+    expect(expandTilde('/abs/path.db')).toBe('/abs/path.db');
+    expect(expandTilde('relative/path.db')).toBe('relative/path.db');
   });
 });

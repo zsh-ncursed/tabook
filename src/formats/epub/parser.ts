@@ -7,6 +7,7 @@ import { normalizeWhitespace } from '../../utils/text.js';
 import { openZip } from '../../utils/zip.js';
 import type { ZipArchive } from '../../utils/zip.js';
 import type { BookMetadata, ParsedBook, TocEntry } from '../model.js';
+import { resolveHref } from '../href.js';
 import { parseXhtmlBlocks } from './xhtml.js';
 
 interface ManifestItem {
@@ -30,10 +31,6 @@ interface TocLink {
   fragment?: string;
   level: number;
   children: TocLink[];
-}
-
-function resolvePath(baseDir: string, href: string): string {
-  return path.posix.normalize(path.posix.join(baseDir, href)).replace(/^\.\//, '');
 }
 
 function readTextFile(zip: ZipArchive, entryName: string): string {
@@ -111,7 +108,7 @@ function parseOpf(zip: ZipArchive, opfPath: string): OpfData {
       if (!id || href === undefined) continue;
       manifest.set(id, {
         id,
-        href: resolvePath(opfDir, href),
+        href: resolveHref(opfDir, href),
         mediaType: attrOf(item, 'media-type') ?? '',
       });
     }
@@ -171,7 +168,7 @@ function parseNavPoint(node: XmlNode, opfDir: string, level = 1): TocLink {
   const [file, fragment] = src.split('#');
   return {
     label,
-    href: resolvePath(opfDir, file ?? ''),
+    href: resolveHref(opfDir, file ?? ''),
     fragment: fragment && fragment !== '' ? fragment : undefined,
     level,
     children: findChildren(node, 'navPoint').map((np) => parseNavPoint(np, opfDir, level + 1)),
@@ -208,7 +205,7 @@ function parseNavLi(node: XmlNode, opfDir: string, level = 1): TocLink {
       const target = attrOf(kid, 'href');
       if (target) {
         const [file, frag] = target.split('#');
-        href = resolvePath(opfDir, file ?? '');
+        href = resolveHref(opfDir, file ?? '');
         fragment = frag && frag !== '' ? frag : undefined;
       }
       if (label === '') label = normalizeWhitespace(textOf(kid));
@@ -268,7 +265,10 @@ export function parseEpubBuffer(data: Uint8Array, filePath: string): ParsedBook 
     const parsed = parseXml(docText);
     const html = findNode(parsed, 'html');
     const body = html ? firstChild(html, 'body') : undefined;
-    const result = parseXhtmlBlocks(body ? childrenOf(body) : parsed);
+    const result = parseXhtmlBlocks(
+      body ? childrenOf(body) : parsed,
+      path.posix.dirname(item.href),
+    );
     fileToBlock.set(item.href, blockIndex);
     for (const [fragId, idx] of result.idToBlock) {
       idToBlock.set(`${item.href}#${fragId}`, idx + blockIndex);

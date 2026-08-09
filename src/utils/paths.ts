@@ -20,6 +20,17 @@ export function defaultDbPath(): string {
   return path.join(configDir(), 'library.db');
 }
 
+// Expand a leading ~ or ~/ into the user's home directory. Paths elsewhere in
+// the app (defaults, config-dir resolution) are built from os.homedir()
+// directly, but a user-supplied db_path in config.toml may legitimately start
+// with a tilde — without this, "db_path = ~/books/library.db" would create a
+// literal "~" directory relative to the cwd.
+export function expandTilde(p: string): string {
+  if (p === '~') return os.homedir();
+  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(os.homedir(), p.slice(2));
+  return p;
+}
+
 export function defaultConfigPath(): string {
   return path.join(configDir(), 'config.toml');
 }

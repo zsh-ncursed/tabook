@@ -7,7 +7,7 @@ import { registerForceRedraw } from '../tui/screenRefresh.js';
 import { loadConfig } from '../config/config.js';
 import { getTheme } from '../themes/themes.js';
 import { LibraryDb } from '../db/db.js';
-import { defaultDbPath } from '../utils/paths.js';
+import { defaultDbPath, expandTilde } from '../utils/paths.js';
 import { App } from '../tui/App.js';
 
 const require = createRequire(import.meta.url);
@@ -73,7 +73,7 @@ function run(
 
   let db: LibraryDb;
   try {
-    const dbPath = config.dbPath !== '' ? config.dbPath : defaultDbPath();
+    const dbPath = config.dbPath !== '' ? expandTilde(config.dbPath) : defaultDbPath();
     db = new LibraryDb(dbPath);
   } catch (err) {
     console.error(`tabook: ${err instanceof Error ? err.message : String(err)}`);

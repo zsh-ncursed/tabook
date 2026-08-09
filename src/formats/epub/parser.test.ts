@@ -96,6 +96,46 @@ describe('EPUB parser', () => {
     expect(book.resources.has('OEBPS/images/cover.jpg')).toBe(true);
   });
 
+  it('resolves inline image src against the chapter directory', () => {
+    const zip = new AdmZip();
+    zip.addFile(
+      'META-INF/container.xml',
+      Buffer.from(CONTAINER_XML.replace('content.opf', 'OEBPS/content.opf'), 'utf8'),
+    );
+    zip.addFile(
+      'OEBPS/content.opf',
+      Buffer.from(
+        `<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Img</dc:title></metadata>
+  <manifest>
+    <item id="c1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="pic" href="images/pic.jpg" media-type="image/jpeg"/>
+  </manifest>
+  <spine><itemref idref="c1"/></spine>
+</package>`,
+        'utf8',
+      ),
+    );
+    // Chapter lives in OEBPS/text/, image lives in OEBPS/images/ — the src
+    // must be resolved against the chapter directory (../images/pic.jpg)
+    // before looking it up in the resources map.
+    zip.addFile(
+      'OEBPS/text/ch1.xhtml',
+      Buffer.from(
+        XHTML('<h1 id="top">Chapter</h1><img src="../images/pic.jpg" alt="pic"/>'),
+        'utf8',
+      ),
+    );
+    zip.addFile('OEBPS/images/pic.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
+    const book = parseEpubBuffer(zip.toBuffer(), '/tmp/img.epub');
+    const imageBlock = book.content.find((b) => b.type === 'image');
+    expect(imageBlock && imageBlock.type === 'image' ? imageBlock.src : undefined).toBe(
+      'OEBPS/images/pic.jpg',
+    );
+    expect(book.resources.get('OEBPS/images/pic.jpg')).toBeDefined();
+  });
+
   it('rejects a non-zip epub', () => {
     expect(() => parseEpubBuffer(Buffer.from('not a zip'), '/tmp/x.epub')).toThrow(ParseError);
   });

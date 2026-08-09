@@ -2,6 +2,7 @@ import { childrenOf, findChildren, attrOf, tagOf } from '../xml.js';
 import type { XmlChildren, XmlNode } from '../xml.js';
 import { normalizeInlines, parseInlines } from '../inline.js';
 import type { Block, Inline, ListItem } from '../model.js';
+import { resolveHref } from '../href.js';
 
 export interface XhtmlParseResult {
   blocks: Block[];
@@ -64,19 +65,19 @@ function parseTableElement(node: XmlNode): Block {
   return { type: 'table', headers, rows: tableRows };
 }
 
-export function parseXhtmlBlocks(nodes: XmlChildren): XhtmlParseResult {
+export function parseXhtmlBlocks(nodes: XmlChildren, baseDir = ''): XhtmlParseResult {
   const state: XhtmlState = { blocks: [], idToBlock: new Map(), blockIndex: 0 };
-  parseNodes(state, nodes);
+  parseNodes(state, nodes, baseDir);
   return { blocks: state.blocks, idToBlock: state.idToBlock };
 }
 
-function parseNodes(state: XhtmlState, nodes: XmlChildren): void {
+function parseNodes(state: XhtmlState, nodes: XmlChildren, baseDir: string): void {
   for (const node of nodes) {
-    parseNode(state, node);
+    parseNode(state, node, baseDir);
   }
 }
 
-function parseNode(state: XhtmlState, node: XmlNode): void {
+function parseNode(state: XhtmlState, node: XmlNode, baseDir: string): void {
   const tag = tagOf(node);
   const id = attrOf(node, 'id');
   const children = childrenOf(node);
@@ -122,8 +123,12 @@ function parseNode(state: XhtmlState, node: XmlNode): void {
       if (id) state.idToBlock.set(id, state.blockIndex - 1);
       break;
     case 'img': {
+      // The src attribute is relative to the XHTML document, but resources are
+      // keyed by the manifest path (relative to the OPF). Resolve it against
+      // this document's directory so the lookup in the resources map hits.
       const src = attrOf(node, 'src') ?? '';
-      emit(state, { type: 'image', src, alt: attrOf(node, 'alt') ?? '' });
+      const resolved = src === '' ? src : resolveHref(baseDir, src);
+      emit(state, { type: 'image', src: resolved, alt: attrOf(node, 'alt') ?? '' });
       if (id) state.idToBlock.set(id, state.blockIndex - 1);
       break;
     }
@@ -143,7 +148,7 @@ function parseNode(state: XhtmlState, node: XmlNode): void {
       // the container id should resolve to that block so TOC links land at the
       // start of the section, not at its trailing paragraph.
       const start = state.blockIndex;
-      parseNodes(state, children);
+      parseNodes(state, children, baseDir);
       if (id && state.blocks.length > start) {
         const idx = findFirstContentBlock(state, start);
         if (idx !== undefined) state.idToBlock.set(id, idx);
@@ -160,7 +165,7 @@ function parseNode(state: XhtmlState, node: XmlNode): void {
       break;
     default:
       if (children.length > 0) {
-        parseNodes(state, children);
+        parseNodes(state, children, baseDir);
       }
       break;
   }
