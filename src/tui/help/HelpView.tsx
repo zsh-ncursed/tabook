@@ -61,11 +61,13 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
         file.fb2, :opds to browse online catalogs).
       </Text>
       <Box marginTop={1}>
-        <Text color={theme.colors.heading} bold>OPDS Catalogs (in :opds view)</Text>
+        <Text color={theme.colors.heading} bold>
+          OPDS Catalogs (in :opds view)
+        </Text>
       </Box>
       <Text color={theme.colors.dim} dimColor>
-        j/k — navigate · enter — open entry/download · d — download · / — search · u — up ·
-        n — next page · c — switch catalog · esc — back · q — quit
+        j/k — navigate · enter — open entry/download · d — download · / — search · u — up · n — next
+        page · c — switch catalog · esc — back · q — quit
       </Text>
     </Modal>
   );

@@ -86,12 +86,12 @@ async function fetchWithTimeout(
 
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location');
-      if (!location) throw new OpdsError(`Redirect ${res.status} without Location header from ${url}`);
+      if (!location)
+        throw new OpdsError(`Redirect ${res.status} without Location header from ${url}`);
       const next = resolveUrl(location, url);
       // Never forward credentials to a different origin — a malicious or
       // compromised catalog could otherwise steal Basic auth via redirect.
-      const nextOpts =
-        sameOrigin(url, next) ? opts : { ...opts, auth: undefined };
+      const nextOpts = sameOrigin(url, next) ? opts : { ...opts, auth: undefined };
       return fetchWithTimeout(next, nextOpts, redirectCount + 1);
     }
 
@@ -101,7 +101,10 @@ async function fetchWithTimeout(
     if (err instanceof Error && err.name === 'AbortError') {
       throw new OpdsError(`Request timed out fetching ${url}`, { cause: err });
     }
-    throw new OpdsError(`Network error fetching ${url}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+    throw new OpdsError(
+      `Network error fetching ${url}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
   } finally {
     clearTimeout(timeout);
     // Release the listeners on both source signals once the request has
@@ -111,7 +114,10 @@ async function fetchWithTimeout(
   }
 }
 
-function mergeSignals(a: AbortSignal, b: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
+function mergeSignals(
+  a: AbortSignal,
+  b: AbortSignal,
+): { signal: AbortSignal; cleanup: () => void } {
   if (a.aborted) return { signal: a, cleanup: () => {} };
   if (b.aborted) return { signal: b, cleanup: () => {} };
   const controller = new AbortController();
@@ -132,7 +138,9 @@ export async function fetchFeed(
   const url = resolveUrl(href, opts?.base);
   const { response, finalUrl } = await fetchWithTimeout(url, opts ?? {});
   if (!response.ok) {
-    throw new OpdsError(`HTTP ${response.status} fetching feed ${url}`, { statusCode: response.status });
+    throw new OpdsError(`HTTP ${response.status} fetching feed ${url}`, {
+      statusCode: response.status,
+    });
   }
   const text = await response.text();
   const feed = parseOpdsAtom(text);
@@ -149,7 +157,9 @@ export async function fetchOpenSearch(
   const url = resolveUrl(href, opts?.base);
   const { response } = await fetchWithTimeout(url, opts ?? {});
   if (!response.ok) {
-    throw new OpdsError(`HTTP ${response.status} fetching OpenSearch ${url}`, { statusCode: response.status });
+    throw new OpdsError(`HTTP ${response.status} fetching OpenSearch ${url}`, {
+      statusCode: response.status,
+    });
   }
   return response.text();
 }
@@ -164,12 +174,17 @@ export async function downloadBook(
     accept: 'application/epub+zip,text/fb2+xml,application/fb2+zip,*/*',
   });
   if (!response.ok) {
-    throw new OpdsError(`HTTP ${response.status} downloading ${url}`, { statusCode: response.status });
+    throw new OpdsError(`HTTP ${response.status} downloading ${url}`, {
+      statusCode: response.status,
+    });
   }
   const buf = await response.arrayBuffer();
   return { data: new Uint8Array(buf), finalUrl };
 }
 
-export function catalogAuth(catalog: { username?: string | null; password?: string | null }): OpdsAuth {
+export function catalogAuth(catalog: {
+  username?: string | null;
+  password?: string | null;
+}): OpdsAuth {
   return { username: catalog.username ?? undefined, password: catalog.password ?? undefined };
 }

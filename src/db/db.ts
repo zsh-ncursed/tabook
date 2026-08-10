@@ -305,9 +305,8 @@ export class LibraryDb {
       );
 
     // After the upsert, look up the row by path to get the stable id.
-    const row = this.db
-      .prepare('SELECT id FROM books WHERE path = ?')
-      .get(record.path) as { id: number } | undefined;
+    const row = this.db.prepare('SELECT id FROM books WHERE path = ?').get(record.path) as
+      { id: number } | undefined;
     return row!.id;
   }
 
@@ -549,13 +548,28 @@ export class LibraryDb {
     return row ? rowToCatalog(row) : undefined;
   }
 
-  updateCatalog(id: number, fields: { name?: string; url?: string; username?: string; password?: string }): void {
+  updateCatalog(
+    id: number,
+    fields: { name?: string; url?: string; username?: string; password?: string },
+  ): void {
     const sets: string[] = [];
     const values: unknown[] = [];
-    if (fields.name !== undefined) { sets.push('name = ?'); values.push(fields.name); }
-    if (fields.url !== undefined) { sets.push('url = ?'); values.push(fields.url); }
-    if (fields.username !== undefined) { sets.push('username = ?'); values.push(fields.username); }
-    if (fields.password !== undefined) { sets.push('password = ?'); values.push(fields.password); }
+    if (fields.name !== undefined) {
+      sets.push('name = ?');
+      values.push(fields.name);
+    }
+    if (fields.url !== undefined) {
+      sets.push('url = ?');
+      values.push(fields.url);
+    }
+    if (fields.username !== undefined) {
+      sets.push('username = ?');
+      values.push(fields.username);
+    }
+    if (fields.password !== undefined) {
+      sets.push('password = ?');
+      values.push(fields.password);
+    }
     if (sets.length === 0) return;
     values.push(id);
     this.db.prepare(`UPDATE opds_catalogs SET ${sets.join(', ')} WHERE id = ?`).run(...values);

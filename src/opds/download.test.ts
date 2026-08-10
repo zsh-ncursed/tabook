@@ -22,7 +22,13 @@ function makeDbStub() {
   let nextId = 1;
   const books: { path: string; filename: string; format: string; size: number }[] = [];
   return {
-    addBook(rec: { path: string; filename: string; format: string; size: number; metadata: unknown }): number {
+    addBook(rec: {
+      path: string;
+      filename: string;
+      format: string;
+      size: number;
+      metadata: unknown;
+    }): number {
       const id = nextId++;
       books.push({ path: rec.path, filename: rec.filename, format: rec.format, size: rec.size });
       return id;
@@ -51,13 +57,18 @@ describe('downloadBook', () => {
   it('returns final URL after redirect', async () => {
     const data = new Uint8Array([1, 2, 3]);
     const calls: string[] = [];
-    setFetchMock(vi.fn(async (url) => {
-      calls.push(String(url));
-      if (calls.length === 1) {
-        return mockResponse('', { status: 302, headers: { location: 'https://cdn.x/book.epub' } });
-      }
-      return mockResponse(data);
-    }));
+    setFetchMock(
+      vi.fn(async (url) => {
+        calls.push(String(url));
+        if (calls.length === 1) {
+          return mockResponse('', {
+            status: 302,
+            headers: { location: 'https://cdn.x/book.epub' },
+          });
+        }
+        return mockResponse(data);
+      }),
+    );
     const result = await downloadBook('https://x/book.epub');
     expect(result.finalUrl).toBe('https://cdn.x/book.epub');
   });
@@ -80,7 +91,9 @@ describe('downloadAndSave', () => {
 
   it('downloads an FB2 book, saves to disk, and adds to library', async () => {
     const fb2Xml = FB2_SAMPLE;
-    setFetchMock(vi.fn(async () => mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } })));
+    setFetchMock(
+      vi.fn(async () => mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } })),
+    );
 
     const entry: OpdsEntry = {
       id: 'urn:test:fb2',
@@ -88,8 +101,20 @@ describe('downloadAndSave', () => {
       updated: '',
       authors: [],
       categories: [],
-      links: [{ rel: 'http://opds-spec.org/acquisition', href: 'https://x/book.fb2', type: 'text/fb2+xml' }],
-      acquisitionLinks: [{ rel: 'http://opds-spec.org/acquisition', href: 'https://x/book.fb2', type: 'text/fb2+xml' }],
+      links: [
+        {
+          rel: 'http://opds-spec.org/acquisition',
+          href: 'https://x/book.fb2',
+          type: 'text/fb2+xml',
+        },
+      ],
+      acquisitionLinks: [
+        {
+          rel: 'http://opds-spec.org/acquisition',
+          href: 'https://x/book.fb2',
+          type: 'text/fb2+xml',
+        },
+      ],
       isAcquisition: true,
       isNavigation: false,
     };
@@ -138,7 +163,9 @@ describe('downloadAndSave', () => {
 
   it('caps the filename by UTF-8 bytes, not characters, for long Cyrillic titles', async () => {
     const fb2Xml = FB2_SAMPLE;
-    setFetchMock(vi.fn(async () => mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } })));
+    setFetchMock(
+      vi.fn(async () => mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } })),
+    );
 
     // 200 Cyrillic chars = 400 bytes in UTF-8; a char-based cap of 180 would
     // still exceed the ext4 255-byte NAME_MAX, so the file would fail to save.
@@ -149,8 +176,20 @@ describe('downloadAndSave', () => {
       updated: '',
       authors: [],
       categories: [],
-      links: [{ rel: 'http://opds-spec.org/acquisition', href: 'https://x/book.fb2', type: 'text/fb2+xml' }],
-      acquisitionLinks: [{ rel: 'http://opds-spec.org/acquisition', href: 'https://x/book.fb2', type: 'text/fb2+xml' }],
+      links: [
+        {
+          rel: 'http://opds-spec.org/acquisition',
+          href: 'https://x/book.fb2',
+          type: 'text/fb2+xml',
+        },
+      ],
+      acquisitionLinks: [
+        {
+          rel: 'http://opds-spec.org/acquisition',
+          href: 'https://x/book.fb2',
+          type: 'text/fb2+xml',
+        },
+      ],
       isAcquisition: true,
       isNavigation: false,
     };
@@ -167,7 +206,9 @@ describe('downloadAndSave', () => {
 
   it('dedupes the filename with a -N suffix when the file already exists', async () => {
     const fb2Xml = FB2_SAMPLE;
-    setFetchMock(vi.fn(async () => mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } })));
+    setFetchMock(
+      vi.fn(async () => mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } })),
+    );
 
     const entry: OpdsEntry = {
       id: 'urn:test:dup',
@@ -175,8 +216,20 @@ describe('downloadAndSave', () => {
       updated: '',
       authors: [],
       categories: [],
-      links: [{ rel: 'http://opds-spec.org/acquisition', href: 'https://x/book.fb2', type: 'text/fb2+xml' }],
-      acquisitionLinks: [{ rel: 'http://opds-spec.org/acquisition', href: 'https://x/book.fb2', type: 'text/fb2+xml' }],
+      links: [
+        {
+          rel: 'http://opds-spec.org/acquisition',
+          href: 'https://x/book.fb2',
+          type: 'text/fb2+xml',
+        },
+      ],
+      acquisitionLinks: [
+        {
+          rel: 'http://opds-spec.org/acquisition',
+          href: 'https://x/book.fb2',
+          type: 'text/fb2+xml',
+        },
+      ],
       isAcquisition: true,
       isNavigation: false,
     };
@@ -196,10 +249,12 @@ describe('downloadAndSave', () => {
   it('resolves a relative acquisition href against base', async () => {
     const fb2Xml = FB2_SAMPLE;
     let capturedUrl: string | undefined;
-    setFetchMock(vi.fn(async (url) => {
-      capturedUrl = String(url);
-      return mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } });
-    }));
+    setFetchMock(
+      vi.fn(async (url) => {
+        capturedUrl = String(url);
+        return mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } });
+      }),
+    );
 
     const entry: OpdsEntry = {
       id: 'urn:test:relative',
@@ -207,8 +262,20 @@ describe('downloadAndSave', () => {
       updated: '',
       authors: [],
       categories: [],
-      links: [{ rel: 'http://opds-spec.org/acquisition', href: '/download/book.fb2', type: 'text/fb2+xml' }],
-      acquisitionLinks: [{ rel: 'http://opds-spec.org/acquisition', href: '/download/book.fb2', type: 'text/fb2+xml' }],
+      links: [
+        {
+          rel: 'http://opds-spec.org/acquisition',
+          href: '/download/book.fb2',
+          type: 'text/fb2+xml',
+        },
+      ],
+      acquisitionLinks: [
+        {
+          rel: 'http://opds-spec.org/acquisition',
+          href: '/download/book.fb2',
+          type: 'text/fb2+xml',
+        },
+      ],
       isAcquisition: true,
       isNavigation: false,
     };

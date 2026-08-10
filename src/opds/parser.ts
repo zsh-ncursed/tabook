@@ -1,4 +1,12 @@
-import { parseXml, findChildren, firstChild, textOf, fullTextOf, attributesOf, type XmlNode } from '../formats/xml.js';
+import {
+  parseXml,
+  findChildren,
+  firstChild,
+  textOf,
+  fullTextOf,
+  attributesOf,
+  type XmlNode,
+} from '../formats/xml.js';
 import { ParseError } from '../utils/errors.js';
 import type { OpdsFeed, OpdsEntry, OpdsLink, FeedKind } from './model.js';
 import { ACQUISITION_RELS } from './model.js';
@@ -104,7 +112,9 @@ function parseEntry(node: XmlNode): OpdsEntry {
 
   const thumbnailHref = links.find((l) => l.rel === 'http://opds-spec.org/image/thumbnail')?.href;
   const imageHref = links.find((l) => l.rel === 'http://opds-spec.org/image')?.href;
-  const subsectionHref = links.find((l) => l.rel === 'subsection' || l.rel === 'http://opds-spec.org/subsection')?.href;
+  const subsectionHref = links.find(
+    (l) => l.rel === 'subsection' || l.rel === 'http://opds-spec.org/subsection',
+  )?.href;
 
   const isAcquisition = acquisitionLinks.length > 0;
   const isNavigation = !isAcquisition && subsectionHref !== undefined;

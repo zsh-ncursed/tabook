@@ -134,13 +134,16 @@ describe('OpdsView — browsing', () => {
     <link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="https://example.com/books/2.epub"/>
   </entry>
 </feed>`;
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      headers: new Map(),
-      text: async () => feedXml,
-      arrayBuffer: async () => new ArrayBuffer(0),
-    } as unknown as Response));
+    const fetchMock = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          headers: new Map(),
+          text: async () => feedXml,
+          arrayBuffer: async () => new ArrayBuffer(0),
+        }) as unknown as Response,
+    );
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
     const notify = vi.fn();
@@ -180,7 +183,8 @@ describe('OpdsView — browsing', () => {
       ok: true,
       status: 200,
       headers: new Map(),
-      text: async () => '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><id>x</id><title>x</title><updated>2026-01-01T00:00:00Z</updated></feed>',
+      text: async () =>
+        '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><id>x</id><title>x</title><updated>2026-01-01T00:00:00Z</updated></feed>',
       arrayBuffer: async () => new ArrayBuffer(0),
     } as unknown as Response);
     await settle();
@@ -188,13 +192,16 @@ describe('OpdsView — browsing', () => {
 
   it('shows error on fetch failure', async () => {
     db.addCatalog({ name: 'Test', url: 'https://example.com/opds' });
-    const fetchMock = vi.fn(async () => ({
-      ok: false,
-      status: 404,
-      headers: new Map(),
-      text: async () => 'Not Found',
-      arrayBuffer: async () => new ArrayBuffer(0),
-    } as unknown as Response));
+    const fetchMock = vi.fn(
+      async () =>
+        ({
+          ok: false,
+          status: 404,
+          headers: new Map(),
+          text: async () => 'Not Found',
+          arrayBuffer: async () => new ArrayBuffer(0),
+        }) as unknown as Response,
+    );
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
     const { stdin, lastFrame } = render(<OpdsView {...makeProps()} />);
@@ -209,13 +216,16 @@ describe('OpdsView — browsing', () => {
   it('returns to catalog list on esc from browsing', async () => {
     db.addCatalog({ name: 'Test', url: 'https://example.com/opds' });
     const feedXml = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><id>x</id><title>Feed</title><updated>2026-01-01T00:00:00Z</updated><link rel="self" href="https://x" type="application/atom+xml;profile=opds-catalog;kind=navigation"/></feed>`;
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      headers: new Map(),
-      text: async () => feedXml,
-      arrayBuffer: async () => new ArrayBuffer(0),
-    } as unknown as Response)) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          headers: new Map(),
+          text: async () => feedXml,
+          arrayBuffer: async () => new ArrayBuffer(0),
+        }) as unknown as Response,
+    ) as unknown as typeof globalThis.fetch;
 
     const { stdin, lastFrame } = render(<OpdsView {...makeProps()} />);
     await settle();
@@ -232,13 +242,16 @@ describe('OpdsView — browsing', () => {
 describe('OpdsView — auth prompt on 401', () => {
   it('shows auth prompt on HTTP 401', async () => {
     db.addCatalog({ name: 'Protected', url: 'https://example.com/opds' });
-    globalThis.fetch = vi.fn(async () => ({
-      ok: false,
-      status: 401,
-      headers: new Map(),
-      text: async () => 'Unauthorized',
-      arrayBuffer: async () => new ArrayBuffer(0),
-    } as unknown as Response)) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        ({
+          ok: false,
+          status: 401,
+          headers: new Map(),
+          text: async () => 'Unauthorized',
+          arrayBuffer: async () => new ArrayBuffer(0),
+        }) as unknown as Response,
+    ) as unknown as typeof globalThis.fetch;
 
     const { stdin, lastFrame } = render(<OpdsView {...makeProps()} />);
     await settle();
@@ -252,13 +265,16 @@ describe('OpdsView — auth prompt on 401', () => {
 
   it('esc from auth prompt returns to catalog list', async () => {
     db.addCatalog({ name: 'Protected', url: 'https://example.com/opds' });
-    globalThis.fetch = vi.fn(async () => ({
-      ok: false,
-      status: 401,
-      headers: new Map(),
-      text: async () => 'Unauthorized',
-      arrayBuffer: async () => new ArrayBuffer(0),
-    } as unknown as Response)) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        ({
+          ok: false,
+          status: 401,
+          headers: new Map(),
+          text: async () => 'Unauthorized',
+          arrayBuffer: async () => new ArrayBuffer(0),
+        }) as unknown as Response,
+    ) as unknown as typeof globalThis.fetch;
 
     const { stdin, lastFrame } = render(<OpdsView {...makeProps()} />);
     await settle();
@@ -276,13 +292,16 @@ describe('OpdsView — catalog refresh', () => {
   it('refreshes catalog list when returning from browsing via c', async () => {
     db.addCatalog({ name: 'Alpha', url: 'https://a/' });
     const feedXml = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><id>x</id><title>Feed</title><updated>2026-01-01T00:00:00Z</updated><link rel="self" href="https://x" type="application/atom+xml;profile=opds-catalog;kind=navigation"/></feed>`;
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      headers: new Map(),
-      text: async () => feedXml,
-      arrayBuffer: async () => new ArrayBuffer(0),
-    } as unknown as Response)) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          headers: new Map(),
+          text: async () => feedXml,
+          arrayBuffer: async () => new ArrayBuffer(0),
+        }) as unknown as Response,
+    ) as unknown as typeof globalThis.fetch;
 
     const { stdin, lastFrame } = render(<OpdsView {...makeProps()} />);
     await settle();

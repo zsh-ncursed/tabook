@@ -1,4 +1,11 @@
-import { parseXml, findChildren, firstChild, textOf, attributesOf, type XmlNode } from '../formats/xml.js';
+import {
+  parseXml,
+  findChildren,
+  firstChild,
+  textOf,
+  attributesOf,
+  type XmlNode,
+} from '../formats/xml.js';
 import { ParseError } from '../utils/errors.js';
 
 export interface OpenSearchDescription {

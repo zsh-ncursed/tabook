@@ -35,10 +35,11 @@ function truncateUtf8(value: string, maxBytes: number): string {
 }
 
 function sanitizeFilename(name: string, ext: string): string {
-  const cleaned = name
-    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
-    .replace(/^\.+/, '')
-    .trim() || 'download';
+  const cleaned =
+    name
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+      .replace(/^\.+/, '')
+      .trim() || 'download';
   const stemBytes = Math.max(1, MAX_FILENAME_BYTES - Buffer.byteLength(ext, 'utf8'));
   return truncateUtf8(cleaned, stemBytes);
 }

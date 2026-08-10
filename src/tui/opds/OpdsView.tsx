@@ -27,7 +27,15 @@ export interface OpdsViewProps {
   inputDisabled?: boolean;
 }
 
-type Mode = 'catalog-list' | 'browsing' | 'search' | 'loading' | 'error' | 'entry-detail' | 'auth-username' | 'auth-password';
+type Mode =
+  | 'catalog-list'
+  | 'browsing'
+  | 'search'
+  | 'loading'
+  | 'error'
+  | 'entry-detail'
+  | 'auth-username'
+  | 'auth-password';
 
 interface FeedHistoryEntry {
   feed: OpdsFeed;
@@ -284,7 +292,17 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         }
       }
     }
-  }, [mode, catalogs, catalogCursor, openCatalog, rows, cursor, currentFeed, activeCatalog, loadFeed]);
+  }, [
+    mode,
+    catalogs,
+    catalogCursor,
+    openCatalog,
+    rows,
+    cursor,
+    currentFeed,
+    activeCatalog,
+    loadFeed,
+  ]);
 
   const saveCurrentPosition = useCallback(() => {
     if (feedStack.length > 0) {
@@ -315,7 +333,9 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         switch (keyName) {
           case 'j':
           case 'down':
-            setCatalogCursor((c) => (catalogs.length === 0 ? 0 : Math.min(catalogs.length - 1, c + 1)));
+            setCatalogCursor((c) =>
+              catalogs.length === 0 ? 0 : Math.min(catalogs.length - 1, c + 1),
+            );
             break;
           case 'k':
           case 'up':
@@ -449,7 +469,11 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   const opdsInputRef = useRef(handleInput);
   opdsInputRef.current = handleInput;
   const dispatchRef = useInputDispatch(
-    !inputDisabled && mode !== 'search' && mode !== 'loading' && mode !== 'auth-username' && mode !== 'auth-password',
+    !inputDisabled &&
+      mode !== 'search' &&
+      mode !== 'loading' &&
+      mode !== 'auth-username' &&
+      mode !== 'auth-password',
   );
   dispatchRef.current = (input: string, key: Key) => opdsInputRef.current(input, key);
 
@@ -466,7 +490,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
 
   const header = activeCatalog ? activeCatalog.name : 'OPDS Catalogs';
   const subHeader = currentFeed?.title;
-  const statusLeft = mode === 'catalog-list' ? 'OPDS' : activeCatalog?.name ?? 'OPDS';
+  const statusLeft = mode === 'catalog-list' ? 'OPDS' : (activeCatalog?.name ?? 'OPDS');
 
   return (
     <Box flexDirection="column" width="100%" height="100%">
@@ -475,29 +499,16 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
           <Text color={theme.colors.heading} bold>
             {header}
           </Text>
-          {subHeader ? (
-            <Text color={theme.colors.dim}>
-              {' '}
-              · {subHeader}
-            </Text>
-          ) : null}
+          {subHeader ? <Text color={theme.colors.dim}> · {subHeader}</Text> : null}
           {currentFeed?.entries.length ? (
-            <Text color={theme.colors.dim}>
-              {' '}
-              · {currentFeed.entries.length} entries
-            </Text>
+            <Text color={theme.colors.dim}> · {currentFeed.entries.length} entries</Text>
           ) : null}
           {downloading ? <Text color={theme.colors.accent}> · downloading…</Text> : null}
         </Box>
       </Box>
 
       {mode === 'catalog-list' ? (
-        <CatalogList
-          catalogs={catalogs}
-          cursor={catalogCursor}
-          theme={theme}
-          width={width}
-        />
+        <CatalogList catalogs={catalogs} cursor={catalogCursor} theme={theme} width={width} />
       ) : mode === 'loading' ? (
         <Box paddingX={2} paddingY={1}>
           <Text color={theme.colors.dim}>Loading…</Text>
@@ -530,7 +541,11 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
             if (row.kind === 'facet') {
               const label = `${row.facet.active ? '● ' : '  '}${row.facet.title}${row.facet.count ? ` (${row.facet.count})` : ''}`;
               return (
-                <Text key={`f-${absolute}`} color={selected ? theme.colors.accent : theme.colors.dim} bold={selected}>
+                <Text
+                  key={`f-${absolute}`}
+                  color={selected ? theme.colors.accent : theme.colors.dim}
+                  bold={selected}
+                >
                   {selected ? '▸ ' : '  '}
                   {label}
                 </Text>
@@ -550,9 +565,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
                 <Text color={selected ? theme.colors.accent : theme.colors.text} bold={selected}>
                   {marker} {title}
                 </Text>
-                {authorTrunc ? (
-                  <Text color={theme.colors.dim}> — {authorTrunc}</Text>
-                ) : null}
+                {authorTrunc ? <Text color={theme.colors.dim}> — {authorTrunc}</Text> : null}
               </Box>
             );
           })}
@@ -578,9 +591,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
           <Text color={theme.colors.accent} bold>
             Authentication required (HTTP 401)
           </Text>
-          <Text color={theme.colors.dim}>
-            Catalog: {authCatalog?.name ?? 'Unknown'}
-          </Text>
+          <Text color={theme.colors.dim}>Catalog: {authCatalog?.name ?? 'Unknown'}</Text>
           <TextPrompt
             theme={theme}
             prefix="username: "
@@ -648,9 +659,7 @@ function CatalogList(props: {
     return (
       <Box paddingX={2} paddingY={2} flexDirection="column">
         <Text color={theme.colors.text}>No OPDS catalogs configured.</Text>
-        <Text color={theme.colors.dim}>
-          Add one via SQLite or a future :opds add command.
-        </Text>
+        <Text color={theme.colors.dim}>Add one via SQLite or a future :opds add command.</Text>
       </Box>
     );
   }
@@ -670,9 +679,7 @@ function CatalogList(props: {
               {name}
             </Text>
             <Text color={theme.colors.dim}> — {url}</Text>
-            {cat.username ? (
-              <Text color={theme.colors.dim}> · 🔒</Text>
-            ) : null}
+            {cat.username ? <Text color={theme.colors.dim}> · 🔒</Text> : null}
           </Box>
         );
       })}

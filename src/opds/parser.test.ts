@@ -250,9 +250,13 @@ describe('parseOpdsAtom', () => {
     it('separates sample from full acquisition', () => {
       const book2 = feed.entries.find((e) => e.title === 'EPUB Test Book');
       expect(book2).toBeDefined();
-      const full = book2!.acquisitionLinks.filter((l) => l.rel === 'http://opds-spec.org/acquisition');
+      const full = book2!.acquisitionLinks.filter(
+        (l) => l.rel === 'http://opds-spec.org/acquisition',
+      );
       expect(full).toHaveLength(2);
-      const sample = book2!.acquisitionLinks.find((l) => l.rel === 'http://opds-spec.org/acquisition/sample');
+      const sample = book2!.acquisitionLinks.find(
+        (l) => l.rel === 'http://opds-spec.org/acquisition/sample',
+      );
       expect(sample).toBeDefined();
     });
 
@@ -290,7 +294,8 @@ describe('parseOpdsAtom', () => {
     });
 
     it('throws on XXE with SYSTEM entity', () => {
-      const xxe = '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><feed/>';
+      const xxe =
+        '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><feed/>';
       expect(() => parseOpdsAtom(xxe)).toThrow();
     });
   });
@@ -354,7 +359,11 @@ describe('pickAcquisitionLink', () => {
   it('prefers epub over fb2', () => {
     const links = [
       { rel: 'http://opds-spec.org/acquisition', href: 'http://x/b.fb2', type: 'text/fb2+xml' },
-      { rel: 'http://opds-spec.org/acquisition', href: 'http://x/b.epub', type: 'application/epub+zip' },
+      {
+        rel: 'http://opds-spec.org/acquisition',
+        href: 'http://x/b.epub',
+        type: 'application/epub+zip',
+      },
     ];
     const picked = pickAcquisitionLink(links);
     expect(picked?.href).toBe('http://x/b.epub');
@@ -370,15 +379,27 @@ describe('pickAcquisitionLink', () => {
 
   it('ignores unsupported mime types', () => {
     const links = [
-      { rel: 'http://opds-spec.org/acquisition', href: 'http://x/b.mobi', type: 'application/x-mobipocket-ebook' },
+      {
+        rel: 'http://opds-spec.org/acquisition',
+        href: 'http://x/b.mobi',
+        type: 'application/x-mobipocket-ebook',
+      },
     ];
     expect(pickAcquisitionLink(links)).toBeUndefined();
   });
 
   it('ignores sample rel', () => {
     const links = [
-      { rel: 'http://opds-spec.org/acquisition/sample', href: 'http://x/preview.epub', type: 'application/epub+zip' },
-      { rel: 'http://opds-spec.org/acquisition', href: 'http://x/full.epub', type: 'application/epub+zip' },
+      {
+        rel: 'http://opds-spec.org/acquisition/sample',
+        href: 'http://x/preview.epub',
+        type: 'application/epub+zip',
+      },
+      {
+        rel: 'http://opds-spec.org/acquisition',
+        href: 'http://x/full.epub',
+        type: 'application/epub+zip',
+      },
     ];
     const picked = pickAcquisitionLink(links);
     expect(picked?.href).toBe('http://x/full.epub');
