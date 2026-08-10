@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>https://theanarchistlibrary.org/opds</id>
+  <link rel="self" href="https://theanarchistlibrary.org/opds" type="application/atom+xml;profile=opds-catalog;kind=navigation" title="The Anarchist Library"/>
+  <link rel="search" href="https://theanarchistlibrary.org/opensearch.xml" type="application/opensearchdescription+xml" title="Search"/>
+  <link rel="start" href="https://theanarchistlibrary.org/opds" type="application/atom+xml;profile=opds-catalog;kind=navigation" title="The Anarchist Library"/>
+  <title>The Anarchist Library</title>
+  <updated>2026-08-10T13:06:41+00:00</updated>
+  <icon>https://theanarchistlibrary.org/favicon.ico</icon>
+  <author>
+    <name>The Anarchist Library</name>
+    <uri>https://theanarchistlibrary.org</uri>
+  </author>
+  <entry>
+    <title>New</title>
+    <id>https://theanarchistlibrary.org/opds/new</id>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml">Latest entries</div>
+    </content>
+    <updated>2026-08-10T13:06:41+00:00</updated>
+    <link rel="http://opds-spec.org/sort/new" href="https://theanarchistlibrary.org/opds/new" type="application/atom+xml;profile=opds-catalog;kind=acquisition" title="New"/>
+  </entry>
+  <entry>
+    <title>Titles</title>
+    <id>https://theanarchistlibrary.org/opds/titles</id>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml">Full list of texts</div>
+    </content>
+    <updated>2026-08-10T13:06:41+00:00</updated>
+    <link rel="subsection" href="https://theanarchistlibrary.org/opds/titles" type="application/atom+xml;profile=opds-catalog;kind=acquisition" title="Titles"/>
+  </entry>
+  <entry>
+    <title>Authors</title>
+    <id>https://theanarchistlibrary.org/opds/category/author</id>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml">Authors</div>
+    </content>
+    <updated>2026-08-10T13:06:41+00:00</updated>
+    <link rel="subsection" href="https://theanarchistlibrary.org/opds/category/author" type="application/atom+xml;profile=opds-catalog;kind=navigation" title="Authors"/>
+  </entry>
+  <entry>
+    <title>Topics</title>
+    <id>https://theanarchistlibrary.org/opds/category/topic</id>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml">Topics</div>
+    </content>
+    <updated>2026-08-10T13:06:41+00:00</updated>
+    <link rel="subsection" href="https://theanarchistlibrary.org/opds/category/topic" type="application/atom+xml;profile=opds-catalog;kind=navigation" title="Topics"/>
+  </entry>
+</feed>

@@ -58,7 +58,14 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
       </Box>
       <Text color={theme.colors.dim} dimColor>
         Tip: type : to open the command line (try :theme nord, :sort author, :goto 10, :open
-        file.fb2).
+        file.fb2, :opds to browse online catalogs).
+      </Text>
+      <Box marginTop={1}>
+        <Text color={theme.colors.heading} bold>OPDS Catalogs (in :opds view)</Text>
+      </Box>
+      <Text color={theme.colors.dim} dimColor>
+        j/k — navigate · enter — open entry/download · d — download · / — search · u — up ·
+        n — next page · c — switch catalog · esc — back · q — quit
       </Text>
     </Modal>
   );

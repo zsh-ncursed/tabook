@@ -75,6 +75,14 @@ function run(
   try {
     const dbPath = config.dbPath !== '' ? expandTilde(config.dbPath) : defaultDbPath();
     db = new LibraryDb(dbPath);
+    // Pre-seed Project Gutenberg catalog if no catalogs exist yet (fresh DB).
+    // This gives the user an immediate, working OPDS source on first run.
+    if (db.listCatalogs().length === 0) {
+      db.addCatalog({
+        name: 'Project Gutenberg',
+        url: 'https://m.gutenberg.org/ebooks.opds/',
+      });
+    }
   } catch (err) {
     console.error(`tabook: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);

@@ -48,6 +48,14 @@ export interface SessionStats {
   lastReadAt: string | null;
 }
 
+export interface CatalogRecord {
+  id: number;
+  name: string;
+  url: string;
+  username: string | null;
+  password: string | null;
+}
+
 export type SortField = 'title' | 'author' | 'added' | 'progress';
 
 interface BookRow {
@@ -71,6 +79,24 @@ interface BookRow {
   last_opened_at: string | null;
   progress_percent: number | null;
   progress_position: number | null;
+}
+
+interface CatalogRow {
+  id: number;
+  name: string;
+  url: string;
+  username: string | null;
+  password: string | null;
+}
+
+function rowToCatalog(row: CatalogRow): CatalogRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    url: row.url,
+    username: row.username,
+    password: row.password,
+  };
 }
 
 function rowToBook(row: BookRow): BookRecord {
@@ -116,7 +142,7 @@ function rowToBook(row: BookRow): BookRecord {
   };
 }
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 export class LibraryDb {
   private readonly db: Database.Database;
@@ -200,6 +226,18 @@ export class LibraryDb {
     }
     // Example for the next migration:
     //   if (version < 2) { this.db.exec('ALTER TABLE books ADD COLUMN x ...'); }
+    if (version < 2) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS opds_catalogs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          url TEXT NOT NULL,
+          username TEXT,
+          password TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+    }
     this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
 
@@ -479,5 +517,51 @@ export class LibraryDb {
 
   fileExists(): boolean {
     return fs.existsSync(this.filePath);
+  }
+
+  // ---- OPDS Catalogs ----
+
+  addCatalog(catalog: { name: string; url: string; username?: string; password?: string }): number {
+    const info = this.db
+      .prepare('INSERT INTO opds_catalogs (name, url, username, password) VALUES (?, ?, ?, ?)')
+      .run(catalog.name, catalog.url, catalog.username ?? null, catalog.password ?? null);
+    return Number(info.lastInsertRowid);
+  }
+
+  listCatalogs(): CatalogRecord[] {
+    const rows = this.db
+      .prepare('SELECT id, name, url, username, password FROM opds_catalogs ORDER BY name')
+      .all() as CatalogRow[];
+    return rows.map(rowToCatalog);
+  }
+
+  getCatalog(id: number): CatalogRecord | undefined {
+    const row = this.db
+      .prepare('SELECT id, name, url, username, password FROM opds_catalogs WHERE id = ?')
+      .get(id) as CatalogRow | undefined;
+    return row ? rowToCatalog(row) : undefined;
+  }
+
+  getCatalogByName(name: string): CatalogRecord | undefined {
+    const row = this.db
+      .prepare('SELECT id, name, url, username, password FROM opds_catalogs WHERE name = ?')
+      .get(name) as CatalogRow | undefined;
+    return row ? rowToCatalog(row) : undefined;
+  }
+
+  updateCatalog(id: number, fields: { name?: string; url?: string; username?: string; password?: string }): void {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    if (fields.name !== undefined) { sets.push('name = ?'); values.push(fields.name); }
+    if (fields.url !== undefined) { sets.push('url = ?'); values.push(fields.url); }
+    if (fields.username !== undefined) { sets.push('username = ?'); values.push(fields.username); }
+    if (fields.password !== undefined) { sets.push('password = ?'); values.push(fields.password); }
+    if (sets.length === 0) return;
+    values.push(id);
+    this.db.prepare(`UPDATE opds_catalogs SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+  }
+
+  removeCatalog(id: number): void {
+    this.db.prepare('DELETE FROM opds_catalogs WHERE id = ?').run(id);
   }
 }

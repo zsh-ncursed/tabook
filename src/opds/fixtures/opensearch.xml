@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- See http://www.opensearch.org/Specifications/OpenSearch/1.1 -->
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+  <ShortName>theanarchistlibrary.org</ShortName>
+  <Description>The Anarchist Library</Description>
+  <InputEncoding>UTF-8</InputEncoding>
+  <OutputEncoding>UTF-8</OutputEncoding>
+  <AdultContent>false</AdultContent>
+  <Language>en</Language>
+  <SyndicationRight>open</SyndicationRight>
+  <Image type="image/x-icon">https://theanarchistlibrary.org/favicon.ico</Image>
+  <Url type="text/html" template="https://theanarchistlibrary.org/search?query={searchTerms}" />
+  <Url type="application/atom+xml;profile=opds-catalog"
+       xmlns:atom="http://www.w3.org/2005/Atom"
+       template="https://theanarchistlibrary.org/opds/search?query={searchTerms}" />
+</OpenSearchDescription>

@@ -17,6 +17,8 @@ export default defineConfig({
         'src/utils/open.ts',
         'src/cli/**',
         'src/tui/**',
+        'src/opds/fixtures/**',
+        'src/opds/client.test-utils.ts',
       ],
       thresholds: {
         lines: 90,

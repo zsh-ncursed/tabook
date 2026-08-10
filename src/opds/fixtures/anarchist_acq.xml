@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>https://theanarchistlibrary.org/opds/new/1</id>
+  <link rel="self" href="https://theanarchistlibrary.org/opds/new/1" type="application/atom+xml;profile=opds-catalog;kind=acquisition" title="Latest entries"/>
+  <link rel="first" href="https://theanarchistlibrary.org/opds/new/1" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+  <link rel="last" href="https://theanarchistlibrary.org/opds/new/3341" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+  <link rel="next" href="https://theanarchistlibrary.org/opds/new/2" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+  <link rel="search" href="https://theanarchistlibrary.org/opensearch.xml" type="application/opensearchdescription+xml" title="Search"/>
+  <link rel="start" href="https://theanarchistlibrary.org/opds" type="application/atom+xml;profile=opds-catalog;kind=navigation" title="The Anarchist Library"/>
+  <link rel="up" href="https://theanarchistlibrary.org/opds" type="application/atom+xml;profile=opds-catalog;kind=navigation" title="The Anarchist Library"/>
+  <title>Latest entries</title>
+  <updated>2026-08-10T13:06:41+00:00</updated>
+  <icon>https://theanarchistlibrary.org/favicon.ico</icon>
+  <author>
+    <name>The Anarchist Library</name>
+    <uri>https://theanarchistlibrary.org</uri>
+  </author>
+  <entry>
+    <id>https://theanarchistlibrary.org/library/kevin-a-carson-the-desktop-regulatory-state</id>
+    <title>The Desktop Regulatory State</title>
+    <updated>2026-08-10T13:03:10+00:00</updated>
+    <dc:language xmlns:dc="http://purl.org/dc/elements/1.1/">en</dc:language>
+    <author>
+      <name>Kevin Carson</name>
+      <uri>https://theanarchistlibrary.org/category/author/kevin-carson</uri>
+    </author>
+    <summary>The Countervailing Power of Individuals and Networks</summary>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml">
+        <div>Retrieved on 8<sup>th</sup> April 2022 from <a class="text-amuse-link" href="https://kevinacarson.org/publication/drs/">kevinacarson.org</a></div>
+      </div>
+    </content>
+    <link rel="http://opds-spec.org/acquisition" href="https://theanarchistlibrary.org/library/kevin-a-carson-the-desktop-regulatory-state.epub" type="application/epub+zip"/>
+    <link rel="http://opds-spec.org/image/thumbnail" href="https://theanarchistlibrary.org/uploads/en/thumbnails/k-a-kevin-a-carson-the-desktop-regulatory-state-1.jpg.thumb.png" type="image/png"/>
+    <link rel="http://opds-spec.org/image" href="https://theanarchistlibrary.org/library/k-a-kevin-a-carson-the-desktop-regulatory-state-1.jpg" type="image/jpeg"/>
+  </entry>
+  <entry>
+    <id>https://theanarchistlibrary.org/library/voltairine-de-cleyre-will-this-struggle-be-drowned-in-blood</id>
+    <title>Will this Struggle be Drowned in Blood?</title>
+    <updated>2026-08-07T06:57:38+00:00</updated>
+    <dc:language xmlns:dc="http://purl.org/dc/elements/1.1/">en</dc:language>
+    <author>
+      <name>Voltairine de Cleyre</name>
+      <uri>https://theanarchistlibrary.org/category/author/voltairine-de-cleyre</uri>
+    </author>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml"><div>From ‘Regeneración’, English Section, November 11 to 18, 1911, Los Angeles, California, edited by William C. Owen. "The following is the English copy of an article contributed recently by the well-known writer Voltairine de Cleyre, to “Volne Listy,” the noted Bohemian weekly [… of] New York City." [-William C. Owen]</div>
+<div>Retrieved on August 6, 2026 from <a class="text-amuse-link" href="https://historyiswhat.noblogs.org/post/2026/08/06/will-this-struggle-be-drowned-in-blood-voltairine-de-cleyre-1911/">historyiswhat.noblogs.org</a></div></div>
+    </content>
+    <link rel="http://opds-spec.org/acquisition" href="https://theanarchistlibrary.org/library/voltairine-de-cleyre-will-this-struggle-be-drowned-in-blood.epub" type="application/epub+zip"/>
+  </entry>
+  <entry>
+    <id>https://theanarchistlibrary.org/library/andy-durgan-reflexions-on-the-spanish-revolution-of-1936</id>
+    <title>Reflexions on the Spanish Revolution of 1936</title>
+    <updated>2026-08-06T12:48:41+00:00</updated>
+    <dc:language xmlns:dc="http://purl.org/dc/elements/1.1/">en</dc:language>
+    <author>
+      <name>Andy Durgan</name>
+      <uri>https://theanarchistlibrary.org/category/author/andy-durgan</uri>
+    </author>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml"><div>Translated by David Fagan for International Viewpoint from viento sur 201.</div>
+<div>Retrieved on August 6, 2026 from https://internationalviewpoint.org/Reflexions-on-the-Spanish-Revolution-of-1936</div></div>
+    </content>
+    <link rel="http://opds-spec.org/acquisition" href="https://theanarchistlibrary.org/library/andy-durgan-reflexions-on-the-spanish-revolution-of-1936.epub" type="application/epub+zip"/>
+  </entry>
+  <entry>
+    <id>https://theanarchistlibrary.org/library/nikos-maziotis-and-pola-roupa-interview-of-the-prisoners-members-of-revolutionary-struggle-pola</id>
+    <title>Interview of the prisoners members of Revolutionary Struggle Pola Roupa and Nikos Maziotis to the International Red Help</title>
+    <updated>2026-08-05T07:56:39.948000000+00:00</updated>
+    <dc:language xmlns:dc="http://purl.org/dc/elements/1.1/">en</dc:language>
+    <author>
+      <name>Pola Roupa</name>
+      <uri>https://theanarchistlibrary.org/category/author/pola-roupa</uri>
+    </author>
+    <author>
+      <name>Nikos Maziotis</name>
+      <uri>https://theanarchistlibrary.org/category/author/nikos-maziotis</uri>
+    </author>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml">
+        <div>The interview is included in the book-edition of 2019, “Proclamations — Texts of Revolutionary Struggle 2003–2018”.</div>
+      </div>
+    </content>
+    <link rel="http://opds-spec.org/acquisition" href="https://theanarchistlibrary.org/library/nikos-maziotis-and-pola-roupa-interview-of-the-prisoners-members-of-revolutionary-struggle-pola.epub" type="application/epub+zip"/>
+  </entry>
+  <entry>
+    <id>https://theanarchistlibrary.org/library/martin-sostre-principles-that-won-my-freedom</id>
+    <title>Follow the Principles that Won My Freedom</title>
+    <updated>2026-08-04T20:37:24+00:00</updated>
+    <dc:language xmlns:dc="http://purl.org/dc/elements/1.1/">en</dc:language>
+    <author>
+      <name>Martin Sostre</name>
+      <uri>https://theanarchistlibrary.org/category/author/martin-sostre</uri>
+    </author>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml"><div>The following speech, “Follow the Principles that Won My Freedom,” was delivered by Sostre in 1976 shortly after his release from prison and offers a message of revolutionary optimism about how collective action can succeed—as it did for him—in freeing political prisoners and building a new egalitarian society. It is a message that feels as urgent today as it did then... “Follow the Same Principles that Won My Freedom” by Martin Sostre is excerpted from I Cannot Submit to Injustices: Collected Works of Martin Sostre, edited by Garrett Felber and published by AK Press, reproduced with permission of Felber and AK Press.</div>
+<div>Retrieved on August 4, 2026, from <a class="text-amuse-link" href="https://inquest.org/the-balance-of-power-is-on-our-side/">inquest.org</a></div></div>
+    </content>
+    <link rel="http://opds-spec.org/acquisition" href="https://theanarchistlibrary.org/library/martin-sostre-principles-that-won-my-freedom.epub" type="application/epub+zip"/>
+  </entry>
+</feed>

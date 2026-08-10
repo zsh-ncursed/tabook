@@ -195,3 +195,118 @@ describe('LibraryDb', () => {
     d2.close();
   });
 });
+
+describe('LibraryDb OPDS catalogs', () => {
+  it('starts with no catalogs', () => {
+    expect(db.listCatalogs()).toEqual([]);
+  });
+
+  it('adds and lists catalogs sorted by name', () => {
+    db.addCatalog({ name: 'Gutenberg', url: 'https://m.gutenberg.org/ebooks.opds/' });
+    db.addCatalog({ name: 'Anarchist', url: 'https://theanarchistlibrary.org/opds' });
+    const catalogs = db.listCatalogs();
+    expect(catalogs).toHaveLength(2);
+    expect(catalogs[0]!.name).toBe('Anarchist');
+    expect(catalogs[1]!.name).toBe('Gutenberg');
+  });
+
+  it('adds catalog with credentials', () => {
+    const id = db.addCatalog({
+      name: 'Standard Ebooks',
+      url: 'https://standardebooks.org/feeds/opds',
+      username: 'user@example.com',
+      password: 'secret',
+    });
+    const cat = db.getCatalog(id)!;
+    expect(cat.username).toBe('user@example.com');
+    expect(cat.password).toBe('secret');
+  });
+
+  it('adds catalog without credentials', () => {
+    const id = db.addCatalog({ name: 'Public', url: 'https://x/opds' });
+    const cat = db.getCatalog(id)!;
+    expect(cat.username).toBeNull();
+    expect(cat.password).toBeNull();
+  });
+
+  it('getCatalog returns undefined for missing id', () => {
+    expect(db.getCatalog(999)).toBeUndefined();
+  });
+
+  it('getCatalogByName finds by name', () => {
+    db.addCatalog({ name: 'Gallica', url: 'https://gallica.bnf.fr/opds' });
+    const cat = db.getCatalogByName('Gallica')!;
+    expect(cat.url).toBe('https://gallica.bnf.fr/opds');
+  });
+
+  it('getCatalogByName returns undefined for missing name', () => {
+    expect(db.getCatalogByName('Nonexistent')).toBeUndefined();
+  });
+
+  it('removes a catalog', () => {
+    const id = db.addCatalog({ name: 'Temp', url: 'https://x/opds' });
+    db.removeCatalog(id);
+    expect(db.getCatalog(id)).toBeUndefined();
+    expect(db.listCatalogs()).toEqual([]);
+  });
+
+  it('removeCatalog is a no-op for missing id', () => {
+    db.removeCatalog(999);
+    expect(db.listCatalogs()).toEqual([]);
+  });
+
+  it('updates catalog name', () => {
+    const id = db.addCatalog({ name: 'Old', url: 'https://x/opds' });
+    db.updateCatalog(id, { name: 'New' });
+    expect(db.getCatalog(id)!.name).toBe('New');
+  });
+
+  it('updates catalog url', () => {
+    const id = db.addCatalog({ name: 'X', url: 'https://old/opds' });
+    db.updateCatalog(id, { url: 'https://new/opds' });
+    expect(db.getCatalog(id)!.url).toBe('https://new/opds');
+  });
+
+  it('updates catalog credentials', () => {
+    const id = db.addCatalog({ name: 'X', url: 'https://x/opds' });
+    db.updateCatalog(id, { username: 'user', password: 'pass' });
+    const cat = db.getCatalog(id)!;
+    expect(cat.username).toBe('user');
+    expect(cat.password).toBe('pass');
+  });
+
+  it('updateCatalog with no fields is a no-op', () => {
+    const id = db.addCatalog({ name: 'X', url: 'https://x/opds' });
+    db.updateCatalog(id, {});
+    expect(db.getCatalog(id)!.name).toBe('X');
+  });
+
+  it('persists catalogs across db reopen', () => {
+    const filePath = path.join(dir, 'catalog-persist.sqlite');
+    const d1 = new LibraryDb(filePath);
+    d1.addCatalog({ name: 'Gutenberg', url: 'https://m.gutenberg.org/ebooks.opds/' });
+    d1.close();
+
+    const d2 = new LibraryDb(filePath);
+    const catalogs = d2.listCatalogs();
+    expect(catalogs).toHaveLength(1);
+    expect(catalogs[0]!.name).toBe('Gutenberg');
+    d2.close();
+  });
+
+  it('migrates from v1 to v2 adding opds_catalogs table', () => {
+    const filePath = path.join(dir, 'migrate.sqlite');
+    const d1 = new LibraryDb(filePath);
+    d1.close();
+    // Manually set user_version back to 1 to simulate a v1 DB
+    const raw = new (require('better-sqlite3'))(filePath) as import('better-sqlite3').Database;
+    raw.pragma('user_version = 1');
+    raw.close();
+
+    const d2 = new LibraryDb(filePath);
+    expect(d2.listCatalogs()).toEqual([]);
+    d2.addCatalog({ name: 'Test', url: 'https://x/opds' });
+    expect(d2.listCatalogs()).toHaveLength(1);
+    d2.close();
+  });
+});

@@ -8,6 +8,7 @@ import type { ParsedBook } from '../formats/model.js';
 import { ReaderSession } from './reader/readerModel.js';
 import { LibraryView } from './library/LibraryView.js';
 import { ReaderView } from './reader/ReaderView.js';
+import { OpdsView } from './opds/OpdsView.js';
 import { HelpView } from './help/HelpView.js';
 import { TextPrompt } from './components/TextPrompt.js';
 import { ListModal } from './components/ListModal.js';
@@ -44,7 +45,7 @@ export function App(props: AppProps): React.JSX.Element {
   // restart. The prop is only the initial value.
   const [liveConfig, setLiveConfig] = useState<Config>(config);
   const [width, height] = useTerminalSize();
-  const [screen, setScreen] = useState<'library' | 'reader'>('library');
+  const [screen, setScreen] = useState<'library' | 'reader' | 'opds'>('library');
   const [session, setSession] = useState<ReaderSession | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [themeName, setThemeName] = useState(props.themeOverride ?? config.theme);
@@ -290,6 +291,46 @@ export function App(props: AppProps): React.JSX.Element {
         case '?':
           setHelpOpen(true);
           break;
+        case 'opds':
+          if (args[0] === 'add') {
+            const name = args[1];
+            const url = args[2];
+            if (!name || !url) {
+              notify('Usage: :opds add <name> <url> [username] [password]');
+            } else {
+              const username = args[3];
+              const password = args[4];
+              if (db.getCatalogByName(name)) {
+                notify(`Catalog "${name}" already exists`);
+              } else {
+                const id = db.addCatalog({ name, url, username, password });
+                notify(`Added catalog: ${name} (#${id})`);
+              }
+            }
+          } else if (args[0] === 'remove' || args[0] === 'rm') {
+            const name = args[1];
+            if (!name) {
+              notify('Usage: :opds remove <name>');
+            } else {
+              const cat = db.getCatalogByName(name);
+              if (cat) {
+                db.removeCatalog(cat.id);
+                notify(`Removed catalog: ${name}`);
+              } else {
+                notify(`No catalog named "${name}"`);
+              }
+            }
+          } else if (args[0] === 'list' || args[0] === 'ls') {
+            const catalogs = db.listCatalogs();
+            if (catalogs.length === 0) {
+              notify('No OPDS catalogs configured. Add one with :opds add <name> <url>');
+            } else {
+              notify(catalogs.map((c) => `${c.name} — ${c.url}`).join(' | '));
+            }
+          } else {
+            setScreen('opds');
+          }
+          break;
         case 'config':
           if (args[0] === 'init') {
             const p = configPathRef.current || defaultConfigPath();
@@ -388,10 +429,17 @@ export function App(props: AppProps): React.JSX.Element {
       'search',
       'help',
       'config',
+      'opds',
     ];
     if (parts.length <= 1 && !trimmed.includes(' ')) {
       const matches = commands.filter((c) => c.startsWith(cmd));
       if (matches.length === 1) return `:${matches[0]} `;
+    }
+    if (cmd === 'opds' && parts.length === 2) {
+      const sub = (parts[1] ?? '').toLowerCase();
+      const subs = ['add', 'remove', 'list'];
+      const matches = subs.filter((s) => s.startsWith(sub));
+      if (matches.length === 1) return `:opds ${matches[0]} `;
     }
     if (cmd === 'theme' && parts.length === 2) {
       const prefix = (parts[1] ?? '').toLowerCase();
@@ -508,6 +556,18 @@ export function App(props: AppProps): React.JSX.Element {
     }
   }, [themePickerOpen, themeCursor, themeItems, themeName]);
 
+  const openDownloadedBook = useCallback(
+    (bookId: number, filePath: string) => {
+      try {
+        const book = parseBookFile(filePath);
+        openParsedBook(book, bookId);
+      } catch (err) {
+        notify(`Cannot open downloaded book: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+    [openParsedBook, notify],
+  );
+
   return (
     <Box flexDirection="column" width="100%" height="100%">
       {screen === 'library' ? (
@@ -525,6 +585,20 @@ export function App(props: AppProps): React.JSX.Element {
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
           completeCommand={completeCommand}
+          inputDisabled={promptOpenPath || helpOpen || themePickerOpen}
+        />
+      ) : screen === 'opds' ? (
+        <OpdsView
+          db={db}
+          config={liveConfig}
+          theme={theme}
+          notify={notify}
+          onExit={() => {
+            setScreen('library');
+            setLibraryRefresh((c) => c + 1);
+          }}
+          onHelp={() => setHelpOpen(true)}
+          onOpenDownloaded={openDownloadedBook}
           inputDisabled={promptOpenPath || helpOpen || themePickerOpen}
         />
       ) : session ? (

@@ -16,6 +16,16 @@ export function dataDir(): string {
   return path.join(base, APP_NAME);
 }
 
+export function cacheDir(): string {
+  const xdg = process.env.XDG_CACHE_HOME;
+  const base = xdg && xdg.trim() !== '' ? xdg : path.join(os.homedir(), '.cache');
+  return path.join(base, APP_NAME);
+}
+
+export function downloadsDir(): string {
+  return path.join(cacheDir(), 'downloads');
+}
+
 export function defaultDbPath(): string {
   return path.join(configDir(), 'library.db');
 }

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opds="http://opds-spec.org/2010/catalog"
+      xmlns:dcterms="http://purl.org/dc/terms/"
+      xmlns:thr="http://purl.org/syndication/thread/1.0">
+  <id>urn:test:facets</id>
+  <title>Test Facet Feed</title>
+  <updated>2026-01-01T00:00:00Z</updated>
+  <link rel="self" href="https://example.com/feed" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+  <link rel="start" href="https://example.com/root" type="application/atom+xml;profile=opds-catalog;kind=navigation"/>
+  <link rel="up" href="https://example.com/root" type="application/atom+xml;profile=opds-catalog;kind=navigation"/>
+  <link rel="next" href="https://example.com/feed?page=2" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+  <link rel="search" href="https://example.com/opensearch.xml" type="application/opensearchdescription+xml"/>
+
+  <link rel="http://opds-spec.org/facet" opds:facetGroup="Format" title="EPUB" thr:count="120" href="https://example.com/feed?format=epub"/>
+  <link rel="http://opds-spec.org/facet" opds:facetGroup="Format" title="PDF" thr:count="30" href="https://example.com/feed?format=pdf"/>
+  <link rel="http://opds-spec.org/facet" opds:facetGroup="Format" opds:activeFacet="true" title="All" thr:count="150" href="https://example.com/feed"/>
+  <link rel="http://opds-spec.org/facet" opds:facetGroup="Language" title="English" thr:count="100" href="https://example.com/feed?lang=en"/>
+  <link rel="http://opds-spec.org/facet" opds:facetGroup="Language" title="Spanish" thr:count="50" href="https://example.com/feed?lang=es"/>
+
+  <entry>
+    <id>urn:test:book1</id>
+    <title>FB2 Test Book</title>
+    <updated>2026-01-01T00:00:00Z</updated>
+    <author><name>Test Author</name></author>
+    <summary>A test book in FB2 format.</summary>
+    <dcterms:language>ru</dcterms:language>
+    <dcterms:issued>2020</dcterms:issued>
+    <dcterms:publisher>Test Publisher</dcterms:publisher>
+    <dcterms:identifier>urn:isbn:978-3-16-148410-0</dcterms:identifier>
+    <category scheme="http://purl.org/dc/terms/LCSH" term="Fiction"/>
+    <link rel="http://opds-spec.org/acquisition/open-access" type="text/fb2+xml" href="https://example.com/books/book1.fb2" length="123456"/>
+    <link rel="http://opds-spec.org/image" type="image/jpeg" href="https://example.com/covers/book1.jpg"/>
+    <link rel="http://opds-spec.org/image/thumbnail" type="image/png" href="https://example.com/covers/book1.thumb.png"/>
+  </entry>
+
+  <entry>
+    <id>urn:test:book2</id>
+    <title>EPUB Test Book</title>
+    <updated>2026-01-02T00:00:00Z</updated>
+    <author><name>Another Author</name><uri>https://example.com/authors/2</uri></author>
+    <content type="text">A test book in EPUB format with multiple acquisition links.</content>
+    <dcterms:language>en</dcterms:language>
+    <link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="https://example.com/books/book2.epub" length="651214"/>
+    <link rel="http://opds-spec.org/acquisition" type="application/x-mobipocket-ebook" href="https://example.com/books/book2.mobi" length="874424"/>
+    <link rel="http://opds-spec.org/acquisition/sample" type="application/epub+zip" href="https://example.com/books/book2-preview.epub" length="50000"/>
+  </entry>
+
+  <entry>
+    <id>urn:test:book3</id>
+    <title>FB2.ZIP Test Book</title>
+    <updated>2026-01-03T00:00:00Z</updated>
+    <author><name>Third Author</name></author>
+    <link rel="http://opds-spec.org/acquisition/open-access" type="application/fb2+zip" href="https://example.com/books/book3.fb2.zip" length="99999"/>
+  </entry>
+
+  <entry>
+    <id>urn:test:nav1</id>
+    <title>Navigation Subfeed</title>
+    <updated>2026-01-04T00:00:00Z</updated>
+    <content type="text">A sub-navigation entry.</content>
+    <link rel="subsection" type="application/atom+xml;profile=opds-catalog;kind=navigation" href="https://example.com/subfeed"/>
+  </entry>
+</feed>

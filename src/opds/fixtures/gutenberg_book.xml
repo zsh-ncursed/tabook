@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:relevance="http://a9.com/-/opensearch/extensions/relevance/1.0/">
+<id>http://www.gutenberg.org/ebooks/2554.opds</id>
+<updated>2026-08-10T19:55:39Z</updated>
+<title>Crime and Punishment by Fyodor Dostoyevsky</title>
+<subtitle>Free eBooks since 1971.</subtitle>
+<author>
+<name>Project Gutenberg</name>
+<uri>https://www.gutenberg.org</uri>
+<email>webmaster@gutenberg.org</email>
+</author>
+<icon>https://www.gutenberg.org/gutenberg/favicon.ico</icon>
+<link rel="search" type="application/opensearchdescription+xml" title="Project Gutenberg Catalog Search" href="https://www.gutenberg.org/catalog/osd-books.xml"/>
+<link rel="self" title="This Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks/2554.opds"/>
+<link rel="alternate" type="text/html" title="HTML Page" href="/ebooks/2554"/>
+<link rel="start" title="Start Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks.opds/"/>
+<opensearch:itemsPerPage>25</opensearch:itemsPerPage>
+<opensearch:startIndex>1</opensearch:startIndex>
+<entry>
+<updated>2026-08-10T19:55:39Z</updated>
+<title>Crime and Punishment</title>
+<content type="xhtml">
+<div xmlns="http://www.w3.org/1999/xhtml">
+<p>This edition had all images removed.</p>
+<p>
+Uniform Title:
+Prestuplenie i nakazanie. English
+</p>
+<p>
+Title:
+Crime and Punishment
+</p>
+<p>
+Note:
+Wikipedia page about this book: https:<a href="//en.wikipedia.org/wiki/Crime_and_Punishment">//en.wikipedia.org/wiki/Crime_and_Punishment</a>
+</p>
+<p>
+Credits:
+John Bickers, Dagny and David Widger
+</p>
+<p>
+Summary:
+"Crime and Punishment" by Fyodor Dostoevsky is a novel published in 1866. It follows Rodion Raskolnikov, an impoverished former law student in Saint Petersburg who plans to murder an unscrupulous pawnbroker. He convinces himself that certain crimes are justifiable if committed by "extraordinary" men pursuing higher goals. Once the deed is done, however, he is consumed by confusion, paranoia, and guilt as his theoretical justifications crumble and he faces the internal and external consequences of his actions. (This is an automatically generated summary.)
+</p>
+<p>
+Reading Level:
+Reading ease score: 83.0 (6th grade). Easy to read.
+</p>
+<p>Author: Dostoyevsky, Fyodor, 1821-1881</p><p>Translator: Garnett, Constance, 1861-1946</p>
+<p>EBook No.: 2554</p>
+<p>Published: Mar 28, 2006</p>
+<p>Downloads: 147254</p>
+<p>Language: English</p>
+<p>Subject: Detective and mystery stories</p><p>Subject: Psychological fiction</p><p>Subject: Saint Petersburg (Russia) -- Fiction</p><p>Subject: Murder -- Fiction</p><p>Subject: Crime -- Psychological aspects -- Fiction</p>
+<p>LoCC: Language and Literatures: Slavic (including Russian), Languages and Literature</p>
+<p>Category: Text</p>
+<p>Rights: Public domain in the USA.</p>
+</div>
+</content>
+<id>urn:gutenberg:2554:2</id>
+<published>2006-03-28T00:00:00+00:00</published>
+<rights>Public domain in the USA.</rights>
+<contributor>
+<name>Garnett, Constance</name>
+</contributor>
+<author>
+<name>Dostoyevsky, Fyodor</name>
+</author>
+<category scheme="http://purl.org/dc/terms/LCSH" term="Detective and mystery stories"/><category scheme="http://purl.org/dc/terms/LCSH" term="Psychological fiction"/><category scheme="http://purl.org/dc/terms/LCSH" term="Saint Petersburg (Russia) -- Fiction"/><category scheme="http://purl.org/dc/terms/LCSH" term="Murder -- Fiction"/><category scheme="http://purl.org/dc/terms/LCSH" term="Crime -- Psychological aspects -- Fiction"/>
+<category scheme="http://purl.org/dc/terms/LCC" term="PG" label="Language and Literatures: Slavic (including Russian), Languages and Literature"/>
+<category scheme="http://purl.org/dc/terms/DCMIType" term="Text"/>
+<dcterms:language>en</dcterms:language>
+<relevance:score>1</relevance:score>
+<link type="application/epub+zip" rel="http://opds-spec.org/acquisition" title="EPUB (no images, older E-readers)" length="651214" href="https://www.gutenberg.org/ebooks/2554.epub.noimages"/>
+<link type="application/x-mobipocket-ebook" rel="http://opds-spec.org/acquisition" title="Kindle (no images)" length="874424" href="https://www.gutenberg.org/ebooks/2554.kindle.noimages"/>
+<link type="image/jpeg" rel="http://opds-spec.org/image" href="https://www.gutenberg.org/cache/epub/2554/pg2554.cover.medium.jpg"/>
+<link type="image/jpeg" rel="http://opds-spec.org/image/thumbnail" href="https://www.gutenberg.org/cache/epub/2554/pg2554.cover.small.jpg"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/author/314.opds" title="By Dostoyevsky, Fyodor…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/author/2858.opds" title="By Garnett, Constance…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/subject/1123.opds" title="On Detective and mystery stories…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/subject/2430.opds" title="On Psychological fiction…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/subject/3523.opds" title="On Saint Petersburg (Russia) -- Fiction…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/subject/3550.opds" title="On Murder -- Fiction…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/subject/34776.opds" title="On Crime -- Psychological aspects -- Fiction…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/13.opds" title="In Best Books Ever Listings…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/28.opds" title="In Crime Fiction…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/40.opds" title="In Harvard Classics…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/640.opds" title="In Category: Crime, Thrillers and Mystery…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/645.opds" title="In Category: Novels…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/649.opds" title="In Category: Classics of Literature…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/650.opds" title="In Category: Russian Literature…"/>
+</entry>
+<entry>
+<updated>2026-08-10T19:55:39Z</updated>
+<title>Crime and Punishment</title>
+<content type="xhtml">
+<div xmlns="http://www.w3.org/1999/xhtml">
+<p>This edition has images.</p>
+<p>
+Uniform Title:
+Prestuplenie i nakazanie. English
+</p>
+<p>
+Title:
+Crime and Punishment
+</p>
+<p>
+Note:
+Wikipedia page about this book: https:<a href="//en.wikipedia.org/wiki/Crime_and_Punishment">//en.wikipedia.org/wiki/Crime_and_Punishment</a>
+</p>
+<p>
+Credits:
+John Bickers, Dagny and David Widger
+</p>
+<p>
+Summary:
+"Crime and Punishment" by Fyodor Dostoevsky is a novel published in 1866. It follows Rodion Raskolnikov, an impoverished former law student in Saint Petersburg who plans to murder an unscrupulous pawnbroker. He convinces himself that certain crimes are justifiable if committed by "extraordinary" men pursuing higher goals. Once the deed is done, however, he is consumed by confusion, paranoia, and guilt as his theoretical justifications crumble and he faces the internal and external consequences of his actions. (This is an automatically generated summary.)
+</p>
+<p>
+Reading Level:
+Reading ease score: 83.0 (6th grade). Easy to read.
+</p>
+<p>Author: Dostoyevsky, Fyodor, 1821-1881</p><p>Translator: Garnett, Constance, 1861-1946</p>
+<p>EBook No.: 2554</p>
+<p>Published: Mar 28, 2006</p>
+<p>Downloads: 147254</p>
+<p>Language: English</p>
+<p>Subject: Detective and mystery stories</p><p>Subject: Psychological fiction</p><p>Subject: Saint Petersburg (Russia) -- Fiction</p><p>Subject: Murder -- Fiction</p><p>Subject: Crime -- Psychological aspects -- Fiction</p>
+<p>LoCC: Language and Literatures: Slavic (including Russian), Languages and Literature</p>
+<p>Category: Text</p>
+<p>Rights: Public domain in the USA.</p>
+</div>
+</content>
+<id>urn:gutenberg:2554:3</id>
+<published>2006-03-28T00:00:00+00:00</published>
+<rights>Public domain in the USA.</rights>
+<contributor>
+<name>Garnett, Constance</name>
+</contributor>
+<author>
+<name>Dostoyevsky, Fyodor</name>
+</author>
+<category scheme="http://purl.org/dc/terms/LCSH" term="Detective and mystery stories"/><category scheme="http://purl.org/dc/terms/LCSH" term="Psychological fiction"/><category scheme="http://purl.org/dc/terms/LCSH" term="Saint Petersburg (Russia) -- Fiction"/><category scheme="http://purl.org/dc/terms/LCSH" term="Murder -- Fiction"/><category scheme="http://purl.org/dc/terms/LCSH" term="Crime -- Psychological aspects -- Fiction"/>
+<category scheme="http://purl.org/dc/terms/LCC" term="PG" label="Language and Literatures: Slavic (including Russian), Languages and Literature"/>
+<category scheme="http://purl.org/dc/terms/DCMIType" term="Text"/>
+<dcterms:language>en</dcterms:language>
+<relevance:score>1</relevance:score>
+<link type="application/epub+zip" rel="http://opds-spec.org/acquisition" title="EPUB3 (E-readers incl. Send-to-Kindle)" length="783861" href="https://www.gutenberg.org/ebooks/2554.epub3.images"/>
+<link type="application/epub+zip" rel="http://opds-spec.org/acquisition" title="EPUB (older E-readers)" length="783515" href="https://www.gutenberg.org/ebooks/2554.epub.images"/>
+<link type="application/x-mobipocket-ebook" rel="http://opds-spec.org/acquisition" title="Kindle" length="1676656" href="https://www.gutenberg.org/ebooks/2554.kf8.images"/>
+<link type="application/x-mobipocket-ebook" rel="http://opds-spec.org/acquisition" title="older Kindles" length="1594973" href="https://www.gutenberg.org/ebooks/2554.kindle.images"/>
+<link type="image/jpeg" rel="http://opds-spec.org/image" href="https://www.gutenberg.org/cache/epub/2554/pg2554.cover.medium.jpg"/>
+<link type="image/jpeg" rel="http://opds-spec.org/image/thumbnail" href="https://www.gutenberg.org/cache/epub/2554/pg2554.cover.small.jpg"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/author/314.opds" title="By Dostoyevsky, Fyodor…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/author/2858.opds" title="By Garnett, Constance…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/subject/1123.opds" title="On Detective and mystery stories…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/subject/2430.opds" title="On Psychological fiction…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/subject/3523.opds" title="On Saint Petersburg (Russia) -- Fiction…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/subject/3550.opds" title="On Murder -- Fiction…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/subject/34776.opds" title="On Crime -- Psychological aspects -- Fiction…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/13.opds" title="In Best Books Ever Listings…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/28.opds" title="In Crime Fiction…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/40.opds" title="In Harvard Classics…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/640.opds" title="In Category: Crime, Thrillers and Mystery…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/645.opds" title="In Category: Novels…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/649.opds" title="In Category: Classics of Literature…"/>
+<link type="application/atom+xml;profile=opds-catalog" rel="related" href="/ebooks/bookshelf/650.opds" title="In Category: Russian Literature…"/>
+</entry>
+</feed>
