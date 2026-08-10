@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Text, useInput, type Key } from 'ink';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Text, type Key } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { Config } from '../../config/defaults.js';
 import type { LibraryDb, CatalogRecord } from '../../db/db.js';
@@ -7,6 +7,7 @@ import { resolveKeyName } from '../keymap.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TextPrompt } from '../components/TextPrompt.js';
 import { useTerminalSize } from '../useTerminalSize.js';
+import { useInputDispatch } from '../useInputDispatch.js';
 import { forceRedraw } from '../screenRefresh.js';
 import { truncateW } from '../../utils/text.js';
 import { fetchFeed, fetchOpenSearch, catalogAuth, OpdsError } from '../../opds/client.js';
@@ -179,8 +180,10 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       return;
     }
     if (feedStack.length > 1) {
-      setFeedStack((s) => s.slice(0, -1));
+      // feedStack is a useCallback dep, so this closure is fresh; reading prev
+      // here keeps the state update free of side effects (updaters must be pure).
       const prev = feedStack[feedStack.length - 2];
+      setFeedStack((s) => s.slice(0, -1));
       if (prev) {
         setCursor(prev.cursor);
         setScrollOffset(prev.scrollOffset);
@@ -439,7 +442,16 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
     ],
   );
 
-  useInput(handleInput, { isActive: !inputDisabled && mode !== 'search' && mode !== 'loading' && mode !== 'auth-username' && mode !== 'auth-password' });
+  // Stable handler backed by a ref — prevents Ink useInput re-subscribe race.
+  // Each cursor move would change handleInput's identity and trigger a raw-mode
+  // round-trip; the ref keeps the useInput callback stable while the closure
+  // always sees fresh state. Same pattern as LibraryView/ReaderView.
+  const opdsInputRef = useRef(handleInput);
+  opdsInputRef.current = handleInput;
+  const dispatchRef = useInputDispatch(
+    !inputDisabled && mode !== 'search' && mode !== 'loading' && mode !== 'auth-username' && mode !== 'auth-password',
+  );
+  dispatchRef.current = (input: string, key: Key) => opdsInputRef.current(input, key);
 
   useEffect(() => {
     forceRedraw();

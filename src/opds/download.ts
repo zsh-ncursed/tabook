@@ -1,5 +1,5 @@
-import { join } from 'node:path';
-import { writeFileSync } from 'node:fs';
+import { join, basename as pathBasename } from 'node:path';
+import { writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { ensureDir, downloadsDir } from '../utils/paths.js';
 import { downloadBook, type OpdsAuth } from './client.js';
 import { parseBookFile } from '../formats/index.js';
@@ -35,9 +35,25 @@ function truncateUtf8(value: string, maxBytes: number): string {
 }
 
 function sanitizeFilename(name: string, ext: string): string {
-  const cleaned = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'download';
+  const cleaned = name
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+    .replace(/^\.+/, '')
+    .trim() || 'download';
   const stemBytes = Math.max(1, MAX_FILENAME_BYTES - Buffer.byteLength(ext, 'utf8'));
   return truncateUtf8(cleaned, stemBytes);
+}
+
+function uniqueFilePath(dir: string, basename: string): string {
+  const candidate = join(dir, basename);
+  if (!existsSync(candidate)) return candidate;
+  const dot = basename.lastIndexOf('.');
+  const stem = dot > 0 ? basename.slice(0, dot) : basename;
+  const ext = dot > 0 ? basename.slice(dot) : '';
+  for (let i = 2; i < 1000; i++) {
+    const alt = join(dir, `${stem}-${i}${ext}`);
+    if (!existsSync(alt)) return alt;
+  }
+  return join(dir, `${stem}-${Date.now()}${ext}`);
 }
 
 export async function downloadAndSave(
@@ -57,17 +73,22 @@ export async function downloadAndSave(
   const basename = sanitizeFilename(entry.title, ext) + ext;
   const dir = downloadsDir();
   ensureDir(dir);
-  const filePath = join(dir, basename);
+  const filePath = uniqueFilePath(dir, basename);
   writeFileSync(filePath, data);
 
-  const parsed = parseBookFile(filePath);
-  const bookId = opts.db.addBook({
-    path: filePath,
-    filename: basename,
-    format: parsed.format,
-    size: parsed.size,
-    metadata: parsed.metadata,
-  });
-
-  return { bookId, filePath, title: parsed.metadata.title };
+  try {
+    const parsed = parseBookFile(filePath);
+    const bookId = opts.db.addBook({
+      path: filePath,
+      // uniqueFilePath may have deduped to "Book-2.fb2" — store the actual name
+      filename: pathBasename(filePath),
+      format: parsed.format,
+      size: parsed.size,
+      metadata: parsed.metadata,
+    });
+    return { bookId, filePath, title: parsed.metadata.title };
+  } catch (err) {
+    unlinkSync(filePath);
+    throw err;
+  }
 }

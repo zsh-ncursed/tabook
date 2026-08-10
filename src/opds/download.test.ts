@@ -165,6 +165,34 @@ describe('downloadAndSave', () => {
     expect(filename.length).toBeLessThan(longTitle.length);
   });
 
+  it('dedupes the filename with a -N suffix when the file already exists', async () => {
+    const fb2Xml = FB2_SAMPLE;
+    setFetchMock(vi.fn(async () => mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } })));
+
+    const entry: OpdsEntry = {
+      id: 'urn:test:dup',
+      title: 'Duplicate Book',
+      updated: '',
+      authors: [],
+      categories: [],
+      links: [{ rel: 'http://opds-spec.org/acquisition', href: 'https://x/book.fb2', type: 'text/fb2+xml' }],
+      acquisitionLinks: [{ rel: 'http://opds-spec.org/acquisition', href: 'https://x/book.fb2', type: 'text/fb2+xml' }],
+      isAcquisition: true,
+      isNavigation: false,
+    };
+
+    const db = makeDbStub();
+    process.env.XDG_CACHE_HOME = testDownloadDir;
+
+    await downloadAndSave(entry, { db: db as never });
+    await downloadAndSave(entry, { db: db as never });
+    const books = db.getBooks();
+    expect(books).toHaveLength(2);
+    expect(books[0]!.filename).toBe('Duplicate Book.fb2');
+    expect(books[1]!.filename).toBe('Duplicate Book-2.fb2');
+    expect(books[1]!.path).not.toBe(books[0]!.path);
+  });
+
   it('resolves a relative acquisition href against base', async () => {
     const fb2Xml = FB2_SAMPLE;
     let capturedUrl: string | undefined;

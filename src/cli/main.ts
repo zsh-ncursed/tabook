@@ -1,4 +1,3 @@
-import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import React from 'react';
 import { Command } from 'commander';
@@ -8,28 +7,15 @@ import { loadConfig } from '../config/config.js';
 import { getTheme } from '../themes/themes.js';
 import { LibraryDb } from '../db/db.js';
 import { defaultDbPath, expandTilde } from '../utils/paths.js';
+import { appVersion } from '../utils/version.js';
 import { App } from '../tui/App.js';
-
-const require = createRequire(import.meta.url);
-
-function readVersion(): string {
-  for (const candidate of ['../package.json', '../../package.json']) {
-    try {
-      const pkg = require(candidate) as { version?: string };
-      if (typeof pkg.version === 'string') return pkg.version;
-    } catch {
-      // Empty catch; the candidate may not exist in this layout.
-    }
-  }
-  return '0.0.0';
-}
 
 export function main(): void {
   const program = new Command();
   program
     .name('tabook')
     .description('TUI e-book reader for FB2 and EPUB')
-    .version(readVersion(), '-V, --version', 'output the version number')
+    .version(appVersion(), '-V, --version', 'output the version number')
     .option('--library', 'open the library view')
     .option('--theme <name>', 'theme to use (overrides config)')
     .option('--config <path>', 'path to the config file')

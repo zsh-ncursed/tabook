@@ -1,4 +1,5 @@
 import { parseOpdsAtom } from './parser.js';
+import { appVersion } from '../utils/version.js';
 import type { OpdsFeed } from './model.js';
 
 export interface OpdsAuth {
@@ -18,7 +19,7 @@ export class OpdsError extends Error {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_REDIRECTS = 5;
-const UA = `tabook/0.1.2 (+https://github.com/zsh-ncursed/tabook)`;
+const UA = `tabook/${appVersion()} (+https://github.com/zsh-ncursed/tabook)`;
 
 function authHeaders(auth?: OpdsAuth): Record<string, string> {
   if (!auth?.username) return {};
