@@ -135,6 +135,34 @@ describe('downloadAndSave', () => {
     const db = makeDbStub();
     await expect(downloadAndSave(entry, { db: db as never })).rejects.toThrow('No supported');
   });
+
+  it('resolves a relative acquisition href against base', async () => {
+    const fb2Xml = FB2_SAMPLE;
+    let capturedUrl: string | undefined;
+    setFetchMock(vi.fn(async (url) => {
+      capturedUrl = String(url);
+      return mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } });
+    }));
+
+    const entry: OpdsEntry = {
+      id: 'urn:test:relative',
+      title: 'Relative Book',
+      updated: '',
+      authors: [],
+      categories: [],
+      links: [{ rel: 'http://opds-spec.org/acquisition', href: '/download/book.fb2', type: 'text/fb2+xml' }],
+      acquisitionLinks: [{ rel: 'http://opds-spec.org/acquisition', href: '/download/book.fb2', type: 'text/fb2+xml' }],
+      isAcquisition: true,
+      isNavigation: false,
+    };
+
+    const db = makeDbStub();
+    process.env.XDG_CACHE_HOME = testDownloadDir;
+
+    await downloadAndSave(entry, { db: db as never, base: 'https://cat.example.org/opds/root' });
+    expect(capturedUrl).toBe('https://cat.example.org/download/book.fb2');
+    expect(db.getBooks()).toHaveLength(1);
+  });
 });
 
 describe('catalogAuth', () => {

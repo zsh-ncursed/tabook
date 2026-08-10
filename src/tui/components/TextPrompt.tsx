@@ -9,6 +9,8 @@ export interface TextPromptProps {
   prefix: string;
   placeholder?: string;
   initialValue?: string;
+  /** When true the typed value is rendered as dots (for passwords). */
+  secret?: boolean;
   onSubmit: (value: string) => void;
   onCancel: () => void;
   onValueChange?: (value: string) => void;
@@ -57,6 +59,7 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
     prefix,
     placeholder,
     initialValue = '',
+    secret = false,
     onSubmit,
     onCancel,
     onValueChange,
@@ -202,9 +205,10 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
     onValueChange?.(value);
   }, [value, onValueChange]);
 
-  const before = value.slice(0, cursor);
-  const atCursor = value[cursor] ?? ' ';
-  const after = value.slice(cursor + 1);
+  const rendered = secret ? '\u2022'.repeat(value.length) : value;
+  const before = rendered.slice(0, cursor);
+  const atCursor = rendered[cursor] ?? ' ';
+  const after = rendered.slice(cursor + 1);
 
   return (
     <Box flexDirection="row">

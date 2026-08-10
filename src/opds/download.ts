@@ -13,8 +13,15 @@ export interface DownloadResult {
   title: string;
 }
 
+const MAX_FILENAME_LENGTH = 180;
+
 function sanitizeFilename(name: string): string {
-  return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'download';
+  const cleaned = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'download';
+  // ext4 (and most other filesystems) cap file names at 255 bytes; titles in
+  // the wild can be far longer, so truncate to leave room for the extension.
+  return cleaned.length > MAX_FILENAME_LENGTH
+    ? cleaned.slice(0, MAX_FILENAME_LENGTH)
+    : cleaned;
 }
 
 export async function downloadAndSave(

@@ -124,6 +124,55 @@ describe('fetchFeed', () => {
     await fetchFeed('/ebooks.opds/', { base: 'https://m.gutenberg.org/' });
     expect(capturedUrl).toBe('https://m.gutenberg.org/ebooks.opds/');
   });
+
+  it('keeps auth on same-origin redirect', async () => {
+    const xml = fixture('gutenberg_root.xml');
+    const calls: Array<{ url: string; auth: string | null }> = [];
+    setFetchMock(vi.fn(async (url, init?) => {
+      const headers = new Headers(init?.headers);
+      calls.push({ url: String(url), auth: headers.get('Authorization') });
+      if (calls.length === 1) {
+        return mockResponse('', { status: 302, headers: { location: '/ebooks.opds/' } });
+      }
+      return mockResponse(xml);
+    }));
+
+    await fetchFeed('https://m.gutenberg.org/old', { auth: { username: 'u', password: 'p' } });
+    expect(calls[1]!.auth).toMatch(/^Basic /);
+  });
+
+  it('drops auth on cross-origin redirect', async () => {
+    const xml = fixture('gutenberg_root.xml');
+    const calls: Array<{ url: string; auth: string | null }> = [];
+    setFetchMock(vi.fn(async (url, init?) => {
+      const headers = new Headers(init?.headers);
+      calls.push({ url: String(url), auth: headers.get('Authorization') });
+      if (calls.length === 1) {
+        return mockResponse('', { status: 302, headers: { location: 'https://cdn.example.org/feed.xml' } });
+      }
+      return mockResponse(xml);
+    }));
+
+    await fetchFeed('https://m.gutenberg.org/old', { auth: { username: 'u', password: 'p' } });
+    expect(calls[0]!.auth).toMatch(/^Basic /);
+    expect(calls[1]!.auth).toBeNull();
+  });
+
+  it('records the final post-redirect URL on the feed', async () => {
+    const xml = fixture('gutenberg_root.xml');
+    const calls: string[] = [];
+    setFetchMock(vi.fn(async (url) => {
+      calls.push(String(url));
+      if (calls.length === 1) {
+        return mockResponse('', { status: 301, headers: { location: 'https://m.gutenberg.org/ebooks.opds/' } });
+      }
+      return mockResponse(xml);
+    }));
+
+    const feed = await fetchFeed('https://m.gutenberg.org/redirect');
+    expect(calls).toHaveLength(2);
+    expect(feed.url).toBe('https://m.gutenberg.org/ebooks.opds/');
+  });
 });
 
 describe('fetchOpenSearch', () => {

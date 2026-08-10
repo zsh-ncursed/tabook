@@ -205,7 +205,10 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       }
       setMode('loading');
       try {
-        const osdXml = await fetchOpenSearch(searchHref, { auth: catalogAuth(activeCatalog) });
+        const osdXml = await fetchOpenSearch(searchHref, {
+          auth: catalogAuth(activeCatalog),
+          base: currentFeed?.url,
+        });
         const osd = parseOpenSearch(osdXml);
         const url = buildSearchUrl(osd, query);
         if (!url) {
@@ -213,7 +216,10 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
           setMode('browsing');
           return;
         }
-        const feed = await fetchFeed(url, { auth: catalogAuth(activeCatalog) });
+        const feed = await fetchFeed(url, {
+          auth: catalogAuth(activeCatalog),
+          base: currentFeed?.url,
+        });
         setFeedStack((s) => [...s, { feed, cursor: 0, scrollOffset: 0 }]);
         setCursor(0);
         setScrollOffset(0);
@@ -239,6 +245,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         const result = await downloadAndSave(entry, {
           auth: catalogAuth(activeCatalog),
           db,
+          base: currentFeed?.url,
         });
         notify(`Downloaded: ${result.title}`);
         onOpenDownloaded(result.bookId, result.filePath);
@@ -248,7 +255,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         setDownloading(false);
       }
     },
-    [activeCatalog, db, notify, onOpenDownloaded],
+    [activeCatalog, currentFeed, db, notify, onOpenDownloaded],
   );
 
   const handleSelect = useCallback(() => {
@@ -261,7 +268,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       const row = rows[cursor];
       if (!row) return;
       if (row.kind === 'facet') {
-        void loadFeed(row.facet.href, activeCatalog?.url, activeCatalog);
+        void loadFeed(row.facet.href, currentFeed?.url, activeCatalog);
         return;
       }
       if (row.kind === 'entry') {
@@ -270,7 +277,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
           setSelectedEntry(entry);
           setMode('entry-detail');
         } else if (entry.subsectionHref) {
-          void loadFeed(entry.subsectionHref, activeCatalog?.url, activeCatalog);
+          void loadFeed(entry.subsectionHref, currentFeed?.url, activeCatalog);
         }
       }
     }
@@ -301,12 +308,12 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         return;
       }
 
-      if (mode === 'catalog-list') {
-        switch (keyName) {
-          case 'j':
-          case 'down':
-            setCatalogCursor((c) => Math.min(catalogs.length - 1, c + 1));
-            break;
+    if (mode === 'catalog-list') {
+      switch (keyName) {
+        case 'j':
+        case 'down':
+          setCatalogCursor((c) => Math.max(0, Math.min(catalogs.length - 1, c + 1)));
+          break;
           case 'k':
           case 'up':
             setCatalogCursor((c) => Math.max(0, c - 1));
@@ -382,7 +389,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
             break;
           case 'n':
             if (currentFeed?.nextHref) {
-              void loadFeed(currentFeed.nextHref, activeCatalog?.url, activeCatalog);
+              void loadFeed(currentFeed.nextHref, currentFeed?.url, activeCatalog);
             }
             break;
           case 'q':
@@ -588,6 +595,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
             theme={theme}
             prefix="password: "
             placeholder="password (leave empty for none)"
+            secret
             onSubmit={(value) => {
               void retryWithAuth(authUsername, value);
             }}
