@@ -82,6 +82,10 @@ export interface OpdsEntry {
 export interface OpdsFeed {
   id: string;
   title: string;
+  /** The URL this feed was actually fetched from (after redirects). Relative
+   *  links inside the feed must be resolved against this, not the catalog
+   *  root URL. Set by fetchFeed after the request completes. */
+  url?: string;
   subtitle?: string;
   updated: string;
   kind: FeedKind;

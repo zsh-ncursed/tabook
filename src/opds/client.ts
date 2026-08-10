@@ -37,11 +37,20 @@ function resolveUrl(href: string, base?: string): string {
   return href;
 }
 
+function sameOrigin(a: string, b: string): boolean {
+  try {
+    return new URL(a).origin === new URL(b).origin;
+  } catch {
+    return false;
+  }
+}
+
 interface FetchOptions {
   auth?: OpdsAuth;
   signal?: AbortSignal;
   timeoutMs?: number;
   base?: string;
+  accept?: string;
 }
 
 interface FetchedResult {
@@ -60,13 +69,16 @@ async function fetchWithTimeout(
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  const signal = opts.signal
-    ? mergeSignals(opts.signal, controller.signal)
-    : controller.signal;
+  const merged = opts.signal ? mergeSignals(opts.signal, controller.signal) : null;
+  const signal = merged ? merged.signal : controller.signal;
 
   try {
     const res = await fetch(url, {
-      headers: { ...authHeaders(opts.auth), 'User-Agent': UA, Accept: 'application/atom+xml,*/*' },
+      headers: {
+        ...authHeaders(opts.auth),
+        'User-Agent': UA,
+        Accept: opts.accept ?? 'application/atom+xml,*/*',
+      },
       signal,
       redirect: 'manual',
     });
@@ -75,7 +87,11 @@ async function fetchWithTimeout(
       const location = res.headers.get('location');
       if (!location) throw new OpdsError(`Redirect ${res.status} without Location header from ${url}`);
       const next = resolveUrl(location, url);
-      return fetchWithTimeout(next, opts, redirectCount + 1);
+      // Never forward credentials to a different origin — a malicious or
+      // compromised catalog could otherwise steal Basic auth via redirect.
+      const nextOpts =
+        sameOrigin(url, next) ? opts : { ...opts, auth: undefined };
+      return fetchWithTimeout(next, nextOpts, redirectCount + 1);
     }
 
     return { response: res, finalUrl: url };
@@ -87,17 +103,25 @@ async function fetchWithTimeout(
     throw new OpdsError(`Network error fetching ${url}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   } finally {
     clearTimeout(timeout);
+    // Release the listeners on both source signals once the request has
+    // finished (success, error, or abort) — otherwise a long-lived external
+    // signal keeps this closure (and the controller) alive indefinitely.
+    merged?.cleanup();
   }
 }
 
-function mergeSignals(a: AbortSignal, b: AbortSignal): AbortSignal {
-  if (a.aborted) return a;
-  if (b.aborted) return b;
+function mergeSignals(a: AbortSignal, b: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
+  if (a.aborted) return { signal: a, cleanup: () => {} };
+  if (b.aborted) return { signal: b, cleanup: () => {} };
   const controller = new AbortController();
   const onAbort = (): void => controller.abort();
   a.addEventListener('abort', onAbort, { once: true });
   b.addEventListener('abort', onAbort, { once: true });
-  return controller.signal;
+  const cleanup = (): void => {
+    a.removeEventListener('abort', onAbort);
+    b.removeEventListener('abort', onAbort);
+  };
+  return { signal: controller.signal, cleanup };
 }
 
 export async function fetchFeed(
@@ -105,12 +129,16 @@ export async function fetchFeed(
   opts?: { auth?: OpdsAuth; signal?: AbortSignal; base?: string },
 ): Promise<OpdsFeed> {
   const url = resolveUrl(href, opts?.base);
-  const { response } = await fetchWithTimeout(url, opts ?? {});
+  const { response, finalUrl } = await fetchWithTimeout(url, opts ?? {});
   if (!response.ok) {
     throw new OpdsError(`HTTP ${response.status} fetching feed ${url}`, { statusCode: response.status });
   }
   const text = await response.text();
-  return parseOpdsAtom(text);
+  const feed = parseOpdsAtom(text);
+  // Remember the URL the feed was served from (post-redirect) so relative
+  // links inside it can be resolved correctly on later navigation.
+  feed.url = finalUrl;
+  return feed;
 }
 
 export async function fetchOpenSearch(
@@ -130,7 +158,10 @@ export async function downloadBook(
   opts?: { auth?: OpdsAuth; signal?: AbortSignal; base?: string },
 ): Promise<{ data: Uint8Array; finalUrl: string }> {
   const url = resolveUrl(href, opts?.base);
-  const { response, finalUrl } = await fetchWithTimeout(url, opts ?? {});
+  const { response, finalUrl } = await fetchWithTimeout(url, {
+    ...opts,
+    accept: 'application/epub+zip,text/fb2+xml,application/fb2+zip,*/*',
+  });
   if (!response.ok) {
     throw new OpdsError(`HTTP ${response.status} downloading ${url}`, { statusCode: response.status });
   }

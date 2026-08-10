@@ -135,6 +135,63 @@ describe('downloadAndSave', () => {
     const db = makeDbStub();
     await expect(downloadAndSave(entry, { db: db as never })).rejects.toThrow('No supported');
   });
+
+  it('caps the filename by UTF-8 bytes, not characters, for long Cyrillic titles', async () => {
+    const fb2Xml = FB2_SAMPLE;
+    setFetchMock(vi.fn(async () => mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } })));
+
+    // 200 Cyrillic chars = 400 bytes in UTF-8; a char-based cap of 180 would
+    // still exceed the ext4 255-byte NAME_MAX, so the file would fail to save.
+    const longTitle = 'К'.repeat(200);
+    const entry: OpdsEntry = {
+      id: 'urn:test:longtitle',
+      title: longTitle,
+      updated: '',
+      authors: [],
+      categories: [],
+      links: [{ rel: 'http://opds-spec.org/acquisition', href: 'https://x/book.fb2', type: 'text/fb2+xml' }],
+      acquisitionLinks: [{ rel: 'http://opds-spec.org/acquisition', href: 'https://x/book.fb2', type: 'text/fb2+xml' }],
+      isAcquisition: true,
+      isNavigation: false,
+    };
+
+    const db = makeDbStub();
+    process.env.XDG_CACHE_HOME = testDownloadDir;
+
+    await downloadAndSave(entry, { db: db as never });
+    const filename = db.getBooks()[0]!.filename;
+    expect(Buffer.byteLength(filename, 'utf8')).toBeLessThanOrEqual(255);
+    expect(filename.endsWith('.fb2')).toBe(true);
+    expect(filename.length).toBeLessThan(longTitle.length);
+  });
+
+  it('resolves a relative acquisition href against base', async () => {
+    const fb2Xml = FB2_SAMPLE;
+    let capturedUrl: string | undefined;
+    setFetchMock(vi.fn(async (url) => {
+      capturedUrl = String(url);
+      return mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } });
+    }));
+
+    const entry: OpdsEntry = {
+      id: 'urn:test:relative',
+      title: 'Relative Book',
+      updated: '',
+      authors: [],
+      categories: [],
+      links: [{ rel: 'http://opds-spec.org/acquisition', href: '/download/book.fb2', type: 'text/fb2+xml' }],
+      acquisitionLinks: [{ rel: 'http://opds-spec.org/acquisition', href: '/download/book.fb2', type: 'text/fb2+xml' }],
+      isAcquisition: true,
+      isNavigation: false,
+    };
+
+    const db = makeDbStub();
+    process.env.XDG_CACHE_HOME = testDownloadDir;
+
+    await downloadAndSave(entry, { db: db as never, base: 'https://cat.example.org/opds/root' });
+    expect(capturedUrl).toBe('https://cat.example.org/download/book.fb2');
+    expect(db.getBooks()).toHaveLength(1);
+  });
 });
 
 describe('catalogAuth', () => {
