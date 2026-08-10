@@ -308,12 +308,12 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         return;
       }
 
-    if (mode === 'catalog-list') {
-      switch (keyName) {
-        case 'j':
-        case 'down':
-          setCatalogCursor((c) => Math.max(0, Math.min(catalogs.length - 1, c + 1)));
-          break;
+      if (mode === 'catalog-list') {
+        switch (keyName) {
+          case 'j':
+          case 'down':
+            setCatalogCursor((c) => (catalogs.length === 0 ? 0 : Math.min(catalogs.length - 1, c + 1)));
+            break;
           case 'k':
           case 'up':
             setCatalogCursor((c) => Math.max(0, c - 1));

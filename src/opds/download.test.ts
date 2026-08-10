@@ -136,6 +136,35 @@ describe('downloadAndSave', () => {
     await expect(downloadAndSave(entry, { db: db as never })).rejects.toThrow('No supported');
   });
 
+  it('caps the filename by UTF-8 bytes, not characters, for long Cyrillic titles', async () => {
+    const fb2Xml = FB2_SAMPLE;
+    setFetchMock(vi.fn(async () => mockResponse(fb2Xml, { headers: { 'content-type': 'text/fb2+xml' } })));
+
+    // 200 Cyrillic chars = 400 bytes in UTF-8; a char-based cap of 180 would
+    // still exceed the ext4 255-byte NAME_MAX, so the file would fail to save.
+    const longTitle = 'К'.repeat(200);
+    const entry: OpdsEntry = {
+      id: 'urn:test:longtitle',
+      title: longTitle,
+      updated: '',
+      authors: [],
+      categories: [],
+      links: [{ rel: 'http://opds-spec.org/acquisition', href: 'https://x/book.fb2', type: 'text/fb2+xml' }],
+      acquisitionLinks: [{ rel: 'http://opds-spec.org/acquisition', href: 'https://x/book.fb2', type: 'text/fb2+xml' }],
+      isAcquisition: true,
+      isNavigation: false,
+    };
+
+    const db = makeDbStub();
+    process.env.XDG_CACHE_HOME = testDownloadDir;
+
+    await downloadAndSave(entry, { db: db as never });
+    const filename = db.getBooks()[0]!.filename;
+    expect(Buffer.byteLength(filename, 'utf8')).toBeLessThanOrEqual(255);
+    expect(filename.endsWith('.fb2')).toBe(true);
+    expect(filename.length).toBeLessThan(longTitle.length);
+  });
+
   it('resolves a relative acquisition href against base', async () => {
     const fb2Xml = FB2_SAMPLE;
     let capturedUrl: string | undefined;

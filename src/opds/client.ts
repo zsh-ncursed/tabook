@@ -69,9 +69,8 @@ async function fetchWithTimeout(
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  const signal = opts.signal
-    ? mergeSignals(opts.signal, controller.signal)
-    : controller.signal;
+  const merged = opts.signal ? mergeSignals(opts.signal, controller.signal) : null;
+  const signal = merged ? merged.signal : controller.signal;
 
   try {
     const res = await fetch(url, {
@@ -104,28 +103,25 @@ async function fetchWithTimeout(
     throw new OpdsError(`Network error fetching ${url}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   } finally {
     clearTimeout(timeout);
+    // Release the listeners on both source signals once the request has
+    // finished (success, error, or abort) — otherwise a long-lived external
+    // signal keeps this closure (and the controller) alive indefinitely.
+    merged?.cleanup();
   }
 }
 
-function mergeSignals(a: AbortSignal, b: AbortSignal): AbortSignal {
-  if (a.aborted) return a;
-  if (b.aborted) return b;
+function mergeSignals(a: AbortSignal, b: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
+  if (a.aborted) return { signal: a, cleanup: () => {} };
+  if (b.aborted) return { signal: b, cleanup: () => {} };
   const controller = new AbortController();
   const onAbort = (): void => controller.abort();
   a.addEventListener('abort', onAbort, { once: true });
   b.addEventListener('abort', onAbort, { once: true });
-  // Drop the listeners as soon as the merged signal fires, otherwise an
-  // external long-lived signal keeps this closure (and the controller) alive
-  // after the request has finished.
-  controller.signal.addEventListener(
-    'abort',
-    () => {
-      a.removeEventListener('abort', onAbort);
-      b.removeEventListener('abort', onAbort);
-    },
-    { once: true },
-  );
-  return controller.signal;
+  const cleanup = (): void => {
+    a.removeEventListener('abort', onAbort);
+    b.removeEventListener('abort', onAbort);
+  };
+  return { signal: controller.signal, cleanup };
 }
 
 export async function fetchFeed(
