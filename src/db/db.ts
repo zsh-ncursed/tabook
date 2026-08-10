@@ -224,37 +224,29 @@ export class LibraryDb {
       )
       .join('\n');
     const genresLine = metadata.genres.join('\n');
-    const existing = this.getBookByPath(record.path);
-    if (existing) {
-      this.db
-        .prepare(
-          `UPDATE books SET filename=?, format=?, size=?, title=?, authors=?, series_name=?, series_number=?,
-           genres=?, annotation=?, lang=?, cover_key=?, publisher=?, isbn=?, year=? WHERE id=?`,
-        )
-        .run(
-          record.filename,
-          record.format,
-          record.size,
-          metadata.title,
-          authorsLine,
-          metadata.series?.name ?? null,
-          metadata.series?.number ?? null,
-          genresLine,
-          metadata.annotation,
-          metadata.lang ?? null,
-          metadata.coverKey ?? null,
-          metadata.publisher ?? null,
-          metadata.isbn ?? null,
-          metadata.year ?? null,
-          existing.id,
-        );
-      return existing.id;
-    }
-    const info = this.db
+
+    // Atomic upsert: INSERT ... ON CONFLICT(path) DO UPDATE — avoids the
+    // race condition of the previous getBookByPath → INSERT/UPDATE pattern.
+    this.db
       .prepare(
         `INSERT INTO books (path, filename, format, size, title, authors, series_name, series_number,
          genres, annotation, lang, cover_key, publisher, isbn, year)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET
+           filename=excluded.filename,
+           format=excluded.format,
+           size=excluded.size,
+           title=excluded.title,
+           authors=excluded.authors,
+           series_name=excluded.series_name,
+           series_number=excluded.series_number,
+           genres=excluded.genres,
+           annotation=excluded.annotation,
+           lang=excluded.lang,
+           cover_key=excluded.cover_key,
+           publisher=excluded.publisher,
+           isbn=excluded.isbn,
+           year=excluded.year`,
       )
       .run(
         record.path,
@@ -273,7 +265,12 @@ export class LibraryDb {
         metadata.isbn ?? null,
         metadata.year ?? null,
       );
-    return Number(info.lastInsertRowid);
+
+    // After the upsert, look up the row by path to get the stable id.
+    const row = this.db
+      .prepare('SELECT id FROM books WHERE path = ?')
+      .get(record.path) as { id: number } | undefined;
+    return row!.id;
   }
 
   getBook(id: number): BookRecord | undefined {
