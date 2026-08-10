@@ -12,34 +12,31 @@ const MAX_MATCHES = 10000;
 
 interface FoldedBlock {
   // Block text folded char-by-char. toLowerCase() can change the string
-  // length (e.g. 'İ' → 'i̇'), so a naive toLowerCase() of the whole text
+  // length (e.g. '\u0130' → 'i\u0307'), so a naive toLowerCase() of the whole text
   // would produce offsets that no longer point into the original text.
   folded: string;
-  // For every position in `folded`, the index (in the original block text)
-  // of the character it came from.
+  // For every position in `folded`, the **code-point index** (in the original
+  // block text) of the character it came from.  We iterate the original text
+  // by code points so that astral characters (emoji, CJK extensions) count as
+  // exactly one index — matching the renderer / layout.ts convention.
   foldToOrig: number[];
 }
 
 function foldText(text: string): FoldedBlock {
   let folded = '';
   const foldToOrig: number[] = [];
-  for (let i = 0; i < text.length;) {
-    const cp = text.codePointAt(i)!;
-    const ch = String.fromCodePoint(cp);
-    // Lowercase, decompose, then strip combining marks: 'İ' folds to 'i' (not
-    // 'i̇'), so 'istanbul' matches 'İstanbul' and fold lengths stay stable.
+  let cpIndex = 0;
+  for (const ch of text) {
+    // Lowercase, decompose, then strip combining marks: '\u0130' folds to 'i' (not
+    // 'i\u0307'), so 'istanbul' matches '\u0130stanbul' and fold lengths stay stable.
     const lc = ch
       .toLowerCase()
       .normalize('NFKD')
       .replace(/[\u0300-\u036f]/g, '');
     folded += lc;
-    for (let k = 0; k < lc.length; k++) foldToOrig.push(i);
-    i += ch.length;
+    for (let k = 0; k < lc.length; k++) foldToOrig.push(cpIndex);
+    cpIndex += 1;
   }
-  // Known limitation: foldToOrig stores UTF-16 code-unit indices, while
-  // renderer/layout.ts counts code points per char. For BMP text (Cyrillic,
-  // Latin, most CJK) the two agree; an astral (surrogate-pair) char before a
-  // match would make search offsets diverge from layout charOffsets.
   return { folded, foldToOrig };
 }
 
@@ -105,6 +102,6 @@ export class BookSearchIndex {
 
 export function normalizeQuery(query: string): string {
   // Fold with the same per-character rules used for block text, then collapse
-  // whitespace. Folding here keeps 'İ' → 'i' consistent with block folding.
+  // whitespace. Folding here keeps '\u0130' → 'i' consistent with block folding.
   return foldText(query).folded.replace(/\s+/g, ' ').trim();
 }

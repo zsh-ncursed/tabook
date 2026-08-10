@@ -131,10 +131,6 @@ export class LibraryDb {
       this.db.pragma('foreign_keys = ON');
       this.migrate();
     } catch (err) {
-      // Defensive: ensureDir/better-sqlite3 currently throw Error, but a non-Error
-      // throw (e.g. a future dependency throwing a string or null) would render
-      // messageOf(err as Error) produce "undefined". Keep the unknown guard so
-      // the error message stays meaningful without trusting the throw site.
       throw new DatabaseError(`Cannot open database at ${filePath}: ${messageOf(err)}`, {
         cause: err,
       });
@@ -144,10 +140,6 @@ export class LibraryDb {
   private migrate(): void {
     const version = this.db.pragma('user_version', { simple: true }) as number;
     if (version >= SCHEMA_VERSION) return;
-    // Forward-only migrations. v0 (fresh DB) gets the full schema via the
-    // bootstrap; future versions append ALTER TABLE statements here gated on
-    // the previous version so existing tables gain columns without the IF NOT
-    // EXISTS no-op that would silently skip new columns on existing tables.
     if (version < 1) {
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS books (
@@ -198,8 +190,6 @@ export class LibraryDb {
         );
       `);
     }
-    // Example for the next migration:
-    //   if (version < 2) { this.db.exec('ALTER TABLE books ADD COLUMN x ...'); }
     this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
 
@@ -224,37 +214,29 @@ export class LibraryDb {
       )
       .join('\n');
     const genresLine = metadata.genres.join('\n');
-    const existing = this.getBookByPath(record.path);
-    if (existing) {
-      this.db
-        .prepare(
-          `UPDATE books SET filename=?, format=?, size=?, title=?, authors=?, series_name=?, series_number=?,
-           genres=?, annotation=?, lang=?, cover_key=?, publisher=?, isbn=?, year=? WHERE id=?`,
-        )
-        .run(
-          record.filename,
-          record.format,
-          record.size,
-          metadata.title,
-          authorsLine,
-          metadata.series?.name ?? null,
-          metadata.series?.number ?? null,
-          genresLine,
-          metadata.annotation,
-          metadata.lang ?? null,
-          metadata.coverKey ?? null,
-          metadata.publisher ?? null,
-          metadata.isbn ?? null,
-          metadata.year ?? null,
-          existing.id,
-        );
-      return existing.id;
-    }
+
+    // Atomic upsert: INSERT ... ON CONFLICT(path) DO UPDATE — avoids the
+    // race condition of the previous getBookByPath → INSERT/UPDATE pattern.
     const info = this.db
       .prepare(
         `INSERT INTO books (path, filename, format, size, title, authors, series_name, series_number,
          genres, annotation, lang, cover_key, publisher, isbn, year)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET
+           filename=excluded.filename,
+           format=excluded.format,
+           size=excluded.size,
+           title=excluded.title,
+           authors=excluded.authors,
+           series_name=excluded.series_name,
+           series_number=excluded.series_number,
+           genres=excluded.genres,
+           annotation=excluded.annotation,
+           lang=excluded.lang,
+           cover_key=excluded.cover_key,
+           publisher=excluded.publisher,
+           isbn=excluded.isbn,
+           year=excluded.year`,
       )
       .run(
         record.path,
@@ -273,7 +255,12 @@ export class LibraryDb {
         metadata.isbn ?? null,
         metadata.year ?? null,
       );
-    return Number(info.lastInsertRowid);
+
+    // After the upsert, look up the row by path to get the stable id.
+    const row = this.db
+      .prepare('SELECT id FROM books WHERE path = ?')
+      .get(record.path) as { id: number } | undefined;
+    return row!.id;
   }
 
   getBook(id: number): BookRecord | undefined {
