@@ -173,6 +173,12 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   );
 
   const goBack = useCallback(() => {
+    // Synchronous clear BEFORE the state change. Ink paints the new frame in
+    // the same commit, so clear() here resets logUpdate's previousOutput and
+    // guarantees the closing frame is always written (ponytail). Calling it
+    // from a useEffect instead would run AFTER the paint and erase the fresh
+    // frame, leaving a blank screen until the next keypress.
+    forceRedraw();
     if (mode === 'entry-detail') {
       setSelectedEntry(null);
       setMode('browsing');
@@ -409,6 +415,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
             setActiveCatalog(null);
             setMode('catalog-list');
             setRefreshTrigger((r) => r + 1);
+            forceRedraw();
             break;
           case 'n':
             if (currentFeed?.nextHref) {
@@ -476,10 +483,6 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       mode !== 'auth-password',
   );
   dispatchRef.current = (input: string, key: Key) => opdsInputRef.current(input, key);
-
-  useEffect(() => {
-    forceRedraw();
-  }, [mode, feedStack.length]);
 
   const visibleCount = Math.max(3, height - 6);
   const start = Math.max(
@@ -581,7 +584,10 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
             onSubmit={(value) => {
               void doSearch(value);
             }}
-            onCancel={() => setMode('browsing')}
+            onCancel={() => {
+              setMode('browsing');
+              forceRedraw();
+            }}
           />
         </Box>
       ) : null}
@@ -604,6 +610,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
             onCancel={() => {
               setAuthCatalog(null);
               setMode('catalog-list');
+              forceRedraw();
             }}
           />
         </Box>
@@ -626,6 +633,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
               setAuthCatalog(null);
               setAuthUsername('');
               setMode('catalog-list');
+              forceRedraw();
             }}
           />
         </Box>
