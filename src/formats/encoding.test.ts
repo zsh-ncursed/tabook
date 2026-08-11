@@ -26,6 +26,16 @@ describe('detectEncoding', () => {
   it('defaults to utf-8', () => {
     expect(detectEncoding(Buffer.from('plain text'))).toBe('utf-8');
   });
+
+  it('detects UTF-16LE without BOM by heuristic (0x3C 0x00)', () => {
+    const data = new Uint8Array([0x3c, 0x00, 0x3f, 0x00]); // < in LE
+    expect(detectEncoding(data)).toBe('utf-16le');
+  });
+
+  it('detects UTF-16BE without BOM by heuristic (0x00 0x3C)', () => {
+    const data = new Uint8Array([0x00, 0x3c, 0x00, 0x3f]); // < in BE
+    expect(detectEncoding(data)).toBe('utf-16be');
+  });
 });
 
 describe('normalizeEncoding', () => {
@@ -34,6 +44,8 @@ describe('normalizeEncoding', () => {
     expect(normalizeEncoding('WINDOWS-1251')).toBe('windows-1251');
     expect(normalizeEncoding('iso-8859-1')).toBe('iso-8859-1');
     expect(normalizeEncoding('utf16')).toBe('utf-16le');
+    expect(normalizeEncoding('utf16le')).toBe('utf-16le');
+    expect(normalizeEncoding('utf16be')).toBe('utf-16be');
   });
 });
 

@@ -52,11 +52,18 @@ export function blockToPlainText(block: Block): string {
       }
       return parts.join('\n');
     }
-    case 'table':
-      return block.rows
-        .flat()
-        .map((cell) => inlineText(cell))
-        .join(' ');
+    case 'table': {
+      const parts: string[] = [];
+      if (block.headers.length > 0) {
+        const headerText = block.headers.map((h) => inlineText(h)).join(' | ');
+        if (headerText) parts.push(headerText);
+      }
+      for (const row of block.rows) {
+        const rowText = row.map((cell) => inlineText(cell)).join(' | ');
+        if (rowText) parts.push(rowText);
+      }
+      return parts.join('\n');
+    }
     case 'poem':
       return block.stanzas
         .flatMap((stanza) => stanza.lines.map((line) => inlineText(line)))

@@ -34,7 +34,13 @@ describe('blockToPlainText', () => {
 
   it('flattens tables and poems', () => {
     const table: Block = { type: 'table', headers: [], rows: [[[t('x')], [t('y')]]] };
-    expect(blockToPlainText(table)).toBe('x y');
+    expect(blockToPlainText(table)).toBe('x | y');
+    const tableWithHeaders: Block = {
+      type: 'table',
+      headers: [[t('Col1')], [t('Col2')]],
+      rows: [[[t('x')], [t('y')]]],
+    };
+    expect(blockToPlainText(tableWithHeaders)).toBe('Col1 | Col2\nx | y');
     const poem: Block = { type: 'poem', stanzas: [{ lines: [[t('a')], [t('b')]] }] };
     expect(blockToPlainText(poem)).toBe('a\nb');
   });

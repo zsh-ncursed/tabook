@@ -76,14 +76,17 @@ function run(
 
   let initialPath: string | undefined = file;
   if (options.library) {
+    if (file) {
+      console.error('tabook: --library overrides the file argument, ignoring it');
+    }
     initialPath = undefined;
   }
 
   process.on('exit', () => {
     try {
       db.close();
-    } catch {
-      // best-effort close on exit
+    } catch (err) {
+      console.error(`tabook: error closing database: ${err instanceof Error ? err.message : String(err)}`);
     }
   });
 

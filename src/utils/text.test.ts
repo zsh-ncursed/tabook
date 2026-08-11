@@ -64,6 +64,23 @@ describe('decodeEntities', () => {
   it('leaves unknown named entities untouched', () => {
     expect(decodeEntities('x &unknown; y')).toBe('x &unknown; y');
   });
+
+  it('decodes extended named entities (Greek, arrows, math)', () => {
+    expect(decodeEntities('&alpha;&beta;&gamma;')).toBe('\u03b1\u03b2\u03b3');
+    expect(decodeEntities('&Alpha;&Omega;')).toBe('\u0391\u03a9');
+    expect(decodeEntities('&larr;&rarr;&uarr;&darr;')).toBe('\u2190\u2192\u2191\u2193');
+    expect(decodeEntities('&sum;&prod;&int;')).toBe('\u2211\u220f\u222b');
+    expect(decodeEntities('&le;&ge;&ne;')).toBe('\u2264\u2265\u2260');
+    expect(decodeEntities('&spades;&hearts;&diams;&clubs;')).toBe('\u2660\u2665\u2666\u2663');
+  });
+
+  it('decodes additional typographic entities', () => {
+    expect(decodeEntities('&sbquo;&bdquo;')).toBe('\u201a\u201e');
+    expect(decodeEntities('&dagger;&Dagger;')).toBe('\u2020\u2021');
+    expect(decodeEntities('&permil;')).toBe('\u2030');
+    expect(decodeEntities('&minus;')).toBe('\u2212');
+    expect(decodeEntities('&lsaquo;&rsaquo;')).toBe('\u2039\u203a');
+  });
 });
 
 describe('normalizeWhitespace', () => {

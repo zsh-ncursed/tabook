@@ -22,6 +22,13 @@ export function detectEncoding(data: Uint8Array): string {
   if (m) {
     return normalizeEncoding(m[1]!);
   }
+  // Heuristic UTF-16 detection without BOM: if the first 2 bytes are a NUL
+  // followed by an ASCII char, it's likely UTF-16BE; if reversed, UTF-16LE.
+  // XML documents almost always start with '<' (0x3C) or a BOM.
+  if (data.length >= 2) {
+    if (data[0] === 0x3c && data[1] === 0x00) return 'utf-16le';
+    if (data[0] === 0x00 && data[1] === 0x3c) return 'utf-16be';
+  }
   return 'utf-8';
 }
 
@@ -32,7 +39,10 @@ export function normalizeEncoding(enc: string): string {
     case 'utf':
       return 'utf-8';
     case 'utf16':
+    case 'utf16le':
       return 'utf-16le';
+    case 'utf16be':
+      return 'utf-16be';
     case 'windows1251':
     case 'win1251':
     case 'cp1251':
