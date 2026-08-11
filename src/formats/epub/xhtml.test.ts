@@ -13,9 +13,16 @@ describe('parseXhtmlBlocks', () => {
     expect(blocks[1]).toMatchObject({ type: 'heading', level: 6 });
   });
 
-  it('turns preformatted text into paragraphs', () => {
+  it('turns preformatted text into code blocks preserving whitespace', () => {
     const { blocks } = parse('<pre>code block</pre>');
-    expect(blocks[0]).toMatchObject({ type: 'paragraph' });
+    expect(blocks[0]).toMatchObject({ type: 'code' });
+  });
+
+  it('preserves newlines in pre blocks', () => {
+    const { blocks } = parse('<pre>line1\nline2</pre>');
+    expect(blocks[0]).toMatchObject({ type: 'code' });
+    const code = blocks[0] as { type: string; children: { kind: string; text: string }[] };
+    expect(code.children[0]!.text).toContain('line1\nline2');
   });
 
   it('emits an empty block for empty paragraphs', () => {

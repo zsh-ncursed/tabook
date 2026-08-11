@@ -79,6 +79,15 @@ function parseOpf(zip: ZipArchive, opfPath: string): OpfData {
     metadata.title = normalizeWhitespace(textOf(firstChild(metadataNode, 'title')));
     metadata.authors = findChildren(metadataNode, 'creator').map((c) => {
       const name = normalizeWhitespace(textOf(c));
+      if (!name) return { firstName: '', lastName: '', nickname: undefined };
+      // EPUB stores author as a single string ("Jane Roe"), unlike FB2 which
+      // has separate firstName/lastName. Split into parts for structured use,
+      // but keep the original string as nickname so joinAuthors preserves
+      // the original order the publisher intended.
+      const parts = name.split(/\s+/);
+      if (parts.length >= 2) {
+        return { firstName: parts[0]!, lastName: parts.slice(1).join(' '), nickname: name };
+      }
       return { firstName: '', lastName: name, nickname: name };
     });
     metadata.genres = findChildren(metadataNode, 'subject')

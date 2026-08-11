@@ -34,6 +34,7 @@ function inlineText(inlines: Inline[]): string {
 export function blockToPlainText(block: Block): string {
   switch (block.type) {
     case 'paragraph':
+    case 'code':
     case 'heading':
     case 'quote':
     case 'annotation':

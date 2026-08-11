@@ -96,6 +96,36 @@ describe('displayWidth', () => {
     expect(displayWidth(String.fromCodePoint(0x20000))).toBe(2); // CJK ext B
     expect(displayWidth(String.fromCodePoint(0x30000))).toBe(2); // CJK ext G
   });
+
+  it('counts Braille patterns as width 2', () => {
+    expect(displayWidth(String.fromCodePoint(0x2800))).toBe(2); // Braille blank
+    expect(displayWidth(String.fromCodePoint(0x28ff))).toBe(2); // Braille full
+  });
+
+  it('counts Tai Tham as width 2', () => {
+    expect(displayWidth(String.fromCodePoint(0x1a20))).toBe(2);
+    expect(displayWidth(String.fromCodePoint(0x1aad))).toBe(2);
+  });
+
+  it('counts Balinese as width 2', () => {
+    expect(displayWidth(String.fromCodePoint(0x1b00))).toBe(2);
+    expect(displayWidth(String.fromCodePoint(0x1b7f))).toBe(2);
+  });
+
+  it('counts Yi Syllables as width 2', () => {
+    expect(displayWidth(String.fromCodePoint(0xa000))).toBe(2);
+    expect(displayWidth(String.fromCodePoint(0xa4cf))).toBe(2);
+  });
+
+  it('counts emoji as width 2', () => {
+    expect(displayWidth(String.fromCodePoint(0x1f300))).toBe(2); // Cyclone
+    expect(displayWidth(String.fromCodePoint(0x1f600))).toBe(2); // 😀
+  });
+
+  it('handles mixed wide and narrow characters', () => {
+    expect(displayWidth('a汉b')).toBe(4); // 1 + 2 + 1
+    expect(displayWidth('😀x')).toBe(3); // 2 + 1
+  });
 });
 
 describe('formatBytes', () => {

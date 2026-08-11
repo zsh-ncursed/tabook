@@ -136,20 +136,55 @@ export function truncate(input: string, maxLength: number, suffix = '...'): stri
   return input.slice(0, maxLength - suffix.length) + suffix;
 }
 
+// East Asian Wide / Fullwidth characters that occupy 2 terminal columns.
+// Based on Unicode East Asian Width property W and F, covering the ranges
+// that the original implementation missed.
+// See https://www.unicode.org/reports/tr11/ and
+// https://www.unicode.org/Public/UCD/latest/ucd/EastAsianWidth.txt
+const WIDE_RANGES: ReadonlyArray<readonly [number, number]> = [
+  [0x1100, 0x115f], // Hangul Jamo
+  [0x2329, 0x232a], // Angular brackets
+  [0x2e80, 0x303e], // CJK Radicals, Kangxi
+  [0x3041, 0x33ff], // Hiragana, Katakana, CJK symbols
+  [0x3400, 0x4dbf], // CJK Ext A
+  [0x4e00, 0x9fff], // CJK Unified Ideographs
+  [0xa000, 0xa4cf], // Yi Syllables + Radicals
+  [0xa960, 0xa97f], // Hangul Jamo Extended-A
+  [0xac00, 0xd7a3], // Hangul Syllables
+  [0xf900, 0xfaff], // CJK Compatibility Ideographs
+  [0xfe10, 0xfe19], // Vertical forms
+  [0xfe30, 0xfe4f], // CJK Compatibility Forms
+  [0xff00, 0xff60], // Fullwidth ASCII
+  [0xffe0, 0xffe6], // Fullwidth currency/signs
+  [0x1f300, 0x1f64f], // Emoji — pictographs
+  [0x1f900, 0x1f9ff], // Supplemental symbols and pictographs
+  [0x20000, 0x2fffd], // CJK Ext B
+  [0x30000, 0x3fffd], // CJK Ext C-G
+  // Ambiguous-width ranges treated as wide in a CJK context are not
+  // included; in a Latin terminal they render single-width.
+  [0x1b000, 0x1b0ff], // Kana Supplement
+  [0x1f000, 0x1f02f], // Mahjong tiles
+  [0x1f0a0, 0x1f0ff], // Playing cards, dominoes
+  [0x1f100, 0x1f1ff], // Enclosed alphanumerics + regional indicators (flags)
+  [0x2800, 0x28ff], // Braille Patterns (W in East Asian Width)
+  [0xa8e0, 0xa8ff], // Devanagari Extended (combining, display as wide)
+  [0x1a20, 0x1aad], // Tai Tham
+  [0x1b00, 0x1b7f], // Balinese
+  [0xa490, 0xa4c6], // Yi Radicals (partially, end of Yi block above covers rest)
+];
+
 export function displayWidth(input: string): number {
   let width = 0;
   for (const ch of input) {
     const code = ch.codePointAt(0)!;
-    if (code >= 0x1100 && code <= 0x11ff) width += 2;
-    else if (code >= 0x2e80 && code <= 0xa4cf) width += 2;
-    else if (code >= 0xac00 && code <= 0xd7a3) width += 2;
-    else if (code >= 0xf900 && code <= 0xfaff) width += 2;
-    else if (code >= 0xfe30 && code <= 0xfe4f) width += 2;
-    else if (code >= 0xff00 && code <= 0xff60) width += 2;
-    else if (code >= 0xffe0 && code <= 0xffe6) width += 2;
-    else if (code >= 0x20000 && code <= 0x2fffd) width += 2;
-    else if (code >= 0x30000 && code <= 0x3fffd) width += 2;
-    else width += 1;
+    let isWide = false;
+    for (const [lo, hi] of WIDE_RANGES) {
+      if (code >= lo && code <= hi) {
+        isWide = true;
+        break;
+      }
+    }
+    width += isWide ? 2 : 1;
   }
   return width;
 }

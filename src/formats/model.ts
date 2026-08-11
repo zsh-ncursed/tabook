@@ -57,6 +57,7 @@ export interface InlineLineBreak {
 
 export type Block =
   | ParagraphBlock
+  | CodeBlock
   | HeadingBlock
   | ListBlock
   | QuoteBlock
@@ -69,6 +70,11 @@ export type Block =
 
 export interface ParagraphBlock {
   type: 'paragraph';
+  children: Inline[];
+}
+
+export interface CodeBlock {
+  type: 'code';
   children: Inline[];
 }
 
@@ -174,11 +180,14 @@ export interface ParsedBook {
 }
 
 export function authorDisplayName(author: Author): string {
+  // Prefer nickname when present — it preserves the publisher's original
+  // formatting (e.g. EPUB stores "Jane Roe" as a single string, not split
+  // into lastName/firstName the way FB2 does).
+  if (author.nickname) return author.nickname;
   const parts: string[] = [];
   if (author.lastName) parts.push(author.lastName);
   if (author.firstName) parts.push(author.firstName);
   if (author.middleName) parts.push(author.middleName);
-  if (parts.length === 0 && author.nickname) parts.push(author.nickname);
   return parts.join(' ');
 }
 

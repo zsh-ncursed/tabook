@@ -1,4 +1,4 @@
-import { childrenOf, findChildren, attrOf, tagOf } from '../xml.js';
+import { childrenOf, findChildren, attrOf, tagOf, fullTextOf } from '../xml.js';
 import type { XmlChildren, XmlNode } from '../xml.js';
 import { normalizeInlines, parseInlines } from '../inline.js';
 import type { Block, Inline, ListItem } from '../model.js';
@@ -93,14 +93,21 @@ function parseNode(state: XhtmlState, node: XmlNode, baseDir: string): void {
       if (id) state.idToBlock.set(id, state.blockIndex - 1);
       break;
     }
-    case 'p':
-    case 'pre': {
+    case 'p': {
       const inlines = normalizeInlines(parseInlines(node));
       if (inlines.length === 0) {
         emit(state, { type: 'empty' });
       } else {
         emit(state, { type: 'paragraph', children: inlines });
       }
+      if (id) state.idToBlock.set(id, state.blockIndex - 1);
+      break;
+    }
+    case 'pre': {
+      // Preserve whitespace: read raw text instead of normalizing inlines.
+      const raw = fullTextOf(node);
+      const inlines = raw.length > 0 ? [{ kind: 'code' as const, text: raw }] : [];
+      emit(state, { type: 'code', children: inlines });
       if (id) state.idToBlock.set(id, state.blockIndex - 1);
       break;
     }

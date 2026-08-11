@@ -16,6 +16,7 @@ export function roleColor(theme: Theme, role: LineRole): string {
     case 'epigraph':
     case 'annotation':
     case 'image':
+    case 'code':
       return theme.colors.dim;
     case 'tableHeader':
       return theme.colors.tableHeader;

@@ -12,6 +12,7 @@ function simplifyBlock(block: Block): Block[] {
   switch (block.type) {
     case 'heading':
     case 'paragraph':
+    case 'code':
       return [block];
     case 'list':
       return block.items.flatMap(simplifyItem);
