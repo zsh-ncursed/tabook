@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseFb2Text, parseFb2Buffer, extractFb2FromZip } from './parser.js';
+import { parseFb2Text, parseFb2Buffer, parseFb2Metadata, extractFb2FromZip } from './parser.js';
 import { FB2_SAMPLE, FB2_CP1251_SAMPLE, makeFb2Zip, zipFileNames } from '../test-utils.js';
 import { ParseError } from '../../utils/errors.js';
 import { joinAuthors } from '../model.js';
@@ -96,6 +96,29 @@ describe('FB2 parser', () => {
     const inner = extractFb2FromZip(zip);
     expect(inner.name).toBe('book.fb2');
     expect(inner.data.length).toBeGreaterThan(0);
+  });
+
+  it('extracts metadata without parsing content (fast path)', () => {
+    const metadata = parseFb2Metadata(Buffer.from(FB2_SAMPLE), '/tmp/book.fb2');
+    expect(metadata.title).toBe('Test Book');
+    expect(metadata.authors).toHaveLength(2);
+    expect(metadata.genres).toEqual(['sf', 'adventure']);
+    expect(metadata.series).toEqual({ name: 'The Series', number: 2 });
+    expect(metadata.coverKey).toBe('cover.jpg');
+    expect(metadata.publisher).toBe('Example Press');
+    expect(metadata.year).toBe(2020);
+  });
+
+  it('extracts metadata from fb2.zip archives (fast path)', () => {
+    const zip = makeFb2Zip(FB2_SAMPLE, 'books/test.fb2');
+    const metadata = parseFb2Metadata(zip, '/tmp/archive.fb2.zip');
+    expect(metadata.title).toBe('Test Book');
+  });
+
+  it('fast metadata falls back to the inner filename inside a zip', () => {
+    const zip = makeFb2Zip('<FictionBook><description/></FictionBook>', 'books/untitled.fb2');
+    const metadata = parseFb2Metadata(zip, '/tmp/a.fb2.zip');
+    expect(metadata.title).toBe('untitled');
   });
 
   it('throws ParseError for non-FB2 XML', () => {

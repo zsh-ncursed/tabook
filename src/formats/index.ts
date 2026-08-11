@@ -6,8 +6,8 @@ import { parseFb2Buffer } from './fb2/parser.js';
 import { parseEpubBuffer } from './epub/parser.js';
 import type { ParsedBook } from './model.js';
 
-export { parseFb2Buffer, parseFb2Text } from './fb2/parser.js';
-export { parseEpubBuffer } from './epub/parser.js';
+export { parseFb2Buffer, parseFb2Text, parseFb2Metadata } from './fb2/parser.js';
+export { parseEpubBuffer, parseEpubMetadata } from './epub/parser.js';
 export type { ParsedBook, BookMetadata, Block, Inline, TocEntry } from './model.js';
 export * from './model.js';
 

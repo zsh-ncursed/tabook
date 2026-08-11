@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import AdmZip from 'adm-zip';
-import { parseEpubBuffer } from './parser.js';
+import { parseEpubBuffer, parseEpubMetadata } from './parser.js';
 import { buildEpub, buildNcxEpub, makeBrokenZip } from '../test-utils.js';
 import { ParseError } from '../../utils/errors.js';
 import { joinAuthors } from '../model.js';
@@ -136,8 +136,31 @@ describe('EPUB parser', () => {
     expect(book.resources.get('OEBPS/images/pic.jpg')).toBeDefined();
   });
 
-  it('rejects a non-zip epub', () => {
-    expect(() => parseEpubBuffer(Buffer.from('not a zip'), '/tmp/x.epub')).toThrow(ParseError);
+  it('extracts metadata without parsing content (fast path)', () => {
+    const metadata = parseEpubMetadata(buildEpub(), '/tmp/book.epub');
+    expect(metadata.title).toBe('Epub Book');
+    expect(joinAuthors(metadata.authors)).toContain('Jane Roe');
+    expect(metadata.lang).toBe('en');
+    expect(metadata.genres).toContain('Fiction');
+    expect(metadata.isbn).toBe('urn:isbn:9781234567890');
+    expect(metadata.coverKey).toBe('OEBPS/images/cover.jpg');
+  });
+
+  it('fast metadata falls back to the filename for a missing title', () => {
+    const opf = simpleOpf({
+      manifest: '<item id="c1" href="c1.xhtml"/>',
+      spine: '<itemref idref="c1"/>',
+    });
+    const zip = buildRawEpub(opf, { 'c1.xhtml': XHTML('<h1>Hi</h1>') });
+    const metadata = parseEpubMetadata(zip, '/tmp/untitled.epub');
+    expect(metadata.title).toBe('untitled');
+    expect(metadata.lang).toBeUndefined();
+    expect(metadata.year).toBeUndefined();
+    expect(metadata.authors).toEqual([]);
+  });
+
+  it('fast metadata rejects a non-zip epub', () => {
+    expect(() => parseEpubMetadata(Buffer.from('not a zip'), '/tmp/x.epub')).toThrow(ParseError);
   });
 
   it('rejects a broken zip container', () => {

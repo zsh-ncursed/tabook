@@ -525,9 +525,10 @@ export function layoutBlock(block: Block, blockIndex: number, opts: LayoutOption
     case 'code': {
       // Pre-formatted text: no wrapping, no justify, no hyphenation.
       // Each line of the source becomes a layout line verbatim.
-      const text = block.children.length > 0 && block.children[0]!.kind === 'code'
-        ? block.children[0]!.text
-        : spansToPlain(inlineToSpans(block.children));
+      const text =
+        block.children.length > 0 && block.children[0]!.kind === 'code'
+          ? block.children[0]!.text
+          : spansToPlain(inlineToSpans(block.children));
       const codeLines = text.split('\n');
       let running = 0;
       for (const cl of codeLines) {

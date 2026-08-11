@@ -1,4 +1,5 @@
 import { pathToFileURL } from 'node:url';
+import fs from 'node:fs';
 import React from 'react';
 import { Command } from 'commander';
 import { render } from 'ink';
@@ -6,6 +7,7 @@ import { registerForceRedraw } from '../tui/screenRefresh.js';
 import { loadConfig } from '../config/config.js';
 import { getTheme } from '../themes/themes.js';
 import { LibraryDb } from '../db/db.js';
+import { resolveFolderPath } from '../db/scan.js';
 import { defaultDbPath, expandTilde } from '../utils/paths.js';
 import { appVersion } from '../utils/version.js';
 import { App } from '../tui/App.js';
@@ -74,19 +76,48 @@ function run(
     process.exit(1);
   }
 
+  // A directory passed as the positional argument is treated as a library
+  // folder: it gets attached (scanned on startup by the App) and the library
+  // view opens instead of a book.
+  let attachFolder: string | undefined;
+  if (file) {
+    try {
+      const resolved = resolveFolderPath(file);
+      if (fs.statSync(resolved).isDirectory()) {
+        attachFolder = resolved;
+      }
+    } catch {
+      // Not a path we can stat (missing file, unreadable, …) — fall through
+      // and let the book-open path report the error.
+    }
+  }
+
   let initialPath: string | undefined = file;
   if (options.library) {
-    if (file) {
+    if (file && !attachFolder) {
       console.error('tabook: --library overrides the file argument, ignoring it');
     }
     initialPath = undefined;
+  } else if (attachFolder) {
+    initialPath = undefined;
+  }
+
+  if (attachFolder) {
+    try {
+      db.addLibraryFolder(attachFolder);
+    } catch (err) {
+      console.error(`tabook: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
   }
 
   process.on('exit', () => {
     try {
       db.close();
     } catch (err) {
-      console.error(`tabook: error closing database: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(
+        `tabook: error closing database: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   });
 

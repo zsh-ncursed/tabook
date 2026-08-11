@@ -21,6 +21,7 @@ import { loadConfig, serializeConfig } from '../config/config.js';
 import { defaultConfig } from '../config/defaults.js';
 import { defaultConfigPath } from '../utils/paths.js';
 import { forceRedraw } from './screenRefresh.js';
+import { resolveFolderPath, scanLibraryFolder, folderNeedsRescan } from '../db/scan.js';
 import * as fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
@@ -59,6 +60,18 @@ export function App(props: AppProps): React.JSX.Element {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [themeCursor, setThemeCursor] = useState(0);
   const prePickThemeRef = useRef<string | null>(null);
+  // Pending :library remove confirmation (folder + books with progress).
+  const [folderRemoveConfirm, setFolderRemoveConfirm] = useState<{
+    path: string;
+    count: number;
+  } | null>(null);
+  // Guards against overlapping scans (auto-scan on startup + manual :library
+  // scan + :library add can otherwise race on the same folder). Requests that
+  // arrive mid-scan are accumulated and re-run after the current one
+  // finishes: explicit folder scans accumulate their paths, and an explicit
+  // full rescan (:library scan) supersedes them.
+  const scanBusyRef = useRef(false);
+  const pendingScanRef = useRef<{ all: boolean; folders: Set<string> } | null>(null);
 
   const theme = useMemo(() => {
     const t = THEMES[themeName];
@@ -187,6 +200,135 @@ export function App(props: AppProps): React.JSX.Element {
       }
     })();
   }, [openBookPath, notify]);
+
+  // Scan attached library folders, optionally just one. Progress is surfaced
+  // via notify(); the library view is refreshed when done. Serialized through
+  // scanBusyRef so concurrent triggers (startup + command) don't overlap.
+  const runLibraryScan = useCallback(
+    (folderOnly?: string | string[], silentWhenEmpty = false): Promise<void> => {
+      if (scanBusyRef.current) {
+        const pending = pendingScanRef.current ?? { all: false, folders: new Set<string>() };
+        if (folderOnly === undefined) {
+          pending.all = true;
+          pending.folders.clear();
+        } else if (!pending.all) {
+          for (const p of Array.isArray(folderOnly) ? folderOnly : [folderOnly]) {
+            pending.folders.add(p);
+          }
+        }
+        pendingScanRef.current = pending;
+        notify('A library scan is already running; queued');
+        return Promise.resolve();
+      }
+      scanBusyRef.current = true;
+      const folderList =
+        folderOnly === undefined
+          ? db.listLibraryFolders().map((f) => f.path)
+          : Array.isArray(folderOnly)
+            ? folderOnly
+            : [folderOnly];
+      const targets = folderList.map((p) => ({ path: p }));
+      return (async () => {
+        if (targets.length === 0) {
+          // The startup auto-scan is silent when nothing is attached yet;
+          // the hint belongs in the empty library view instead.
+          if (!silentWhenEmpty) {
+            notify('No folders attached. Add one with :library add <path>');
+          }
+          return;
+        }
+        for (const folder of targets) {
+          notify(`Scanning ${folder.path}…`);
+          try {
+            const summary = await scanLibraryFolder(db, folder.path, (done, total) => {
+              if (done === total || done % 25 === 0) {
+                notify(`Scanning ${folder.path}: ${done}/${total}`);
+              }
+            });
+            const errors = summary.failed > 0 ? `, ${summary.failed} failed` : '';
+            notify(
+              `${folder.path}: +${summary.added} new, ${summary.updated} updated, ` +
+                `${summary.removed} removed${errors}`,
+            );
+          } catch (err) {
+            notify(
+              `Cannot scan ${folder.path}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+      })().finally(() => {
+        scanBusyRef.current = false;
+        setLibraryRefresh((c) => c + 1);
+        const pending = pendingScanRef.current;
+        pendingScanRef.current = null;
+        if (pending) {
+          if (pending.all) {
+            // Full rescan — db.listLibraryFolders() is re-read at run time,
+            // so folders attached during the previous scan are included.
+            void runLibraryScan(undefined, true);
+          } else if (pending.folders.size > 0) {
+            void runLibraryScan([...pending.folders], true);
+          }
+        }
+      });
+    },
+    [db, notify],
+  );
+
+  // Attach a folder and scan it in one step. Called by :library add and by
+  // the CLI when the positional argument is a directory.
+  const attachLibraryFolder = useCallback(
+    (rawPath: string): void => {
+      let resolved: string;
+      try {
+        resolved = resolveFolderPath(rawPath);
+        if (!fs.statSync(resolved).isDirectory()) {
+          notify(`Not a directory: ${rawPath}`);
+          return;
+        }
+      } catch (err) {
+        notify(
+          `Cannot attach folder ${rawPath}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return;
+      }
+      if (db.getLibraryFolderByPath(resolved)) {
+        notify(`Folder already attached: ${resolved}`);
+        return;
+      }
+      db.addLibraryFolder(resolved);
+      notify(`Attached folder: ${resolved}`);
+      void runLibraryScan(resolved);
+    },
+    [db, notify, runLibraryScan],
+  );
+
+  // On startup and every time the library view is entered (returning from
+  // the reader or OPDS), rescan only folders whose files changed since the
+  // last scan — a cheap mtime-based dirty check, no parsing for clean
+  // folders. All stale folders are aggregated into one scan call so the
+  // pending queue stays targeted (no force-all rescan of clean folders).
+  // Explicit :library scan still forces a full rescan. The dirty check runs
+  // asynchronously (chunked walk), so entering the library never blocks on
+  // large folders; the checks are cancelled if the user leaves the view
+  // before they finish.
+  useEffect(() => {
+    if (screen !== 'library') return;
+    let cancelled = false;
+    void (async () => {
+      const stale: string[] = [];
+      for (const folder of db.listLibraryFolders()) {
+        if (cancelled) return;
+        if (await folderNeedsRescan(db, folder)) stale.push(folder.path);
+      }
+      if (!cancelled && stale.length > 0) {
+        void runLibraryScan(stale);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [screen, db, runLibraryScan]);
 
   const handleCommand = useCallback(
     (text: string): void => {
@@ -331,6 +473,51 @@ export function App(props: AppProps): React.JSX.Element {
             setScreen('opds');
           }
           break;
+        case 'library':
+        case 'folder': {
+          const sub = (args[0] ?? '').toLowerCase();
+          if (sub === 'add') {
+            const p = args[1];
+            if (!p) {
+              notify('Usage: :library add <path>');
+            } else {
+              attachLibraryFolder(p);
+            }
+          } else if (sub === 'remove' || sub === 'rm') {
+            const p = args[1];
+            if (!p) {
+              notify('Usage: :library remove <path>');
+            } else {
+              // resolveFolderPath only normalizes a string (expandTilde +
+              // path.resolve) and cannot throw.
+              const resolved = resolveFolderPath(p);
+              const folder = db.getLibraryFolderByPath(resolved);
+              if (!folder) {
+                notify(`No attached folder: ${resolved}`);
+              } else {
+                // Detaching removes the folder's books (with progress and
+                // bookmarks) from the library; files on disk are untouched.
+                // Confirm first — this can wipe hundreds of reading sessions.
+                setFolderRemoveConfirm({
+                  path: resolved,
+                  count: db.listPathsByLibraryRoot(resolved).length,
+                });
+              }
+            }
+          } else if (sub === 'list' || sub === 'ls') {
+            const folders = db.listLibraryFolders();
+            if (folders.length === 0) {
+              notify('No folders attached. Add one with :library add <path>');
+            } else {
+              notify(folders.map((f) => f.path).join(' | '));
+            }
+          } else if (sub === 'scan' || sub === 'rescan') {
+            void runLibraryScan();
+          } else {
+            notify('Usage: :library add <path> | remove <path> | list | scan');
+          }
+          break;
+        }
         case 'config':
           if (args[0] === 'init') {
             const p = configPathRef.current || defaultConfigPath();
@@ -405,6 +592,8 @@ export function App(props: AppProps): React.JSX.Element {
       themeName,
       persistConfig,
       props.themeOverride,
+      attachLibraryFolder,
+      runLibraryScan,
     ],
   );
 
@@ -430,6 +619,7 @@ export function App(props: AppProps): React.JSX.Element {
       'help',
       'config',
       'opds',
+      'library',
     ];
     if (parts.length <= 1 && !trimmed.includes(' ')) {
       const matches = commands.filter((c) => c.startsWith(cmd));
@@ -440,6 +630,12 @@ export function App(props: AppProps): React.JSX.Element {
       const subs = ['add', 'remove', 'list'];
       const matches = subs.filter((s) => s.startsWith(sub));
       if (matches.length === 1) return `:opds ${matches[0]} `;
+    }
+    if (cmd === 'library' && parts.length === 2) {
+      const sub = (parts[1] ?? '').toLowerCase();
+      const subs = ['add', 'remove', 'list', 'scan'];
+      const matches = subs.filter((s) => s.startsWith(sub));
+      if (matches.length === 1) return `:library ${matches[0]} `;
     }
     if (cmd === 'theme' && parts.length === 2) {
       const prefix = (parts[1] ?? '').toLowerCase();
@@ -546,6 +742,30 @@ export function App(props: AppProps): React.JSX.Element {
     if (resolveKeyName(input, key) === 'escape') setHelpOpen(false);
   };
 
+  // :library remove confirmation — y/enter detaches the folder and deletes
+  // its books (progress/bookmarks included), n/esc cancels. Mirrors the
+  // DeleteConfirm pattern used for single books in LibraryView.
+  const folderRemoveDispatchRef = useInputDispatch(folderRemoveConfirm !== null);
+  folderRemoveDispatchRef.current = (input: string, key: Key) => {
+    const target = folderRemoveConfirm;
+    if (!target) return;
+    const keyName = resolveKeyName(input, key);
+    if (keyName === 'y' || keyName === 'enter') {
+      const folder = db.getLibraryFolderByPath(target.path);
+      const removedBooks = db.removeBooksByLibraryRoot(target.path);
+      if (folder) db.removeLibraryFolder(folder.id);
+      notify(
+        `Detached ${target.path}; removed ${removedBooks} book${removedBooks === 1 ? '' : 's'}`,
+      );
+      setFolderRemoveConfirm(null);
+      setLibraryRefresh((c) => c + 1);
+      return;
+    }
+    if (keyName === 'n' || keyName === 'escape') {
+      setFolderRemoveConfirm(null);
+    }
+  };
+
   // Navigate (preview) on cursor change.
   useEffect(() => {
     if (!themePickerOpen) return;
@@ -585,7 +805,9 @@ export function App(props: AppProps): React.JSX.Element {
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
           completeCommand={completeCommand}
-          inputDisabled={promptOpenPath || helpOpen || themePickerOpen}
+          inputDisabled={
+            promptOpenPath || helpOpen || themePickerOpen || folderRemoveConfirm !== null
+          }
         />
       ) : screen === 'opds' ? (
         <OpdsView
@@ -599,7 +821,9 @@ export function App(props: AppProps): React.JSX.Element {
           }}
           onHelp={() => setHelpOpen(true)}
           onOpenDownloaded={openDownloadedBook}
-          inputDisabled={promptOpenPath || helpOpen || themePickerOpen}
+          inputDisabled={
+            promptOpenPath || helpOpen || themePickerOpen || folderRemoveConfirm !== null
+          }
         />
       ) : session ? (
         <ReaderView
@@ -614,8 +838,22 @@ export function App(props: AppProps): React.JSX.Element {
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
           completeCommand={completeCommand}
-          inputDisabled={promptOpenPath || helpOpen || themePickerOpen}
+          inputDisabled={
+            promptOpenPath || helpOpen || themePickerOpen || folderRemoveConfirm !== null
+          }
         />
+      ) : null}
+      {folderRemoveConfirm ? (
+        <Box flexDirection="column" paddingX={1}>
+          <Text color={theme.colors.error} bold>
+            Detach "{folderRemoveConfirm.path}"? {folderRemoveConfirm.count} book
+            {folderRemoveConfirm.count === 1 ? '' : 's'} with reading progress will be removed (y/N
+            · esc cancel)
+          </Text>
+          <Text color={theme.colors.dim} dimColor>
+            Files on disk are untouched; re-attaching the folder re-imports the books.
+          </Text>
+        </Box>
       ) : null}
       {helpOpen ? <HelpView config={liveConfig} theme={theme} /> : null}
       {themePickerOpen ? (

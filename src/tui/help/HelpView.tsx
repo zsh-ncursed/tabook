@@ -58,7 +58,7 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
       </Box>
       <Text color={theme.colors.dim} dimColor>
         Tip: type : to open the command line (try :theme nord, :sort author, :goto 10, :open
-        file.fb2, :opds to browse online catalogs).
+        file.fb2, :opds to browse online catalogs, :library add ~/books to attach a folder).
       </Text>
       <Box marginTop={1}>
         <Text color={theme.colors.heading} bold>

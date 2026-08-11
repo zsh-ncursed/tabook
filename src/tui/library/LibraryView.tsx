@@ -63,6 +63,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   const [width, height] = useTerminalSize();
   const [books, setBooks] = useState<BookRecord[]>([]);
   const [recentBooks, setRecentBooks] = useState<BookRecord[]>([]);
+  const [folderCount, setFolderCount] = useState(0);
   const [cursor, setCursor] = useState(0);
   const [sortField, setSortField] = useState<SortField>('title');
   const [filter, setFilter] = useState('');
@@ -76,6 +77,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   useEffect(() => {
     setBooks(db.listBooks());
     setRecentBooks(db.listRecentBooks());
+    setFolderCount(db.listLibraryFolders().length);
   }, [db, refreshTrigger]);
 
   useEffect(() => {
@@ -263,6 +265,12 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
             · {bookList.length} book{bookList.length === 1 ? '' : 's'}
           </Text>
           {view === 'all' ? <Text color={theme.colors.dim}> · sort: {sortField}</Text> : null}
+          {folderCount > 0 ? (
+            <Text color={theme.colors.dim}>
+              {' '}
+              · {folderCount} folder{folderCount === 1 ? '' : 's'}
+            </Text>
+          ) : null}
           {groupBySeries ? <Text color={theme.colors.dim}> · grouped by series</Text> : null}
           {filter ? <Text color={theme.colors.accent}> · filter: "{filter}"</Text> : null}
           <Text color={theme.colors.dim}> · R recent</Text>
@@ -276,7 +284,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           </Text>
           <Text color={theme.colors.dim} dimColor>
             {books.length === 0
-              ? 'Press o to open a book file, or use :open <path>.'
+              ? 'Attach a folder with :library add <path>, press o to open a book, or use :open <path>.'
               : 'Press / to clear the filter.'}
           </Text>
         </Box>

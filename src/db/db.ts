@@ -56,6 +56,16 @@ export interface CatalogRecord {
   password: string | null;
 }
 
+export interface LibraryFolderRecord {
+  id: number;
+  path: string;
+  addedAt: string;
+  // Epoch milliseconds of the last completed scan, used to skip rescans of
+  // folders whose files haven't changed (mtime comparison). null = never
+  // scanned (or scanned before this column existed) → must scan.
+  lastScannedAt: number | null;
+}
+
 export type SortField = 'title' | 'author' | 'added' | 'progress';
 
 interface BookRow {
@@ -142,7 +152,7 @@ function rowToBook(row: BookRow): BookRecord {
   };
 }
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 4;
 
 export class LibraryDb {
   private readonly db: Database.Database;
@@ -238,6 +248,30 @@ export class LibraryDb {
         );
       `);
     }
+    if (version < 3) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS library_folders (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          path TEXT NOT NULL UNIQUE,
+          added_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+      // ALTER TABLE has no IF NOT EXISTS; guard against a partially-applied
+      // migration (crash between the CREATE above and the version bump).
+      const cols = this.db.prepare('PRAGMA table_info(books)').all() as { name: string }[];
+      if (!cols.some((c) => c.name === 'library_root')) {
+        this.db.exec('ALTER TABLE books ADD COLUMN library_root TEXT');
+      }
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_books_library_root ON books(library_root)');
+    }
+    if (version < 4) {
+      const cols = this.db.prepare('PRAGMA table_info(library_folders)').all() as {
+        name: string;
+      }[];
+      if (!cols.some((c) => c.name === 'last_scanned_at')) {
+        this.db.exec('ALTER TABLE library_folders ADD COLUMN last_scanned_at INTEGER');
+      }
+    }
     this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
 
@@ -253,6 +287,10 @@ export class LibraryDb {
     format: 'fb2' | 'epub';
     size: number;
     metadata: BookMetadata;
+    // Which attached library folder this book was scanned from (if any).
+    // Detaching that folder removes its books, so a manually saved book
+    // (no root) keeps the existing root instead of nulling it on re-save.
+    libraryRoot?: string;
   }): number {
     const metadata = record.metadata;
     const authorsLine = metadata.authors
@@ -268,8 +306,8 @@ export class LibraryDb {
     this.db
       .prepare(
         `INSERT INTO books (path, filename, format, size, title, authors, series_name, series_number,
-         genres, annotation, lang, cover_key, publisher, isbn, year)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         genres, annotation, lang, cover_key, publisher, isbn, year, library_root)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET
            filename=excluded.filename,
            format=excluded.format,
@@ -284,7 +322,8 @@ export class LibraryDb {
            cover_key=excluded.cover_key,
            publisher=excluded.publisher,
            isbn=excluded.isbn,
-           year=excluded.year`,
+           year=excluded.year,
+           library_root=COALESCE(excluded.library_root, books.library_root)`,
       )
       .run(
         record.path,
@@ -302,6 +341,7 @@ export class LibraryDb {
         metadata.publisher ?? null,
         metadata.isbn ?? null,
         metadata.year ?? null,
+        record.libraryRoot ?? null,
       );
 
     // After the upsert, look up the row by path to get the stable id.
@@ -577,5 +617,85 @@ export class LibraryDb {
 
   removeCatalog(id: number): void {
     this.db.prepare('DELETE FROM opds_catalogs WHERE id = ?').run(id);
+  }
+
+  // ---- Library folders ----
+
+  addLibraryFolder(folderPath: string): number {
+    // Idempotent: re-adding the same folder is a no-op that returns its id.
+    this.db
+      .prepare('INSERT INTO library_folders (path) VALUES (?) ON CONFLICT(path) DO NOTHING')
+      .run(folderPath);
+    const row = this.db.prepare('SELECT id FROM library_folders WHERE path = ?').get(folderPath) as
+      { id: number } | undefined;
+    return row!.id;
+  }
+
+  listLibraryFolders(): LibraryFolderRecord[] {
+    const rows = this.db
+      .prepare('SELECT id, path, added_at, last_scanned_at FROM library_folders ORDER BY path')
+      .all() as { id: number; path: string; added_at: string; last_scanned_at: number | null }[];
+    return rows.map((r) => ({
+      id: r.id,
+      path: r.path,
+      addedAt: r.added_at,
+      lastScannedAt: r.last_scanned_at,
+    }));
+  }
+
+  getLibraryFolderByPath(folderPath: string): LibraryFolderRecord | undefined {
+    const row = this.db
+      .prepare('SELECT id, path, added_at, last_scanned_at FROM library_folders WHERE path = ?')
+      .get(folderPath) as
+      { id: number; path: string; added_at: string; last_scanned_at: number | null } | undefined;
+    return row
+      ? {
+          id: row.id,
+          path: row.path,
+          addedAt: row.added_at,
+          lastScannedAt: row.last_scanned_at,
+        }
+      : undefined;
+  }
+
+  // Record the completion time of a scan (epoch ms) so the mtime-based dirty
+  // check can skip rescans of unchanged folders.
+  setFolderScannedAt(id: number, scannedAtMs: number): void {
+    this.db
+      .prepare('UPDATE library_folders SET last_scanned_at = ? WHERE id = ?')
+      .run(scannedAtMs, id);
+  }
+
+  removeLibraryFolder(id: number): boolean {
+    const info = this.db.prepare('DELETE FROM library_folders WHERE id = ?').run(id);
+    return info.changes > 0;
+  }
+
+  // Absolute paths of books that were scanned from the given folder root.
+  listPathsByLibraryRoot(root: string): string[] {
+    const rows = this.db.prepare('SELECT path FROM books WHERE library_root = ?').all(root) as {
+      path: string;
+    }[];
+    return rows.map((r) => r.path);
+  }
+
+  // Delete books by path (used by the scanner to drop vanished files).
+  // Progress/bookmarks/sessions/history cascade via FK ON DELETE CASCADE.
+  removeBooksByPaths(paths: string[]): number {
+    if (paths.length === 0) return 0;
+    const del = this.db.prepare('DELETE FROM books WHERE path = ?');
+    let removed = 0;
+    const tx = this.db.transaction((list: string[]) => {
+      for (const p of list) removed += del.run(p).changes;
+    });
+    tx(paths);
+    return removed;
+  }
+
+  // Delete all books scanned from a folder root, e.g. when the folder is
+  // detached from the library.
+  removeBooksByLibraryRoot(root: string): number {
+    const info = this.db.prepare('DELETE FROM books WHERE library_root = ?').run(root);
+    return info.changes;
   }
 }

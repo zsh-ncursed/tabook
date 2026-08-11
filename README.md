@@ -10,6 +10,7 @@ vim-like controls. Built with TypeScript, React + Ink and SQLite.
 - EPUB TOC from both the EPUB 3 `<nav>` document and EPUB 2 NCX.
 - Windows-1251 / UTF-8 / UTF-16 XML detection with BOM handling.
 - A local library backed by SQLite: metadata, reading progress, bookmarks, reading sessions and history.
+- Attach local folders as libraries (`:library add ~/books`) — recursive scans import metadata in bulk.
 - Full-text search inside the current book with highlighted matches (`/`, `n`, `N`).
 - Bookmarks (`b`) with text previews and a bookmark list (`B`).
 - Table of contents navigation (`t`), book info (`i`) and a help screen (`?`).
@@ -53,6 +54,17 @@ Open the library view:
 tabook --library
 ```
 
+Attach a folder of books as a library (recursively scanned):
+
+```bash
+tabook ~/books
+```
+
+Or from inside the app: `:library add <path>`, `:library list`, `:library scan`,
+`:library remove <path>` (see `docs/CONFIGURATION.md`). Attached folders are
+auto-rescanned when you enter the library if their files changed (mtime
+comparison), so unchanged folders are never re-parsed.
+
 Additional options:
 
 ```bash
@@ -86,17 +98,20 @@ tabook --config ~/.config/tabook/config.toml  # use a specific config file
 
 ### Command line
 
-| Command           | Description                                              |
-| ----------------- | -------------------------------------------------------- |
-| `:open <path>`    | Open a book file (falls back to picker)                  |
-| `:theme <name>`   | Switch theme                                             |
-| `:themes`         | List available themes                                    |
-| `:sort <field>`   | Sort library by `title`, `author`, `added` or `progress` |
-| `:group`          | Toggle group-by-series in the library                    |
-| `:goto <page>`    | Jump to a page number in the reader                      |
-| `:simplified`     | Toggle simplified reading mode                           |
-| `:search <query>` | Search the current book                                  |
-| `:q` / `:quit`    | Quit                                                     |
+| Command                  | Description                                              |
+| ------------------------ | -------------------------------------------------------- |
+| `:open <path>`           | Open a book file (falls back to picker)                  |
+| `:theme <name>`          | Switch theme                                             |
+| `:themes`                | List available themes                                    |
+| `:sort <field>`          | Sort library by `title`, `author`, `added` or `progress` |
+| `:group`                 | Toggle group-by-series in the library                    |
+| `:goto <page>`           | Jump to a page number in the reader                      |
+| `:simplified`            | Toggle simplified reading mode                           |
+| `:search <query>`        | Search the current book                                  |
+| `:library add <path>`    | Attach a folder as a library                             |
+| `:library scan`          | Rescan attached folders                                  |
+| `:library remove <path>` | Detach a folder and remove its books                     |
+| `:q` / `:quit`           | Quit                                                     |
 
 ## Configuration
 

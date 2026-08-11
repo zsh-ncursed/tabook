@@ -135,17 +135,58 @@ are ignored with a warning.
 
 ## In-app command line (`:`)
 
-| Command           | Description                                         |
-| ----------------- | --------------------------------------------------- |
-| `:open <path>`    | Open a book file                                    |
-| `:theme <name>`   | Switch theme                                        |
-| `:themes`         | List available themes                               |
-| `:sort <field>`   | Sort library by `title`/`author`/`added`/`progress` |
-| `:group`          | Toggle group-by-series in the library               |
-| `:goto <page>`    | Jump to a page number in the reader                 |
-| `:simplified`     | Toggle simplified reading mode                      |
-| `:search <query>` | Search the current book                             |
-| `:config edit`    | Open the config file in `$EDITOR` and reload        |
-| `:q` / `:quit`    | Quit                                                |
+| Command                  | Description                                         |
+| ------------------------ | --------------------------------------------------- |
+| `:open <path>`           | Open a book file                                    |
+| `:theme <name>`          | Switch theme                                        |
+| `:themes`                | List available themes                               |
+| `:sort <field>`          | Sort library by `title`/`author`/`added`/`progress` |
+| `:group`                 | Toggle group-by-series in the library               |
+| `:goto <page>`           | Jump to a page number in the reader                 |
+| `:simplified`            | Toggle simplified reading mode                      |
+| `:search <query>`        | Search the current book                             |
+| `:config edit`           | Open the config file in `$EDITOR` and reload        |
+| `:library add <path>`    | Attach a local folder as a library (recursive scan) |
+| `:library remove <path>` | Detach a folder; its books leave the library        |
+| `:library list`          | List attached folders                               |
+| `:library scan`          | Rescan all attached folders                         |
+| `:q` / `:quit`           | Quit                                                |
 
-`Tab` completes commands and theme names in the prompt.
+`Tab` completes commands, theme names and `:library` subcommands in the prompt.
+
+## Local folder libraries
+
+`tabook` can treat a local folder (scanned recursively) as a library. Folders
+are stored in the database — no config changes needed — and are managed from
+inside the app:
+
+```
+:library add ~/books       # attach a folder and scan it
+:library list              # list attached folders
+:library scan              # rescan all attached folders
+:library remove ~/books    # detach; its books leave the library
+```
+
+- Supported formats: `.fb2`, `.fb2.zip`, `.epub` (case-insensitive).
+- Attached folders are rescanned automatically on startup and every time you
+  return to the library view (from the reader or OPDS) — but only if files
+  actually changed since the last scan (mtime comparison, no re-parsing of
+  unchanged books), so large libraries don't pay for a full rescan on every
+  entry. The change check itself is asynchronous and chunked, so walking
+  large folders never blocks the interface. `:library add` always scans the
+  new folder; use `:library scan` to force a full rescan of everything.
+- Books whose files disappear from a folder are removed from the library on
+  the next scan (reading progress and bookmarks go with them).
+- Detaching a folder (`:library remove`, confirmed with `y`/`N`) removes its
+  books — progress and bookmarks included — but never touches the files on
+  disk. Re-attaching the folder brings the books back with fresh metadata.
+- Hidden subdirectories (`.git`, `.Trash`, …) are skipped during the scan.
+
+You can also attach a folder straight from the shell:
+
+```bash
+tabook ~/books
+```
+
+A directory passed as the positional argument is attached and the library
+view opens instead of a book file.

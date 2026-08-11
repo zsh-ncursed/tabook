@@ -310,3 +310,210 @@ describe('LibraryDb OPDS catalogs', () => {
     d2.close();
   });
 });
+
+describe('LibraryDb library folders', () => {
+  it('starts with no folders', () => {
+    expect(db.listLibraryFolders()).toEqual([]);
+  });
+
+  it('adds and lists folders sorted by path', () => {
+    db.addLibraryFolder('/books/z');
+    db.addLibraryFolder('/books/a');
+    const folders = db.listLibraryFolders();
+    expect(folders.map((f) => f.path)).toEqual(['/books/a', '/books/z']);
+    expect(folders[0]!.addedAt).toBeTruthy();
+    // Never scanned → no scan timestamp.
+    expect(folders[0]!.lastScannedAt).toBeNull();
+  });
+
+  it('records and reads the last scan time', () => {
+    const id = db.addLibraryFolder('/books/ts');
+    db.setFolderScannedAt(id, 123456789);
+    expect(db.getLibraryFolderByPath('/books/ts')!.lastScannedAt).toBe(123456789);
+    expect(db.listLibraryFolders()[0]!.lastScannedAt).toBe(123456789);
+  });
+
+  it('migrates from v3 to v4 adding last_scanned_at', () => {
+    const filePath = path.join(dir, 'migrate-v4.sqlite');
+    const d1 = new LibraryDb(filePath);
+    d1.addLibraryFolder('/books/a');
+    d1.close();
+    // Simulate a v3 DB: drop the v4 column and set user_version back.
+    const raw = new (require('better-sqlite3'))(filePath) as import('better-sqlite3').Database;
+    raw.exec('ALTER TABLE library_folders DROP COLUMN last_scanned_at;');
+    raw.pragma('user_version = 3');
+    raw.close();
+
+    const d2 = new LibraryDb(filePath);
+    const folder = d2.getLibraryFolderByPath('/books/a')!;
+    // Existing folder was never re-scanned after the migration.
+    expect(folder.lastScannedAt).toBeNull();
+    d2.setFolderScannedAt(folder.id, 42);
+    expect(d2.getLibraryFolderByPath('/books/a')!.lastScannedAt).toBe(42);
+    d2.close();
+  });
+
+  it('adding the same folder twice is idempotent', () => {
+    const id1 = db.addLibraryFolder('/books/x');
+    const id2 = db.addLibraryFolder('/books/x');
+    expect(id2).toBe(id1);
+    expect(db.listLibraryFolders()).toHaveLength(1);
+  });
+
+  it('getLibraryFolderByPath finds by path', () => {
+    db.addLibraryFolder('/books/find');
+    const folder = db.getLibraryFolderByPath('/books/find')!;
+    expect(folder.id).toBeGreaterThan(0);
+    expect(db.getLibraryFolderByPath('/books/nope')).toBeUndefined();
+  });
+
+  it('removes a folder', () => {
+    const id = db.addLibraryFolder('/books/rm');
+    expect(db.removeLibraryFolder(id)).toBe(true);
+    expect(db.removeLibraryFolder(id)).toBe(false);
+    expect(db.listLibraryFolders()).toEqual([]);
+  });
+
+  it('tracks which books were scanned from a folder root', () => {
+    db.addBook({
+      path: '/books/a/book.fb2',
+      filename: 'book.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+      libraryRoot: '/books/a',
+    });
+    db.addBook({
+      path: '/manual.fb2',
+      filename: 'manual.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+    });
+    expect(db.listPathsByLibraryRoot('/books/a')).toEqual(['/books/a/book.fb2']);
+    expect(db.listPathsByLibraryRoot('/books/b')).toEqual([]);
+  });
+
+  it("removeBooksByLibraryRoot deletes only that folder's books", () => {
+    db.addBook({
+      path: '/books/a/one.fb2',
+      filename: 'one.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+      libraryRoot: '/books/a',
+    });
+    db.addBook({
+      path: '/books/a/two.epub',
+      filename: 'two.epub',
+      format: 'epub',
+      size: 1,
+      metadata,
+      libraryRoot: '/books/a',
+    });
+    db.addBook({
+      path: '/books/b/three.fb2',
+      filename: 'three.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+      libraryRoot: '/books/b',
+    });
+    expect(db.removeBooksByLibraryRoot('/books/a')).toBe(2);
+    expect(db.listBooks()).toHaveLength(1);
+  });
+
+  it('removeBooksByLibraryRoot cascades progress and bookmarks', () => {
+    const id = db.addBook({
+      path: '/books/a/one.fb2',
+      filename: 'one.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+      libraryRoot: '/books/a',
+    });
+    db.setProgress(id, 100, 5);
+    db.addBookmark(id, 100, 'mark');
+    db.removeBooksByLibraryRoot('/books/a');
+    expect(db.getBook(id)).toBeUndefined();
+  });
+
+  it('removeBooksByPaths removes by path and counts', () => {
+    db.addBook({
+      path: '/books/a/one.fb2',
+      filename: 'one.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+      libraryRoot: '/books/a',
+    });
+    db.addBook({
+      path: '/books/a/two.fb2',
+      filename: 'two.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+      libraryRoot: '/books/a',
+    });
+    expect(db.removeBooksByPaths(['/books/a/one.fb2', '/books/a/one.fb2'])).toBe(1);
+    expect(db.removeBooksByPaths([])).toBe(0);
+    expect(db.listBooks()).toHaveLength(1);
+  });
+
+  it('re-saving a scanned book without a root keeps the folder root', () => {
+    db.addBook({
+      path: '/books/a/book.fb2',
+      filename: 'book.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+      libraryRoot: '/books/a',
+    });
+    // Manual re-save (no libraryRoot) must not orphan the book from its folder.
+    db.addBook({
+      path: '/books/a/book.fb2',
+      filename: 'book.fb2',
+      format: 'fb2',
+      size: 2,
+      metadata: { ...metadata, title: 'Updated' },
+    });
+    expect(db.listPathsByLibraryRoot('/books/a')).toContain('/books/a/book.fb2');
+    expect(db.getBookByPath('/books/a/book.fb2')!.title).toBe('Updated');
+  });
+
+  it('migrates from v2 to v3 adding library_folders and library_root', () => {
+    const filePath = path.join(dir, 'migrate-v3.sqlite');
+    const d1 = new LibraryDb(filePath);
+    d1.addBook({
+      path: '/books/a/book.fb2',
+      filename: 'book.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+    });
+    d1.close();
+    // Simulate a v2 DB: drop the v3 tables/columns and set user_version back.
+    const raw = new (require('better-sqlite3'))(filePath) as import('better-sqlite3').Database;
+    raw.exec(
+      'DROP INDEX IF EXISTS idx_books_library_root; ALTER TABLE books DROP COLUMN library_root; DROP TABLE library_folders;',
+    );
+    raw.pragma('user_version = 2');
+    raw.close();
+
+    const d2 = new LibraryDb(filePath);
+    expect(d2.listLibraryFolders()).toEqual([]);
+    const id = d2.addLibraryFolder('/books/a');
+    expect(id).toBeGreaterThan(0);
+    // The pre-existing book can now be tracked under the folder root.
+    d2.addBook({
+      path: '/books/a/book.fb2',
+      filename: 'book.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+      libraryRoot: '/books/a',
+    });
+    expect(d2.listPathsByLibraryRoot('/books/a')).toContain('/books/a/book.fb2');
+    d2.close();
+  });
+});

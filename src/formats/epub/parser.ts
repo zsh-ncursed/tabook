@@ -227,14 +227,40 @@ function parseNavLi(node: XmlNode, opfDir: string, level = 1): TocLink {
   return { label, href, fragment, level, children };
 }
 
+interface EpubOpf {
+  opf: OpfData;
+  opfDir: string;
+}
+
+function readEpubOpf(zip: ZipArchive): EpubOpf {
+  const opfPath = parseContainer(zip);
+  return { opf: parseOpf(zip, opfPath), opfDir: path.posix.dirname(opfPath) };
+}
+
+// Metadata-only parse: reads container.xml + the OPF package document and
+// skips spine content, TOC and images. Used by folder scanning, where the
+// full parse (~multi-second for large books) would make scans unbearable.
+export function parseEpubMetadata(data: Uint8Array, filePath: string): BookMetadata {
+  if (!isZipBuffer(data)) {
+    throw new ParseError('EPUB file is not a ZIP archive');
+  }
+  const zip = openZip(data);
+  const { opf } = readEpubOpf(zip);
+  const coverHref =
+    (opf.coverId ? opf.manifest.get(opf.coverId)?.href : undefined) ?? opf.coverHrefFromProperties;
+  if (coverHref) opf.metadata.coverKey = coverHref;
+  if (opf.metadata.title === '') {
+    opf.metadata.title = path.basename(filePath).replace(/\.[^.]+$/, '');
+  }
+  return opf.metadata;
+}
+
 export function parseEpubBuffer(data: Uint8Array, filePath: string): ParsedBook {
   if (!isZipBuffer(data)) {
     throw new ParseError('EPUB file is not a ZIP archive');
   }
   const zip = openZip(data);
-  const opfPath = parseContainer(zip);
-  const opf = parseOpf(zip, opfPath);
-  const opfDir = path.posix.dirname(opfPath);
+  const { opf, opfDir } = readEpubOpf(zip);
 
   const tocLinks: TocLink[] = [];
   if (opf.ncxId) {
