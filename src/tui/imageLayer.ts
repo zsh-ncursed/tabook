@@ -194,7 +194,7 @@ class ImageLayer {
   }
 }
 
-function detectOutput(): string | null {
+export function detectOutput(): string | null {
   // Only run when we're actually attached to a terminal — never in tests,
   // pipes, or CI where spawning ueberzugpp would just leak a process.
   if (!process.stdout.isTTY) return null;

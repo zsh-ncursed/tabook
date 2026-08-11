@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { reconcile } from './imageLayer.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { reconcile, detectOutput, IMAGE_ROWS } from './imageLayer.js';
 import type { ImagePlacement, ShownGeometry } from './imageLayer.js';
 
 function placement(identifier: string, overrides: Partial<ImagePlacement> = {}): ImagePlacement {
@@ -71,5 +71,100 @@ describe('reconcile', () => {
     // mutate the caller's map afterwards — the decision must not change
     shown.set('a', geometry(99, 99, 1, 1));
     expect(toAdd).toEqual([]);
+  });
+});
+
+describe('detectOutput', () => {
+  let origIsTTY: boolean | undefined;
+  let origWayland: string | undefined;
+  let origDisplay: string | undefined;
+  let origTermProgram: string | undefined;
+
+  beforeEach(() => {
+    origIsTTY = process.stdout.isTTY;
+    origWayland = process.env.WAYLAND_DISPLAY;
+    origDisplay = process.env.DISPLAY;
+    origTermProgram = process.env.TERM_PROGRAM;
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: origIsTTY, configurable: true });
+    if (origWayland !== undefined) process.env.WAYLAND_DISPLAY = origWayland;
+    else delete process.env.WAYLAND_DISPLAY;
+    if (origDisplay !== undefined) process.env.DISPLAY = origDisplay;
+    else delete process.env.DISPLAY;
+    if (origTermProgram !== undefined) process.env.TERM_PROGRAM = origTermProgram;
+    else delete process.env.TERM_PROGRAM;
+  });
+
+  function setTTY(value: boolean): void {
+    Object.defineProperty(process.stdout, 'isTTY', { value, configurable: true });
+  }
+
+  it('returns null when not a TTY', () => {
+    setTTY(false);
+    expect(detectOutput()).toBeNull();
+  });
+
+  it('detects Wayland via WAYLAND_DISPLAY', () => {
+    setTTY(true);
+    process.env.WAYLAND_DISPLAY = 'wayland-0';
+    delete process.env.DISPLAY;
+    delete process.env.TERM_PROGRAM;
+    expect(detectOutput()).toBe('wayland');
+  });
+
+  it('detects X11 via DISPLAY', () => {
+    setTTY(true);
+    delete process.env.WAYLAND_DISPLAY;
+    process.env.DISPLAY = ':0';
+    delete process.env.TERM_PROGRAM;
+    expect(detectOutput()).toBe('x11');
+  });
+
+  it('prefers Wayland over X11 when both are set', () => {
+    setTTY(true);
+    process.env.WAYLAND_DISPLAY = 'wayland-0';
+    process.env.DISPLAY = ':0';
+    delete process.env.TERM_PROGRAM;
+    expect(detectOutput()).toBe('wayland');
+  });
+
+  it('detects WezTerm via TERM_PROGRAM', () => {
+    setTTY(true);
+    delete process.env.WAYLAND_DISPLAY;
+    delete process.env.DISPLAY;
+    process.env.TERM_PROGRAM = 'WezTerm';
+    expect(detectOutput()).toBe('iterm2');
+  });
+
+  it('detects kitty via TERM_PROGRAM', () => {
+    setTTY(true);
+    delete process.env.WAYLAND_DISPLAY;
+    delete process.env.DISPLAY;
+    process.env.TERM_PROGRAM = 'kitty';
+    expect(detectOutput()).toBe('kitty');
+  });
+
+  it('returns null for unknown TERM_PROGRAM', () => {
+    setTTY(true);
+    delete process.env.WAYLAND_DISPLAY;
+    delete process.env.DISPLAY;
+    process.env.TERM_PROGRAM = 'unknown';
+    expect(detectOutput()).toBeNull();
+  });
+
+  it('returns null in CI/piped environment (no TTY)', () => {
+    setTTY(false);
+    process.env.WAYLAND_DISPLAY = 'wayland-0';
+    process.env.DISPLAY = ':0';
+    expect(detectOutput()).toBeNull();
+  });
+});
+
+describe('IMAGE_ROWS', () => {
+  it('is a positive integer', () => {
+    expect(IMAGE_ROWS).toBeGreaterThan(0);
+    expect(Number.isInteger(IMAGE_ROWS)).toBe(true);
   });
 });
