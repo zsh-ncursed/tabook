@@ -41,6 +41,18 @@ package() {
   # loader in lib/binding.js picks the .node file by process.platform+arch).
   rm -f "${pkgdir}/usr/lib/${pkgname}/node_modules/better-sqlite3/prebuilds/"{darwin-*,win32-*,linuxmusl-*}*
 
+  # es-toolkit ships ~12MB of prebuilt bundles in dist/. The runtime only loads
+  # dist/compat — ink imports 'es-toolkit/compat', which resolves there (verified:
+  # nothing imports the root 'es-toolkit' package). compat pulls in its transitive
+  # deps (array/object/predicate/util/function/string/math/promise); the root
+  # dist/index.mjs is kept for safety even though its ./error/ import is pruned
+  # (dead until something imports the root entry). Drop the never-imported subdirs.
+  rm -rf "${pkgdir}/usr/lib/${pkgname}/node_modules/es-toolkit/dist/"{fp,server,error,map,set,types} "${pkgdir}/usr/lib/${pkgname}/node_modules/es-toolkit/dist/browser.global.js"
+
+  # better-sqlite3 bundles the SQLite C sources in deps/sqlite3; the prebuilt
+  # .node binaries above are what actually gets loaded, so drop the sources.
+  rm -rf "${pkgdir}/usr/lib/${pkgname}/node_modules/better-sqlite3/deps/sqlite3"
+
   # Binary wrapper
   install -dm755 "${pkgdir}/usr/bin"
   cat > "${pkgdir}/usr/bin/tabook" <<EOF
