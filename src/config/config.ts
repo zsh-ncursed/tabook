@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import TOML from '@iarna/toml';
+import { parse as parseTomlLib, stringify as stringifyTomlLib } from 'smol-toml';
 import type { Config, DisplayConfig, KeyAction, TypographyConfig } from './defaults.js';
 import { defaultConfig, KEY_ACTIONS } from './defaults.js';
 import { defaultConfigPath } from '../utils/paths.js';
@@ -66,7 +66,7 @@ export function normalizeKeybindings(
 export function parseTomlConfig(text: string, base: Config, warnings: string[]): Config {
   let parsed: Record<string, unknown>;
   try {
-    parsed = TOML.parse(text) as unknown as Record<string, unknown>;
+    parsed = parseTomlLib(text) as unknown as Record<string, unknown>;
   } catch (err) {
     throw new ConfigError(`Invalid TOML: ${err instanceof Error ? err.message : String(err)}`, {
       cause: err,
@@ -194,5 +194,5 @@ export function serializeConfig(config: Config): string {
       show_progress_bar: config.display.showProgressBar,
     },
   };
-  return TOML.stringify(out);
+  return stringifyTomlLib(out);
 }
