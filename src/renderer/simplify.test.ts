@@ -63,7 +63,14 @@ describe('simplifyBlocks', () => {
     const blocks: Block[] = [
       { type: 'image', src: 'x', alt: 'pic' }, // dropped
       { type: 'heading', level: 1, children: [t('H')] }, // 1:1
-      { type: 'list', ordered: false, items: [{ children: [t('a')], nested: [] }, { children: [t('b')], nested: [] }] }, // expands to 2
+      {
+        type: 'list',
+        ordered: false,
+        items: [
+          { children: [t('a')], nested: [] },
+          { children: [t('b')], nested: [] },
+        ],
+      }, // expands to 2
       { type: 'empty' }, // dropped
       { type: 'paragraph', children: [t('P')] }, // 1:1
     ];

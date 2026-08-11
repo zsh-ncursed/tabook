@@ -211,13 +211,16 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         break;
       case 'next_chapter':
       case 'prev_chapter': {
-        const label =
-          action === 'next_chapter' ? session.nextChapter() : session.prevChapter();
+        const label = action === 'next_chapter' ? session.nextChapter() : session.prevChapter();
         if (label !== null) {
           forceTick();
           notify(`Chapter: ${truncate(label, 40)}`);
         } else {
-          notify(action === 'next_chapter' ? 'Already at the last chapter' : 'Already at the first chapter');
+          notify(
+            action === 'next_chapter'
+              ? 'Already at the last chapter'
+              : 'Already at the first chapter',
+          );
         }
         break;
       }

@@ -23,6 +23,7 @@ interface FoldedBlock {
 function foldText(text: string): FoldedBlock {
   let folded = '';
   const foldToOrig: number[] = [];
+  let prevWasSpace = false;
   for (let i = 0; i < text.length;) {
     const cp = text.codePointAt(i)!;
     const ch = String.fromCodePoint(cp);
@@ -32,8 +33,24 @@ function foldText(text: string): FoldedBlock {
       .toLowerCase()
       .normalize('NFKD')
       .replace(/[\u0300-\u036f]/g, '');
-    folded += lc;
-    for (let k = 0; k < lc.length; k++) foldToOrig.push(i);
+    // Collapse whitespace runs to a single space, matching normalizeQuery
+    // (which does \s+ → ' '). Without this, adjacent text inlines with
+    // trailing/leading spaces — or list/poem/table blocks joined with '\n' —
+    // produce double spaces in blockToPlainText that never match a
+    // single-space query.
+    for (let k = 0; k < lc.length; k++) {
+      const c = lc[k]!;
+      if (/\s/.test(c)) {
+        if (prevWasSpace) continue;
+        folded += ' ';
+        foldToOrig.push(i);
+        prevWasSpace = true;
+      } else {
+        folded += c;
+        foldToOrig.push(i);
+        prevWasSpace = false;
+      }
+    }
     i += ch.length;
   }
   // Known limitation: foldToOrig stores UTF-16 code-unit indices, while

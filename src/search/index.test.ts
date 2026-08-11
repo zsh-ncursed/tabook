@@ -84,4 +84,15 @@ describe('BookSearchIndex', () => {
     expect(index.blockHighlights('fox', 3)).toEqual([]);
     expect(index.blockHighlights('', 0)).toEqual([]);
   });
+
+  it('collapses whitespace runs in block text to match single-space queries', () => {
+    // Adjacent text inlines can produce double spaces in blockToPlainText
+    // (normalizeInlines collapses within a text node but does not merge
+    // neighbours). The query normalizer collapses \s+ → ' ', so the block
+    // folder must do the same or "hello  world" never matches "hello world".
+    const doubleSpace: Block[] = [para('hello  world'), para('a\n\tb')];
+    const index = new BookSearchIndex(doubleSpace);
+    expect(index.search('hello world')).toHaveLength(1);
+    expect(index.search('a b')).toHaveLength(1);
+  });
 });

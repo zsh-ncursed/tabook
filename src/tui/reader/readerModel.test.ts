@@ -180,7 +180,14 @@ describe('ReaderSession', () => {
     const content: Block[] = [
       { type: 'image', src: 'x', alt: 'pic' }, // original 0 → dropped
       { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter One' }] }, // original 1 → simplified 0
-      { type: 'list', ordered: false, items: [{ children: [{ kind: 'text', text: 'a' }], nested: [] }, { children: [{ kind: 'text', text: 'b' }], nested: [] }] }, // original 2 → simplified 1..2
+      {
+        type: 'list',
+        ordered: false,
+        items: [
+          { children: [{ kind: 'text', text: 'a' }], nested: [] },
+          { children: [{ kind: 'text', text: 'b' }], nested: [] },
+        ],
+      }, // original 2 → simplified 1..2
       { type: 'paragraph', children: [{ kind: 'text', text: 'middle text' }] }, // original 3 → simplified 3
       { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter Two' }] }, // original 4 → simplified 4
     ];
@@ -301,7 +308,14 @@ describe('ReaderSession', () => {
     const content: Block[] = [
       { type: 'image', src: 'x', alt: 'pic' }, // original 0 → dropped
       { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter One' }] }, // → 0
-      { type: 'list', ordered: false, items: [{ children: [{ kind: 'text', text: 'a' }], nested: [] }, { children: [{ kind: 'text', text: 'b' }], nested: [] }] }, // → 1..2
+      {
+        type: 'list',
+        ordered: false,
+        items: [
+          { children: [{ kind: 'text', text: 'a' }], nested: [] },
+          { children: [{ kind: 'text', text: 'b' }], nested: [] },
+        ],
+      }, // → 1..2
       { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter Two' }] }, // → 3
       para('text of chapter two'), // → 4
     ];
