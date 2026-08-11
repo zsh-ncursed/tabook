@@ -66,6 +66,8 @@ function makeSession(overrides: Partial<ReaderSession> = {}): ReaderSession {
     goToCharOffset: vi.fn(),
     saveProgress: vi.fn(),
     charOffset: vi.fn(() => 0),
+    chapterHasParagraphs: vi.fn(() => false),
+    chapterParagraphs: vi.fn(() => []),
   };
   return { ...session, ...overrides } as unknown as ReaderSession;
 }
@@ -243,5 +245,89 @@ describe('ReaderView modal escape behavior', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(lastFrame()).not.toContain('Table of Contents');
     expect(props.onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReaderView TOC chapter expansion', () => {
+  // Book whose top-level TOC entries (chapters) span multiple blocks, so
+  // chapterHasParagraphs/chapterParagraphs can report real content.
+  function makeTocSession(): ReaderSession {
+    return makeSession({
+      book: {
+        ...book,
+        toc: [
+          { id: 'ch1', label: 'Chapter 1', level: 1, blockIndex: 0 },
+          { id: 'ch2', label: 'Chapter 2', level: 1, blockIndex: 3 },
+        ],
+      },
+      chapterHasParagraphs: vi.fn((id: string) => id === 'ch1'),
+      chapterParagraphs: vi.fn((id: string) =>
+        id === 'ch1' ? [{ blockIndex: 1, label: 'Para one of ch1' }] : [],
+      ),
+    });
+  }
+
+  it('shows only chapters by default (no paragraphs until expanded)', async () => {
+    const session = makeTocSession();
+    const props = makeProps({ session });
+    const { stdin, lastFrame } = render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write('t');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastFrame()).toContain('Table of Contents');
+    expect(lastFrame()).toContain('Chapter 1');
+    expect(lastFrame()).toContain('Chapter 2');
+    expect(lastFrame()).not.toContain('Para one of ch1');
+  });
+
+  it('expands a chapter with space and jumps to a paragraph with enter', async () => {
+    const session = makeTocSession();
+    const props = makeProps({ session });
+    const { stdin, lastFrame } = render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write('t');
+    await new Promise((r) => setTimeout(r, 50));
+    // Cursor is on Chapter 1; space expands it.
+    stdin.write(' ');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastFrame()).toContain('Para one of ch1');
+    // Move down onto the paragraph and press enter → jump to its block.
+    stdin.write('j');
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(session.goToToc).toHaveBeenCalledWith(1);
+    expect(lastFrame()).not.toContain('Table of Contents');
+  });
+
+  it('collapses a chapter with a second space press', async () => {
+    const session = makeTocSession();
+    const props = makeProps({ session });
+    const { stdin, lastFrame } = render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write('t');
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write(' ');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastFrame()).toContain('Para one of ch1');
+    stdin.write(' ');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastFrame()).not.toContain('Para one of ch1');
+    expect(lastFrame()).toContain('Chapter 2');
+  });
+
+  it('jumps to a chapter directly with enter (no expansion needed)', async () => {
+    const session = makeTocSession();
+    const props = makeProps({ session });
+    const { stdin, lastFrame } = render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write('t');
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write('j'); // cursor onto Chapter 2
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(session.goToToc).toHaveBeenCalledWith(3);
+    expect(lastFrame()).not.toContain('Table of Contents');
   });
 });

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { LibraryDb } from '../../db/db.js';
 import { defaultConfig } from '../../config/defaults.js';
 import { ReaderSession } from './readerModel.js';
-import type { ParsedBook } from '../../formats/model.js';
+import type { Block, ParsedBook } from '../../formats/model.js';
 
 const typo = defaultConfig().typography;
 
@@ -13,7 +13,7 @@ function para(text: string): { type: 'paragraph'; children: { kind: 'text'; text
   return { type: 'paragraph', children: [{ kind: 'text', text }] };
 }
 
-function makeBook(content: ReturnType<typeof para>[]): ParsedBook {
+function makeBook(content: Block[]): ParsedBook {
   return {
     format: 'fb2',
     path: '/tmp/test.fb2',
@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 function makeSession(
-  content: ReturnType<typeof para>[],
+  content: Block[],
   overrides: Partial<{ width: number; height: number; simplified: boolean }> = {},
 ): ReaderSession {
   return new ReaderSession(makeBook(content), {
@@ -127,6 +127,102 @@ describe('ReaderSession', () => {
     session.setWide(true);
     expect(session.isWide).toBe(true);
     expect(session.contentWidth()).toBe(Math.max(20, 80 - 2));
+  });
+
+  it('reports which chapters contain paragraphs and lists them', () => {
+    const content = [
+      { type: 'heading' as const, level: 1, children: [{ kind: 'text' as const, text: 'Ch 1' }] },
+      para('first para'),
+      para('second para'),
+      { type: 'heading' as const, level: 1, children: [{ kind: 'text' as const, text: 'Ch 2' }] },
+      para('third para'),
+    ];
+    const session = makeSession(content);
+    session.book.toc = [
+      { id: 'ch1', label: 'Ch 1', level: 1, blockIndex: 0 },
+      { id: 'ch2', label: 'Ch 2', level: 1, blockIndex: 3 },
+    ];
+    // Real chapter ranges: ch1 spans blocks 1-2, ch2 block 4 (to end of book).
+    expect(session.chapterHasParagraphs('ch1')).toBe(true);
+    expect(session.chapterParagraphs('ch1').map((p) => p.label)).toEqual([
+      'first para',
+      'second para',
+    ]);
+    expect(session.chapterParagraphs('ch1')[0]!.blockIndex).toBe(1);
+    expect(session.chapterHasParagraphs('ch2')).toBe(true);
+    expect(session.chapterParagraphs('ch2').map((p) => p.label)).toEqual(['third para']);
+    // Unknown ids and empty ranges are safe.
+    expect(session.chapterHasParagraphs('nope')).toBe(false);
+    expect(session.chapterParagraphs('nope')).toEqual([]);
+  });
+
+  it('marks a chapter with only nested headings as empty (no paragraphs)', () => {
+    const content = [
+      { type: 'heading' as const, level: 1, children: [{ kind: 'text' as const, text: 'Ch 1' }] },
+      { type: 'heading' as const, level: 2, children: [{ kind: 'text' as const, text: 'Sub' }] },
+      { type: 'heading' as const, level: 1, children: [{ kind: 'text' as const, text: 'Ch 2' }] },
+    ];
+    const session = makeSession(content);
+    session.book.toc = [
+      { id: 'ch1', label: 'Ch 1', level: 1, blockIndex: 0 },
+      { id: 'sub', label: 'Sub', level: 2, blockIndex: 1 },
+      { id: 'ch2', label: 'Ch 2', level: 1, blockIndex: 2 },
+    ];
+    // ch1's range (blocks 1-1) contains only a heading, no paragraph.
+    expect(session.chapterHasParagraphs('ch1')).toBe(false);
+    expect(session.chapterParagraphs('ch1')).toEqual([]);
+  });
+
+  it('jumps to the right block via TOC in simplified mode (block indices remapped)', () => {
+    // Book where simplification changes block indices: an image is dropped and
+    // a two-item list expands into two paragraphs. TOC entries reference
+    // original book.content indices, so goToToc must remap them.
+    const content: Block[] = [
+      { type: 'image', src: 'x', alt: 'pic' }, // original 0 → dropped
+      { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter One' }] }, // original 1 → simplified 0
+      { type: 'list', ordered: false, items: [{ children: [{ kind: 'text', text: 'a' }], nested: [] }, { children: [{ kind: 'text', text: 'b' }], nested: [] }] }, // original 2 → simplified 1..2
+      { type: 'paragraph', children: [{ kind: 'text', text: 'middle text' }] }, // original 3 → simplified 3
+      { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter Two' }] }, // original 4 → simplified 4
+    ];
+    const session = makeSession(content, { simplified: true });
+    session.book.toc = [
+      { id: 'c1', label: 'Chapter One', level: 1, blockIndex: 1 },
+      { id: 'c2', label: 'Chapter Two', level: 1, blockIndex: 4 },
+    ];
+
+    // Jump to the second chapter: original block 4 → simplified block 4.
+    session.goToToc(4);
+    const lines = session.viewportLines();
+    expect(lines.map((l) => l.spans.map((s) => s.text).join('')).join(' ')).toContain(
+      'Chapter Two',
+    );
+
+    // Jump to the first chapter: original block 1 → simplified block 0 (the
+    // image before it was dropped). Without remapping this would land on the
+    // first list item instead.
+    session.goToToc(1);
+    const firstLines = session.viewportLines();
+    expect(firstLines.map((l) => l.spans.map((s) => s.text).join('')).join(' ')).toContain(
+      'Chapter One',
+    );
+  });
+
+  it('keeps TOC jumps correct in normal mode (indices unchanged)', () => {
+    const content: Block[] = [
+      { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter One' }] },
+      para('first para'),
+      { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter Two' }] },
+    ];
+    const session = makeSession(content);
+    session.book.toc = [
+      { id: 'c1', label: 'Chapter One', level: 1, blockIndex: 0 },
+      { id: 'c2', label: 'Chapter Two', level: 1, blockIndex: 2 },
+    ];
+    session.goToToc(2);
+    const lines = session.viewportLines();
+    expect(lines.map((l) => l.spans.map((s) => s.text).join('')).join(' ')).toContain(
+      'Chapter Two',
+    );
   });
 
   it('persists progress when the book has a library id', () => {

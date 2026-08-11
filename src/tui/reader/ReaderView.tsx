@@ -49,6 +49,14 @@ interface BookmarkRow {
   preview: string;
 }
 
+interface TocItem {
+  id: string;
+  label: string;
+  blockIndex: number;
+  indent: number;
+  underline: boolean;
+}
+
 export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   const {
     session,
@@ -78,7 +86,59 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   const [bookmarks, setBookmarks] = useState<BookmarkRow[]>([]);
   const [editBookmarkId, setEditBookmarkId] = useState<number | null>(null);
   const [tocFilter, setTocFilter] = useState('');
+  // Which chapters (by toc id) currently have their paragraph list expanded in
+  // the TOC modal. Empty set = the default chapters-only view.
+  const [tocExpanded, setTocExpanded] = useState<Set<string>>(new Set());
   const resolver = useMemo(() => createActionResolver(config), [config]);
+
+  // TOC modal rows. Default view: top-level entries (chapters) only, each
+  // underlined when it contains at least one paragraph; space expands a
+  // chapter to list its paragraphs below it. While a filter is active the
+  // whole TOC (any level) is searched as a flat list — expansion is ignored.
+  const tocItems = useMemo<TocItem[]>(() => {
+    const toc = session.book.toc;
+    if (toc.length === 0) return [];
+    let minLevel = Infinity;
+    for (const e of toc) if (e.level < minLevel) minLevel = e.level;
+    const q = tocFilter.trim().toLowerCase();
+    const out: TocItem[] = [];
+    if (q !== '') {
+      for (const e of toc) {
+        if (!e.label.toLowerCase().includes(q)) continue;
+        out.push({
+          id: e.id,
+          label: e.label,
+          blockIndex: e.blockIndex,
+          indent: Math.max(0, e.level - minLevel),
+          underline: false,
+        });
+      }
+      return out;
+    }
+    for (const ch of toc) {
+      if (ch.level !== minLevel) continue;
+      const hasParas = session.chapterHasParagraphs(ch.id);
+      out.push({
+        id: ch.id,
+        label: ch.label,
+        blockIndex: ch.blockIndex,
+        indent: 0,
+        underline: hasParas,
+      });
+      if (tocExpanded.has(ch.id)) {
+        for (const p of session.chapterParagraphs(ch.id)) {
+          out.push({
+            id: `${ch.id}:p${p.blockIndex}`,
+            label: p.label,
+            blockIndex: p.blockIndex,
+            indent: 1,
+            underline: false,
+          });
+        }
+      }
+    }
+    return out;
+  }, [session, tocFilter, tocExpanded]);
   const [, forceTick] = useReducer((n: number) => n + 1, 0);
 
   // Ink's logUpdate suppresses a write when the closing frame is byte-identical
@@ -158,6 +218,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         break;
       case 'toc':
         setTocFilter('');
+        setTocExpanded(new Set());
         setMode('toc');
         forceTick();
         break;
@@ -251,28 +312,41 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
 
     // TOC / bookmarks list modal: dispatch navigation keys here.
     if (currentMode === 'toc' || currentMode === 'bookmarks') {
+      // currentMode (modeRef, updated synchronously) rather than the render
+      // closure `mode`: when several keys arrive in one stdin chunk (e.g. fast
+      // "t "), the closure still holds the previous mode and would build the
+      // wrong item list for the already-open modal.
       const items =
-        mode === 'toc'
-          ? session.book.toc
-              .filter(
-                (entry) =>
-                  tocFilter === '' || entry.label.toLowerCase().includes(tocFilter.toLowerCase()),
-              )
-              .map((entry) => ({
-                id: entry.id,
-                label: entry.label,
-                detail: entry.level > 1 ? '·'.repeat(entry.level - 1) : undefined,
-              }))
+        currentMode === 'toc'
+          ? tocItems
           : bookmarks.map((b) => ({
               id: b.id,
               label: b.label || b.preview || '(no label)',
               detail: b.label ? b.preview : undefined,
             }));
       const count = items.length;
+      const jumpToItem = (item: { id: string | number; label: string }): void => {
+        if (currentMode === 'toc') {
+          // tocItems carries blockIndex for both chapters and their paragraphs,
+          // so the row under the cursor is used directly.
+          const row = item as TocItem;
+          session.goToToc(row.blockIndex);
+          notify(`→ ${truncate(row.label, 40)}`);
+          setTocFilter('');
+        } else {
+          const bm = bookmarks.find((b) => b.id === item.id);
+          if (bm) {
+            session.gotoBookmark(bm.position);
+            notify(`Jumped to bookmark${bm.label ? ` "${bm.label}"` : ''}`);
+          }
+        }
+        setListCursor(0);
+        setMode('reading');
+      };
       switch (keyName) {
         case 'escape':
           setListCursor(0);
-          if (mode === 'toc') setTocFilter('');
+          if (currentMode === 'toc') setTocFilter('');
           closeModal('reading');
           return;
         case 'j':
@@ -289,26 +363,29 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         case 'G':
           setListCursor(count - 1);
           return;
-        case 'enter':
         case 'space':
-          if (count > 0) {
-            const item = items[listCursor]!;
-            if (currentMode === 'toc') {
-              const entry = session.book.toc.find((e) => e.id === item.id);
-              if (entry) {
-                session.goToToc(entry.blockIndex);
-                notify(`→ ${truncate(entry.label, 40)}`);
-              }
-              setTocFilter('');
-            } else {
-              const bm = bookmarks.find((b) => b.id === item.id);
-              if (bm) {
-                session.gotoBookmark(bm.position);
-                notify(`Jumped to bookmark${bm.label ? ` "${bm.label}"` : ''}`);
-              }
+          // Space on a chapter that contains paragraphs expands/collapses its
+          // paragraph list; on any other row (or in the bookmarks modal) it
+          // falls through to the same jump as Enter.
+          if (currentMode === 'toc' && count > 0) {
+            const item = tocItems[listCursor];
+            if (item && item.indent === 0 && item.underline) {
+              setTocExpanded((prev) => {
+                const next = new Set(prev);
+                if (next.has(item.id)) next.delete(item.id);
+                else next.add(item.id);
+                return next;
+              });
+              return;
             }
-            setListCursor(0);
-            setMode('reading');
+          }
+          if (count > 0) {
+            jumpToItem(items[listCursor]!);
+          }
+          return;
+        case 'enter':
+          if (count > 0) {
+            jumpToItem(items[listCursor]!);
           }
           return;
         case 'd':
@@ -575,19 +652,15 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         <ListModal
           theme={theme}
           title="Table of Contents"
-          items={session.book.toc
-            .filter(
-              (entry) =>
-                tocFilter === '' || entry.label.toLowerCase().includes(tocFilter.toLowerCase()),
-            )
-            .map((entry) => ({
-              id: entry.id,
-              label: entry.label,
-              detail: entry.level > 1 ? '·'.repeat(entry.level - 1) : undefined,
-            }))}
+          items={tocItems.map((item) => ({
+            id: item.id,
+            label: item.label,
+            underline: item.underline,
+            indent: item.indent,
+          }))}
           cursor={listCursor}
           height={Math.min(12, height - 8)}
-          footer="j/k move · enter jump · / filter · esc close"
+          footer="j/k move · space expand/collapse · enter jump · / filter · esc close"
         />
       ) : null}
 
@@ -696,7 +769,7 @@ function readerHint(mode: Mode): string {
     case 'bookmarks':
       return 'j/k · enter · e · d · esc';
     case 'toc':
-      return 'j/k · enter · / · esc';
+      return 'j/k · space expand · enter jump · / · esc';
     case 'toc-filter':
       return 'type · enter · esc';
     case 'info':

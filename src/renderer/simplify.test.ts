@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { simplifyBlocks } from './simplify.js';
+import { simplifyBlocks, simplifyBlocksWithMap } from './simplify.js';
 import type { Block, Inline } from '../formats/model.js';
 
 function t(text: string): Inline {
@@ -57,5 +57,21 @@ describe('simplifyBlocks', () => {
   it('drops images and empty blocks', () => {
     const blocks: Block[] = [{ type: 'image', src: 'x', alt: 'pic' }, { type: 'empty' }];
     expect(simplifyBlocks(blocks)).toEqual([]);
+  });
+
+  it('returns a map from original to simplified block indices', () => {
+    const blocks: Block[] = [
+      { type: 'image', src: 'x', alt: 'pic' }, // dropped
+      { type: 'heading', level: 1, children: [t('H')] }, // 1:1
+      { type: 'list', ordered: false, items: [{ children: [t('a')], nested: [] }, { children: [t('b')], nested: [] }] }, // expands to 2
+      { type: 'empty' }, // dropped
+      { type: 'paragraph', children: [t('P')] }, // 1:1
+    ];
+    const { blocks: out, map } = simplifyBlocksWithMap(blocks);
+    expect(out).toHaveLength(4); // heading + 2 list paragraphs + paragraph
+    // Original 0 (image) maps to where the next block lands (0); original 1
+    // (heading) is simplified index 0; original 2 (list) starts at 1; original
+    // 3 (empty) maps forward to 3; original 4 (paragraph) is index 3.
+    expect(map).toEqual([0, 0, 1, 3, 3]);
   });
 });

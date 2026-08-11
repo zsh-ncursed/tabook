@@ -8,6 +8,8 @@ export interface ListModalItem {
   label: string;
   detail?: string;
   accent?: boolean;
+  underline?: boolean;
+  indent?: number;
 }
 
 export interface ListModalProps {
@@ -46,7 +48,8 @@ export function ListModal(props: ListModalProps): React.JSX.Element {
             {visible.map((item, i) => {
               const idx = startIdx + i;
               const selected = idx === cursor;
-              const label = truncateW(item.label, width - 10);
+              const indent = '  '.repeat(item.indent ?? 0);
+              const label = truncateW(item.label, Math.max(4, width - 10 - indent.length));
               const detail = item.detail ? truncateW(item.detail, Math.max(10, width - 30)) : '';
               return (
                 <Box key={item.id}>
@@ -54,9 +57,11 @@ export function ListModal(props: ListModalProps): React.JSX.Element {
                     color={selected ? theme.colors.background : theme.colors.text}
                     backgroundColor={selected ? theme.colors.accent : undefined}
                     bold={item.accent && !selected}
+                    underline={item.underline && !selected}
                   >
                     {' '}
-                    {selected ? '>' : ' '} {label}
+                    {selected ? '>' : ' '} {indent}
+                    {label}
                   </Text>
                   {detail ? (
                     <Text color={theme.colors.dim} dimColor>

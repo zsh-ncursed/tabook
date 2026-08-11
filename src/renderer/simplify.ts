@@ -1,11 +1,26 @@
 import type { Block, Inline, ListItem } from '../formats/model.js';
 
-export function simplifyBlocks(blocks: Block[]): Block[] {
+export interface SimplifyResult {
+  blocks: Block[];
+  // map[i] = index in `blocks` of the first simplified block produced by
+  // original block i. Blocks that simplify to nothing (image/empty) map to the
+  // position where the next block starts, so callers can still derive a valid
+  // layout target from any original index.
+  map: number[];
+}
+
+export function simplifyBlocksWithMap(blocks: Block[]): SimplifyResult {
   const result: Block[] = [];
+  const map: number[] = [];
   for (const block of blocks) {
+    map.push(result.length);
     result.push(...simplifyBlock(block));
   }
-  return result;
+  return { blocks: result, map };
+}
+
+export function simplifyBlocks(blocks: Block[]): Block[] {
+  return simplifyBlocksWithMap(blocks).blocks;
 }
 
 function simplifyBlock(block: Block): Block[] {

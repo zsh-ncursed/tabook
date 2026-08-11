@@ -1,9 +1,11 @@
 import type { Block, ParsedBook } from '../../formats/model.js';
 import type { LibraryDb } from '../../db/db.js';
 import { BookLayout, type TextLine } from '../../renderer/layout.js';
-import { simplifyBlocks } from '../../renderer/simplify.js';
+import { simplifyBlocksWithMap } from '../../renderer/simplify.js';
+import { blockToPlainText } from '../../renderer/blocks.js';
 import { BookSearchIndex, type SearchMatch } from '../../search/index.js';
 import type { TypographyConfig } from '../../config/defaults.js';
+import { normalizeWhitespace } from '../../utils/text.js';
 
 export interface ReaderOptions {
   typo: TypographyConfig;
@@ -20,6 +22,11 @@ export interface SearchState {
   current: number;
 }
 
+export interface TocParagraph {
+  blockIndex: number;
+  label: string;
+}
+
 export class ReaderSession {
   readonly book: ParsedBook;
   search: BookSearchIndex;
@@ -32,6 +39,10 @@ export class ReaderSession {
   private blocks: Block[];
   private layout: BookLayout;
   private simplified: boolean;
+  // Original blockIndex (as used by TOC entries, which index book.content) →
+  // index in the layout's block array. Null when not in simplified mode, where
+  // the two arrays are identical.
+  private simplifiedMap: number[] | null = null;
   private justify: boolean;
   private wide: boolean;
   private typo: TypographyConfig;
@@ -41,6 +52,8 @@ export class ReaderSession {
   private matches: SearchMatch[] = [];
   private currentMatch = -1;
   private query = '';
+  private readonly tocParaCache = new Map<string, TocParagraph[]>();
+  private readonly tocHasParaCache = new Map<string, boolean>();
 
   constructor(book: ParsedBook, opts: ReaderOptions) {
     this.book = book;
@@ -52,7 +65,13 @@ export class ReaderSession {
     this.typo = opts.typo;
     this.width = opts.width;
     this.height = opts.height;
-    this.blocks = opts.simplified ? simplifyBlocks(book.content) : book.content;
+    if (opts.simplified) {
+      const { blocks, map } = simplifyBlocksWithMap(book.content);
+      this.blocks = blocks;
+      this.simplifiedMap = map;
+    } else {
+      this.blocks = book.content;
+    }
     this.search = new BookSearchIndex(this.blocks);
     this.layout = this.buildLayout();
   }
@@ -96,7 +115,14 @@ export class ReaderSession {
 
   private rebuild(): void {
     const offset = this.charOffset();
-    this.blocks = this.simplified ? simplifyBlocks(this.book.content) : this.book.content;
+    if (this.simplified) {
+      const { blocks, map } = simplifyBlocksWithMap(this.book.content);
+      this.blocks = blocks;
+      this.simplifiedMap = map;
+    } else {
+      this.blocks = this.book.content;
+      this.simplifiedMap = null;
+    }
     this.search = new BookSearchIndex(this.blocks);
     this.layout = this.buildLayout();
     if (this.query !== '') {
@@ -204,7 +230,74 @@ export class ReaderSession {
   }
 
   goToToc(blockIndex: number): void {
-    this.line = this.clampLine(this.layout.lineForBlock(blockIndex));
+    // TOC entries carry blockIndex in original book.content coordinates. In
+    // simplified mode the layout's block array differs (lists expand into
+    // multiple paragraphs, images/empties drop), so remap before looking up
+    // the line. Falls back to the raw index in normal mode or on out-of-range.
+    let target = blockIndex;
+    if (this.simplifiedMap && blockIndex >= 0 && blockIndex < this.simplifiedMap.length) {
+      target = this.simplifiedMap[blockIndex]!;
+    }
+    this.line = this.clampLine(this.layout.lineForBlock(target));
+  }
+
+  // ---- TOC paragraph listing ----
+
+  // Block range owned by a chapter: from the block after its heading up to
+  // the next TOC entry at the same-or-higher level (or end of content).
+  private chapterRange(chapterId: string): { start: number; end: number } | undefined {
+    const toc = this.book.toc;
+    const idx = toc.findIndex((e) => e.id === chapterId);
+    if (idx < 0) return undefined;
+    const entry = toc[idx]!;
+    const contentLen = this.book.content.length;
+    let end = contentLen;
+    for (let i = idx + 1; i < toc.length; i++) {
+      if (toc[i]!.level <= entry.level) {
+        end = toc[i]!.blockIndex;
+        break;
+      }
+    }
+    const start = entry.blockIndex + 1;
+    if (start >= contentLen || start >= end) return undefined;
+    return { start, end: Math.min(end, contentLen) };
+  }
+
+  chapterHasParagraphs(chapterId: string): boolean {
+    const cached = this.tocHasParaCache.get(chapterId);
+    if (cached !== undefined) return cached;
+    const range = this.chapterRange(chapterId);
+    let has = false;
+    if (range) {
+      const content = this.book.content;
+      for (let b = range.start; b < range.end; b++) {
+        if (content[b]!.type === 'paragraph') {
+          has = true;
+          break;
+        }
+      }
+    }
+    this.tocHasParaCache.set(chapterId, has);
+    return has;
+  }
+
+  chapterParagraphs(chapterId: string): TocParagraph[] {
+    const cached = this.tocParaCache.get(chapterId);
+    if (cached) return cached;
+    const range = this.chapterRange(chapterId);
+    const out: TocParagraph[] = [];
+    if (range) {
+      const content = this.book.content;
+      for (let b = range.start; b < range.end; b++) {
+        const block = content[b];
+        if (!block || block.type !== 'paragraph') continue;
+        const label = normalizeWhitespace(blockToPlainText(block));
+        if (label === '') continue;
+        out.push({ blockIndex: b, label });
+      }
+    }
+    this.tocParaCache.set(chapterId, out);
+    return out;
   }
 
   get currentLine(): number {
