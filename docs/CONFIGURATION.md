@@ -89,6 +89,8 @@ Actions you can bind to:
 | `search`              | `/`                   | Search in book                   |
 | `search_next`         | `n`                   | Next search result               |
 | `search_prev`         | `N`                   | Previous search result           |
+| `next_chapter`        | `]`                   | Jump to the next chapter         |
+| `prev_chapter`        | `[`                   | Previous chapter (or its start)  |
 | `sort_cycle`          | —                     | Cycle library sort order         |
 | `toggle_simplified`   | —                     | Toggle simplified mode           |
 | `toggle_respect_css`  | —                     | Toggle publisher CSS             |

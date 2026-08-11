@@ -209,6 +209,18 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           notify('No search results');
         }
         break;
+      case 'next_chapter':
+      case 'prev_chapter': {
+        const label =
+          action === 'next_chapter' ? session.nextChapter() : session.prevChapter();
+        if (label !== null) {
+          forceTick();
+          notify(`Chapter: ${truncate(label, 40)}`);
+        } else {
+          notify(action === 'next_chapter' ? 'Already at the last chapter' : 'Already at the first chapter');
+        }
+        break;
+      }
       case 'add_bookmark':
         setMode('bookmark');
         break;
@@ -758,7 +770,7 @@ function formatDuration(totalSeconds: number): string {
 function readerHint(mode: Mode): string {
   switch (mode) {
     case 'reading':
-      return 'j/k · space · / · b · t · i · J · W · ? · q';
+      return 'j/k · space · [ ] · / · b · t · i · J · W · ? · q';
     case 'search':
       return 'type · enter search · esc cancel';
     case 'command':

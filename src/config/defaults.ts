@@ -24,6 +24,8 @@ export type KeyAction =
   | 'search'
   | 'search_next'
   | 'search_prev'
+  | 'next_chapter'
+  | 'prev_chapter'
   | 'sort_cycle'
   | 'toggle_simplified'
   | 'toggle_respect_css'
@@ -57,6 +59,8 @@ export const KEY_ACTIONS: readonly KeyAction[] = [
   'search',
   'search_next',
   'search_prev',
+  'next_chapter',
+  'prev_chapter',
   'sort_cycle',
   'toggle_simplified',
   'toggle_respect_css',
@@ -75,6 +79,8 @@ export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
   '/': 'search',
   n: 'search_next',
   N: 'search_prev',
+  ']': 'next_chapter',
+  '[': 'prev_chapter',
   o: 'open_file',
   s: 'save_to_library',
   b: 'add_bookmark',

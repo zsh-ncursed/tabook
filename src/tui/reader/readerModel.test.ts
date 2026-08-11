@@ -225,6 +225,105 @@ describe('ReaderSession', () => {
     );
   });
 
+  it('jumps to the next chapter and returns its label', () => {
+    const content: Block[] = [
+      { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter One' }] },
+      para('text of chapter one'),
+      { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter Two' }] },
+      para('text of chapter two'),
+      { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter Three' }] },
+    ];
+    const session = makeSession(content);
+    session.book.toc = [
+      { id: 'c1', label: 'Chapter One', level: 1, blockIndex: 0 },
+      { id: 'c2', label: 'Chapter Two', level: 1, blockIndex: 2 },
+      { id: 'c3', label: 'Chapter Three', level: 1, blockIndex: 4 },
+    ];
+    // From the middle of chapter one, ] lands on chapter two's heading.
+    session.goToToc(1);
+    expect(session.nextChapter()).toBe('Chapter Two');
+    let lines = session.viewportLines();
+    expect(lines.map((l) => l.spans.map((s) => s.text).join('')).join(' ')).toContain(
+      'Chapter Two',
+    );
+    // ] again from chapter two's start → chapter three.
+    expect(session.nextChapter()).toBe('Chapter Three');
+    lines = session.viewportLines();
+    expect(lines.map((l) => l.spans.map((s) => s.text).join('')).join(' ')).toContain(
+      'Chapter Three',
+    );
+    // At the last chapter ] returns null and does not move.
+    expect(session.nextChapter()).toBeNull();
+  });
+
+  it('jumps to the previous chapter (or current chapter start) and returns its label', () => {
+    const content: Block[] = [
+      { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter One' }] },
+      para('text of chapter one'),
+      { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter Two' }] },
+      para('text of chapter two'),
+    ];
+    const session = makeSession(content);
+    session.book.toc = [
+      { id: 'c1', label: 'Chapter One', level: 1, blockIndex: 0 },
+      { id: 'c2', label: 'Chapter Two', level: 1, blockIndex: 2 },
+    ];
+    // In the middle of chapter two, [ returns to the current chapter's start.
+    session.goToToc(3);
+    expect(session.prevChapter()).toBe('Chapter Two');
+    let lines = session.viewportLines();
+    expect(lines.map((l) => l.spans.map((s) => s.text).join('')).join(' ')).toContain(
+      'Chapter Two',
+    );
+    // Already at chapter two's start, [ moves to the previous chapter.
+    expect(session.prevChapter()).toBe('Chapter One');
+    lines = session.viewportLines();
+    expect(lines.map((l) => l.spans.map((s) => s.text).join('')).join(' ')).toContain(
+      'Chapter One',
+    );
+    // At the first chapter start, [ returns null.
+    expect(session.prevChapter()).toBeNull();
+  });
+
+  it('returns null for chapter navigation without a TOC or before the first chapter', () => {
+    const session = makeSession([para('no chapters')]);
+    expect(session.nextChapter()).toBeNull();
+    expect(session.prevChapter()).toBeNull();
+    // With a TOC but the reader above the first chapter (front matter).
+    session.book.toc = [{ id: 'c1', label: 'Chapter One', level: 1, blockIndex: 2 }];
+    expect(session.prevChapter()).toBeNull();
+    expect(session.nextChapter()).toBe('Chapter One');
+  });
+
+  it('navigates chapters correctly in simplified mode (indices remapped)', () => {
+    // A dropped image before the first heading shifts layout indices, and a
+    // list expands into two paragraphs inside a chapter.
+    const content: Block[] = [
+      { type: 'image', src: 'x', alt: 'pic' }, // original 0 → dropped
+      { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter One' }] }, // → 0
+      { type: 'list', ordered: false, items: [{ children: [{ kind: 'text', text: 'a' }], nested: [] }, { children: [{ kind: 'text', text: 'b' }], nested: [] }] }, // → 1..2
+      { type: 'heading', level: 1, children: [{ kind: 'text', text: 'Chapter Two' }] }, // → 3
+      para('text of chapter two'), // → 4
+    ];
+    const session = makeSession(content, { simplified: true });
+    session.book.toc = [
+      { id: 'c1', label: 'Chapter One', level: 1, blockIndex: 1 },
+      { id: 'c2', label: 'Chapter Two', level: 1, blockIndex: 3 },
+    ];
+    // From inside chapter one (after the first expanded list item), ] must
+    // land on chapter two's heading (layout block 3).
+    session.goToToc(2); // original 2 → layout 1 (first list item)
+    session.scrollDown(1); // move off the chapter-one heading onto its content
+    expect(session.nextChapter()).toBe('Chapter Two');
+    const lines = session.viewportLines();
+    expect(lines.map((l) => l.spans.map((s) => s.text).join('')).join(' ')).toContain(
+      'Chapter Two',
+    );
+    // [ from chapter two's middle returns to its start (layout block 3).
+    session.goToToc(4);
+    expect(session.prevChapter()).toBe('Chapter Two');
+  });
+
   it('persists progress when the book has a library id', () => {
     const id = db.addBook({
       path: '/tmp/persist.fb2',

@@ -64,6 +64,8 @@ function makeSession(overrides: Partial<ReaderSession> = {}): ReaderSession {
     gotoBookmark: vi.fn(),
     goToToc: vi.fn(),
     goToCharOffset: vi.fn(),
+    nextChapter: vi.fn(() => null),
+    prevChapter: vi.fn(() => null),
     saveProgress: vi.fn(),
     charOffset: vi.fn(() => 0),
     chapterHasParagraphs: vi.fn(() => false),
@@ -329,5 +331,60 @@ describe('ReaderView TOC chapter expansion', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(session.goToToc).toHaveBeenCalledWith(3);
     expect(lastFrame()).not.toContain('Table of Contents');
+  });
+});
+
+describe('ReaderView chapter navigation keys', () => {
+  it('calls session.nextChapter on ] and notifies with the label', async () => {
+    const session = makeSession({ nextChapter: vi.fn(() => 'Chapter Two') });
+    const props = makeProps({ session });
+    const { stdin } = render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write(']');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(session.nextChapter).toHaveBeenCalledTimes(1);
+    expect(session.prevChapter).not.toHaveBeenCalled();
+    expect(props.notify).toHaveBeenCalledWith(expect.stringContaining('Chapter Two'));
+  });
+
+  it('calls session.prevChapter on [ and notifies with the label', async () => {
+    const session = makeSession({ prevChapter: vi.fn(() => 'Chapter One') });
+    const props = makeProps({ session });
+    const { stdin } = render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write('[');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(session.prevChapter).toHaveBeenCalledTimes(1);
+    expect(props.notify).toHaveBeenCalledWith(expect.stringContaining('Chapter One'));
+  });
+
+  it('notifies when there is no next/previous chapter', async () => {
+    const session = makeSession(); // nextChapter/prevChapter return null
+    const props = makeProps({ session });
+    const { stdin } = render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write(']');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(props.notify).toHaveBeenCalledWith('Already at the last chapter');
+    stdin.write('[');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(props.notify).toHaveBeenCalledWith('Already at the first chapter');
+  });
+
+  it('does not trigger chapter navigation inside the TOC modal', async () => {
+    const session = makeSession({
+      book: { ...book, toc: [{ id: 'c1', label: 'Chapter 1', level: 1, blockIndex: 0 }] },
+    });
+    const props = makeProps({ session });
+    const { stdin, lastFrame } = render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write('t');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastFrame()).toContain('Table of Contents');
+    stdin.write(']');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(session.nextChapter).not.toHaveBeenCalled();
+    // Modal stays open.
+    expect(lastFrame()).toContain('Table of Contents');
   });
 });

@@ -1,4 +1,4 @@
-import type { Block, ParsedBook } from '../../formats/model.js';
+import type { Block, ParsedBook, TocEntry } from '../../formats/model.js';
 import type { LibraryDb } from '../../db/db.js';
 import { BookLayout, type TextLine } from '../../renderer/layout.js';
 import { simplifyBlocksWithMap } from '../../renderer/simplify.js';
@@ -234,11 +234,80 @@ export class ReaderSession {
     // simplified mode the layout's block array differs (lists expand into
     // multiple paragraphs, images/empties drop), so remap before looking up
     // the line. Falls back to the raw index in normal mode or on out-of-range.
-    let target = blockIndex;
+    this.line = this.clampLine(this.layout.lineForBlock(this.layoutBlockForToc(blockIndex)));
+  }
+
+  // ---- chapter navigation ----
+
+  // Map an original book.content block index into layout coordinates. In
+  // normal mode the two arrays are identical; in simplified mode the index
+  // goes through the block map (see goToToc). Out-of-range or unmapped
+  // indices fall back to the raw value.
+  private layoutBlockForToc(blockIndex: number): number {
     if (this.simplifiedMap && blockIndex >= 0 && blockIndex < this.simplifiedMap.length) {
-      target = this.simplifiedMap[blockIndex]!;
+      return this.simplifiedMap[blockIndex]!;
     }
-    this.line = this.clampLine(this.layout.lineForBlock(target));
+    return blockIndex;
+  }
+
+  // Top-level TOC entries (the chapters the TOC modal lists by default):
+  // the minimum level present in the TOC.
+  private chapters(): TocEntry[] {
+    const toc = this.book.toc;
+    if (toc.length === 0) return [];
+    let minLevel = Infinity;
+    for (const e of toc) if (e.level < minLevel) minLevel = e.level;
+    return toc.filter((e) => e.level === minLevel);
+  }
+
+  // Index (in layout coordinates) of the block the reader is currently on.
+  private currentLayoutBlock(): number {
+    const lines = this.layout.getRange(this.line, 1);
+    return lines.length > 0 ? lines[0]!.blockIndex : 0;
+  }
+
+  // Jump to the start of the next chapter. Returns its label, or null when
+  // the reader is already in the last chapter.
+  nextChapter(): string | null {
+    const chapters = this.chapters();
+    if (chapters.length === 0) return null;
+    const current = this.currentLayoutBlock();
+    for (const ch of chapters) {
+      if (this.layoutBlockForToc(ch.blockIndex) > current) {
+        this.goToToc(ch.blockIndex);
+        return ch.label;
+      }
+    }
+    return null;
+  }
+
+  // Jump to the start of the current chapter when reading past it, otherwise
+  // to the start of the previous chapter. Returns the label of the chapter
+  // jumped to, or null when already at the first chapter.
+  prevChapter(): string | null {
+    const chapters = this.chapters();
+    if (chapters.length === 0) return null;
+    const current = this.currentLayoutBlock();
+    // The chapter the reader is inside: the last chapter whose start block is
+    // at or before the current block.
+    let currentChapter: TocEntry | undefined;
+    for (const ch of chapters) {
+      if (this.layoutBlockForToc(ch.blockIndex) <= current) currentChapter = ch;
+      else break;
+    }
+    if (!currentChapter) return null;
+    const start = this.layoutBlockForToc(currentChapter.blockIndex);
+    if (current > start) {
+      // In the middle of a chapter: back to its own start.
+      this.goToToc(currentChapter.blockIndex);
+      return currentChapter.label;
+    }
+    // Already at the chapter start: go to the previous chapter.
+    const idx = chapters.indexOf(currentChapter);
+    const prev = chapters[idx - 1];
+    if (!prev) return null;
+    this.goToToc(prev.blockIndex);
+    return prev.label;
   }
 
   // ---- TOC paragraph listing ----

@@ -13,6 +13,23 @@ describe('createActionResolver', () => {
     expect(r.feed('k')).toBe('move_cursor_up');
   });
 
+  it('resolves chapter navigation keys', () => {
+    const r = makeResolver();
+    expect(r.feed(']')).toBe('next_chapter');
+    expect(r.feed('[')).toBe('prev_chapter');
+  });
+
+  it('allows rebinding chapter navigation keys via config', () => {
+    const config = defaultConfig();
+    config.keybindings[']'] = 'prev_chapter';
+    config.keybindings['['] = 'next_chapter';
+    config.keybindings['}'] = 'next_chapter';
+    const r = createActionResolver(config);
+    expect(r.feed('}')).toBe('next_chapter');
+    expect(r.feed('[')).toBe('next_chapter');
+    expect(r.feed(']')).toBe('prev_chapter');
+  });
+
   it('resolves multi-key sequences like gg', () => {
     const r = makeResolver();
     expect(r.feed('g')).toBeUndefined();

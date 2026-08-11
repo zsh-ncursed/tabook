@@ -110,6 +110,8 @@ export function actionLabel(action: KeyAction): string {
     search: 'Search',
     search_next: 'Next result',
     search_prev: 'Previous result',
+    next_chapter: 'Next chapter',
+    prev_chapter: 'Previous chapter',
     sort_cycle: 'Cycle sort',
     toggle_simplified: 'Toggle simplified mode',
     toggle_respect_css: 'Toggle publisher CSS',
