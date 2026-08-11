@@ -86,14 +86,14 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   const [bookmarks, setBookmarks] = useState<BookmarkRow[]>([]);
   const [editBookmarkId, setEditBookmarkId] = useState<number | null>(null);
   const [tocFilter, setTocFilter] = useState('');
-  // Which chapters (by toc id) currently have their paragraph list expanded in
-  // the TOC modal. Empty set = the default chapters-only view.
+  // Which chapters (by toc id) currently have their subheading list expanded
+  // in the TOC modal. Empty set = the default chapters-only view.
   const [tocExpanded, setTocExpanded] = useState<Set<string>>(new Set());
   const resolver = useMemo(() => createActionResolver(config), [config]);
 
   // TOC modal rows. Default view: top-level entries (chapters) only, each
-  // underlined when it contains at least one paragraph; space expands a
-  // chapter to list its paragraphs below it. While a filter is active the
+  // underlined when it contains at least one direct subheading; space expands
+  // a chapter to list its subheadings below it. While a filter is active the
   // whole TOC (any level) is searched as a flat list — expansion is ignored.
   const tocItems = useMemo<TocItem[]>(() => {
     const toc = session.book.toc;
@@ -117,20 +117,20 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     }
     for (const ch of toc) {
       if (ch.level !== minLevel) continue;
-      const hasParas = session.chapterHasParagraphs(ch.id);
+      const hasHeadings = session.chapterHasHeadings(ch.id);
       out.push({
         id: ch.id,
         label: ch.label,
         blockIndex: ch.blockIndex,
         indent: 0,
-        underline: hasParas,
+        underline: hasHeadings,
       });
       if (tocExpanded.has(ch.id)) {
-        for (const p of session.chapterParagraphs(ch.id)) {
+        for (const h of session.chapterHeadings(ch.id)) {
           out.push({
-            id: `${ch.id}:p${p.blockIndex}`,
-            label: p.label,
-            blockIndex: p.blockIndex,
+            id: `${ch.id}:h${h.blockIndex}`,
+            label: h.label,
+            blockIndex: h.blockIndex,
             indent: 1,
             underline: false,
           });
@@ -342,7 +342,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       const count = items.length;
       const jumpToItem = (item: { id: string | number; label: string }): void => {
         if (currentMode === 'toc') {
-          // tocItems carries blockIndex for both chapters and their paragraphs,
+          // tocItems carries blockIndex for both chapters and their subheadings,
           // so the row under the cursor is used directly.
           const row = item as TocItem;
           session.goToToc(row.blockIndex);
@@ -379,8 +379,8 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           setListCursor(count - 1);
           return;
         case 'space':
-          // Space on a chapter that contains paragraphs expands/collapses its
-          // paragraph list; on any other row (or in the bookmarks modal) it
+          // Space on a chapter that contains subheadings expands/collapses its
+          // subheading list; on any other row (or in the bookmarks modal) it
           // falls through to the same jump as Enter.
           if (currentMode === 'toc' && count > 0) {
             const item = tocItems[listCursor];

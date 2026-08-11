@@ -148,48 +148,74 @@ describe('ReaderSession', () => {
     expect(session.contentWidth()).toBe(Math.max(20, 80 - 2));
   });
 
-  it('reports which chapters contain paragraphs and lists them', () => {
+  it('reports which chapters contain subheadings and lists them', () => {
     const content = [
       { type: 'heading' as const, level: 1, children: [{ kind: 'text' as const, text: 'Ch 1' }] },
+      { type: 'heading' as const, level: 2, children: [{ kind: 'text' as const, text: 'Sub A' }] },
       para('first para'),
+      { type: 'heading' as const, level: 2, children: [{ kind: 'text' as const, text: 'Sub B' }] },
       para('second para'),
       { type: 'heading' as const, level: 1, children: [{ kind: 'text' as const, text: 'Ch 2' }] },
+      { type: 'heading' as const, level: 2, children: [{ kind: 'text' as const, text: 'Sub C' }] },
       para('third para'),
     ];
     const session = makeSession(content);
     session.book.toc = [
       { id: 'ch1', label: 'Ch 1', level: 1, blockIndex: 0 },
-      { id: 'ch2', label: 'Ch 2', level: 1, blockIndex: 3 },
+      { id: 'suba', label: 'Sub A', level: 2, blockIndex: 1 },
+      { id: 'subb', label: 'Sub B', level: 2, blockIndex: 3 },
+      { id: 'ch2', label: 'Ch 2', level: 1, blockIndex: 5 },
+      { id: 'subc', label: 'Sub C', level: 2, blockIndex: 6 },
     ];
-    // Real chapter ranges: ch1 spans blocks 1-2, ch2 block 4 (to end of book).
-    expect(session.chapterHasParagraphs('ch1')).toBe(true);
-    expect(session.chapterParagraphs('ch1').map((p) => p.label)).toEqual([
-      'first para',
-      'second para',
-    ]);
-    expect(session.chapterParagraphs('ch1')[0]!.blockIndex).toBe(1);
-    expect(session.chapterHasParagraphs('ch2')).toBe(true);
-    expect(session.chapterParagraphs('ch2').map((p) => p.label)).toEqual(['third para']);
+    // ch1's range (blocks 1-4) contains two level-2 subheadings.
+    expect(session.chapterHasHeadings('ch1')).toBe(true);
+    expect(session.chapterHeadings('ch1').map((h) => h.label)).toEqual(['Sub A', 'Sub B']);
+    expect(session.chapterHeadings('ch1')[0]!.blockIndex).toBe(1);
+    // ch2's range (blocks 6-7) contains one level-2 subheading.
+    expect(session.chapterHasHeadings('ch2')).toBe(true);
+    expect(session.chapterHeadings('ch2').map((h) => h.label)).toEqual(['Sub C']);
     // Unknown ids and empty ranges are safe.
-    expect(session.chapterHasParagraphs('nope')).toBe(false);
-    expect(session.chapterParagraphs('nope')).toEqual([]);
+    expect(session.chapterHasHeadings('nope')).toBe(false);
+    expect(session.chapterHeadings('nope')).toEqual([]);
   });
 
-  it('marks a chapter with only nested headings as empty (no paragraphs)', () => {
+  it('does not list deeper-level headings as direct children of a chapter', () => {
+    // ch1 (level 1) contains Sub (level 2) which in turn contains Deep (level 3).
+    // Only direct children (level 2) should be listed under ch1 — Deep is a
+    // child of Sub, not of Ch 1, and recursive expand is not supported.
     const content = [
       { type: 'heading' as const, level: 1, children: [{ kind: 'text' as const, text: 'Ch 1' }] },
       { type: 'heading' as const, level: 2, children: [{ kind: 'text' as const, text: 'Sub' }] },
+      { type: 'heading' as const, level: 3, children: [{ kind: 'text' as const, text: 'Deep' }] },
       { type: 'heading' as const, level: 1, children: [{ kind: 'text' as const, text: 'Ch 2' }] },
     ];
     const session = makeSession(content);
     session.book.toc = [
       { id: 'ch1', label: 'Ch 1', level: 1, blockIndex: 0 },
       { id: 'sub', label: 'Sub', level: 2, blockIndex: 1 },
+      { id: 'deep', label: 'Deep', level: 3, blockIndex: 2 },
+      { id: 'ch2', label: 'Ch 2', level: 1, blockIndex: 3 },
+    ];
+    expect(session.chapterHasHeadings('ch1')).toBe(true);
+    expect(session.chapterHeadings('ch1').map((h) => h.label)).toEqual(['Sub']);
+    // Deep (level 3) is not a direct child of Ch 1 (level 1).
+    expect(session.chapterHeadings('ch1')).toHaveLength(1);
+  });
+
+  it('marks a chapter with only paragraphs (no subheadings) as not expandable', () => {
+    const content = [
+      { type: 'heading' as const, level: 1, children: [{ kind: 'text' as const, text: 'Ch 1' }] },
+      para('just a paragraph, no subheadings here'),
+      { type: 'heading' as const, level: 1, children: [{ kind: 'text' as const, text: 'Ch 2' }] },
+    ];
+    const session = makeSession(content);
+    session.book.toc = [
+      { id: 'ch1', label: 'Ch 1', level: 1, blockIndex: 0 },
       { id: 'ch2', label: 'Ch 2', level: 1, blockIndex: 2 },
     ];
-    // ch1's range (blocks 1-1) contains only a heading, no paragraph.
-    expect(session.chapterHasParagraphs('ch1')).toBe(false);
-    expect(session.chapterParagraphs('ch1')).toEqual([]);
+    // ch1's range (blocks 1-1) contains only a paragraph, no subheadings.
+    expect(session.chapterHasHeadings('ch1')).toBe(false);
+    expect(session.chapterHeadings('ch1')).toEqual([]);
   });
 
   it('jumps to the right block via TOC in simplified mode (block indices remapped)', () => {

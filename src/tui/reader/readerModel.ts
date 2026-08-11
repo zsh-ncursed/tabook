@@ -2,7 +2,6 @@ import type { Block, ParsedBook, TocEntry } from '../../formats/model.js';
 import type { LibraryDb } from '../../db/db.js';
 import { BookLayout, type TextLine } from '../../renderer/layout.js';
 import { simplifyBlocksWithMap } from '../../renderer/simplify.js';
-import { blockToPlainText } from '../../renderer/blocks.js';
 import { BookSearchIndex, type SearchMatch } from '../../search/index.js';
 import type { TypographyConfig } from '../../config/defaults.js';
 import { normalizeWhitespace } from '../../utils/text.js';
@@ -22,7 +21,7 @@ export interface SearchState {
   current: number;
 }
 
-export interface TocParagraph {
+export interface TocHeading {
   blockIndex: number;
   label: string;
 }
@@ -52,8 +51,8 @@ export class ReaderSession {
   private matches: SearchMatch[] = [];
   private currentMatch = -1;
   private query = '';
-  private readonly tocParaCache = new Map<string, TocParagraph[]>();
-  private readonly tocHasParaCache = new Map<string, boolean>();
+  private readonly tocHeadingCache = new Map<string, TocHeading[]>();
+  private readonly tocHasHeadingCache = new Map<string, boolean>();
 
   constructor(book: ParsedBook, opts: ReaderOptions) {
     this.book = book;
@@ -310,62 +309,51 @@ export class ReaderSession {
     return prev.label;
   }
 
-  // ---- TOC paragraph listing ----
+  // ---- TOC subheading listing ----
 
-  // Block range owned by a chapter: from the block after its heading up to
-  // the next TOC entry at the same-or-higher level (or end of content).
-  private chapterRange(chapterId: string): { start: number; end: number } | undefined {
+  chapterHasHeadings(chapterId: string): boolean {
+    const cached = this.tocHasHeadingCache.get(chapterId);
+    if (cached !== undefined) return cached;
     const toc = this.book.toc;
     const idx = toc.findIndex((e) => e.id === chapterId);
-    if (idx < 0) return undefined;
-    const entry = toc[idx]!;
-    const contentLen = this.book.content.length;
-    let end = contentLen;
-    for (let i = idx + 1; i < toc.length; i++) {
-      if (toc[i]!.level <= entry.level) {
-        end = toc[i]!.blockIndex;
-        break;
-      }
-    }
-    const start = entry.blockIndex + 1;
-    if (start >= contentLen || start >= end) return undefined;
-    return { start, end: Math.min(end, contentLen) };
-  }
-
-  chapterHasParagraphs(chapterId: string): boolean {
-    const cached = this.tocHasParaCache.get(chapterId);
-    if (cached !== undefined) return cached;
-    const range = this.chapterRange(chapterId);
     let has = false;
-    if (range) {
-      const content = this.book.content;
-      for (let b = range.start; b < range.end; b++) {
-        if (content[b]!.type === 'paragraph') {
+    if (idx >= 0) {
+      // Only direct children that are themselves TOC entries count: a bare
+      // heading block at childLevel without a matching TOC entry is a
+      // sub-subheading nested inside a deeper chapter, not a direct child.
+      for (let i = idx + 1; i < toc.length; i++) {
+        if (toc[i]!.level <= toc[idx]!.level) break;
+        if (toc[i]!.level === toc[idx]!.level + 1) {
           has = true;
           break;
         }
       }
     }
-    this.tocHasParaCache.set(chapterId, has);
+    this.tocHasHeadingCache.set(chapterId, has);
     return has;
   }
 
-  chapterParagraphs(chapterId: string): TocParagraph[] {
-    const cached = this.tocParaCache.get(chapterId);
+  chapterHeadings(chapterId: string): TocHeading[] {
+    const cached = this.tocHeadingCache.get(chapterId);
     if (cached) return cached;
-    const range = this.chapterRange(chapterId);
-    const out: TocParagraph[] = [];
-    if (range) {
-      const content = this.book.content;
-      for (let b = range.start; b < range.end; b++) {
-        const block = content[b];
-        if (!block || block.type !== 'paragraph') continue;
-        const label = normalizeWhitespace(blockToPlainText(block));
-        if (label === '') continue;
-        out.push({ blockIndex: b, label });
+    const toc = this.book.toc;
+    const idx = toc.findIndex((e) => e.id === chapterId);
+    const out: TocHeading[] = [];
+    if (idx >= 0) {
+      const childLevel = toc[idx]!.level + 1;
+      // Collect direct children from the TOC itself — only TOC entries at
+      // childLevel under this chapter. Bare heading blocks at childLevel
+      // that lack a TOC entry are nested inside a deeper sub-chapter and
+      // would pollute the direct-children list.
+      for (let i = idx + 1; i < toc.length; i++) {
+        if (toc[i]!.level <= toc[idx]!.level) break;
+        if (toc[i]!.level === childLevel) {
+          const label = normalizeWhitespace(toc[i]!.label);
+          if (label !== '') out.push({ blockIndex: toc[i]!.blockIndex, label });
+        }
       }
     }
-    this.tocParaCache.set(chapterId, out);
+    this.tocHeadingCache.set(chapterId, out);
     return out;
   }
 

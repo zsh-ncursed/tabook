@@ -68,8 +68,8 @@ function makeSession(overrides: Partial<ReaderSession> = {}): ReaderSession {
     prevChapter: vi.fn(() => null),
     saveProgress: vi.fn(),
     charOffset: vi.fn(() => 0),
-    chapterHasParagraphs: vi.fn(() => false),
-    chapterParagraphs: vi.fn(() => []),
+    chapterHasHeadings: vi.fn(() => false),
+    chapterHeadings: vi.fn(() => []),
   };
   return { ...session, ...overrides } as unknown as ReaderSession;
 }
@@ -252,7 +252,7 @@ describe('ReaderView modal escape behavior', () => {
 
 describe('ReaderView TOC chapter expansion', () => {
   // Book whose top-level TOC entries (chapters) span multiple blocks, so
-  // chapterHasParagraphs/chapterParagraphs can report real content.
+  // chapterHasHeadings/chapterHeadings can report real subheadings.
   function makeTocSession(): ReaderSession {
     return makeSession({
       book: {
@@ -262,14 +262,14 @@ describe('ReaderView TOC chapter expansion', () => {
           { id: 'ch2', label: 'Chapter 2', level: 1, blockIndex: 3 },
         ],
       },
-      chapterHasParagraphs: vi.fn((id: string) => id === 'ch1'),
-      chapterParagraphs: vi.fn((id: string) =>
-        id === 'ch1' ? [{ blockIndex: 1, label: 'Para one of ch1' }] : [],
+      chapterHasHeadings: vi.fn((id: string) => id === 'ch1'),
+      chapterHeadings: vi.fn((id: string) =>
+        id === 'ch1' ? [{ blockIndex: 1, label: 'Subheading one of ch1' }] : [],
       ),
     });
   }
 
-  it('shows only chapters by default (no paragraphs until expanded)', async () => {
+  it('shows only chapters by default (no subheadings until expanded)', async () => {
     const session = makeTocSession();
     const props = makeProps({ session });
     const { stdin, lastFrame } = render(<ReaderView {...props} />);
@@ -279,10 +279,10 @@ describe('ReaderView TOC chapter expansion', () => {
     expect(lastFrame()).toContain('Table of Contents');
     expect(lastFrame()).toContain('Chapter 1');
     expect(lastFrame()).toContain('Chapter 2');
-    expect(lastFrame()).not.toContain('Para one of ch1');
+    expect(lastFrame()).not.toContain('Subheading one of ch1');
   });
 
-  it('expands a chapter with space and jumps to a paragraph with enter', async () => {
+  it('expands a chapter with space and jumps to a subheading with enter', async () => {
     const session = makeTocSession();
     const props = makeProps({ session });
     const { stdin, lastFrame } = render(<ReaderView {...props} />);
@@ -292,8 +292,8 @@ describe('ReaderView TOC chapter expansion', () => {
     // Cursor is on Chapter 1; space expands it.
     stdin.write(' ');
     await new Promise((r) => setTimeout(r, 50));
-    expect(lastFrame()).toContain('Para one of ch1');
-    // Move down onto the paragraph and press enter → jump to its block.
+    expect(lastFrame()).toContain('Subheading one of ch1');
+    // Move down onto the subheading and press enter → jump to its block.
     stdin.write('j');
     await new Promise((r) => setTimeout(r, 50));
     stdin.write('\r');
@@ -311,10 +311,10 @@ describe('ReaderView TOC chapter expansion', () => {
     await new Promise((r) => setTimeout(r, 50));
     stdin.write(' ');
     await new Promise((r) => setTimeout(r, 50));
-    expect(lastFrame()).toContain('Para one of ch1');
+    expect(lastFrame()).toContain('Subheading one of ch1');
     stdin.write(' ');
     await new Promise((r) => setTimeout(r, 50));
-    expect(lastFrame()).not.toContain('Para one of ch1');
+    expect(lastFrame()).not.toContain('Subheading one of ch1');
     expect(lastFrame()).toContain('Chapter 2');
   });
 
