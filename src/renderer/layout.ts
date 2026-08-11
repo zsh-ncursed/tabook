@@ -904,6 +904,13 @@ export class BookLayout {
     return this.blockStarts[blockIndex]!;
   }
 
+  // Book-wide char offset where block `blockIndex` begins. Search matches
+  // carry block-local offsets; the reader adds this base to jump to the
+  // right block. See jumpToMatch in readerModel.ts.
+  blockCharStart(blockIndex: number): number {
+    return this.blockCharStarts[blockIndex] ?? 0;
+  }
+
   lineForCharOffset(charOffset: number): number {
     if (this.blockCount === 0) return 0;
     const safe = Math.max(0, Math.min(charOffset, this.totalChars - 1));

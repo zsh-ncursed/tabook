@@ -442,7 +442,8 @@ export class ReaderSession {
   }
 
   private jumpToMatch(match: SearchMatch): void {
-    this.goToCharOffset(match.start);
+    // match.start is block-local; goToCharOffset expects a book-wide offset.
+    this.goToCharOffset(this.layout.blockCharStart(match.blockIndex) + match.start);
   }
 
   hasActiveQuery(): boolean {

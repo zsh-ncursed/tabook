@@ -108,6 +108,25 @@ describe('ReaderSession', () => {
     expect(session.currentLine).toBe(0);
   });
 
+  it('jumps to the block that contains the match, not block 0', () => {
+    // Search matches carry block-local offsets; jumpToMatch must add the
+    // block's book-wide char start before calling goToCharOffset. Without
+    // that, any match in a block past the first lands at offset N inside
+    // block 0 (start of book) — the symptom is "search jumps to page 1".
+    const content = [
+      para('alpha beta gamma delta epsilon zeta eta theta iota kappa lambda'), // block 0
+      para('mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega'), // block 1
+      para('the red fox jumps over the lazy dog near the riverbank'), // block 2 — target
+    ];
+    const session = makeSession(content, { width: 200, height: 50 });
+    session.setQuery('riverbank');
+    expect(session.searchState().matches).toBe(1);
+    session.nextMatch();
+    const lines = session.viewportLines();
+    const visible = lines.map((l) => l.spans.map((s) => s.text).join('')).join(' ');
+    expect(visible).toContain('riverbank');
+  });
+
   it('switches simplified mode and rebuilds layout', () => {
     const session = makeSession([para('regular')]);
     expect(session.isSimplified).toBe(false);
