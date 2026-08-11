@@ -206,6 +206,11 @@ npm run typecheck             # tsc --noEmit
 npm run build                 # compile to dist/
 ```
 
+A pre-commit hook (`.githooks/pre-commit`) runs Prettier on staged files so
+unformatted code never reaches CI — it is wired up automatically by the
+`prepare` script (`git config core.hooksPath .githooks`) on every `npm install`
+or `npm ci`.
+
 See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for an overview of the
 module layout, data flow and rendering pipeline.
 
