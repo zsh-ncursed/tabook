@@ -10,13 +10,17 @@ vim-like controls. Built with TypeScript, React + Ink and SQLite.
 - EPUB TOC from both the EPUB 3 `<nav>` document and EPUB 2 NCX.
 - Windows-1251 / UTF-8 / UTF-16 XML detection with BOM handling.
 - A local library backed by SQLite: metadata, reading progress, bookmarks, reading sessions and history.
-- Attach local folders as libraries (`:library add ~/books`) — recursive scans import metadata in bulk.
+- Attach local folders as libraries (`:library add ~/books`) — recursive scans import metadata in bulk, and attached folders are auto-rescanned (mtime-based, async) when you enter the library if their files changed.
+- Browse online book catalogs over **OPDS** (`:opds add <name> <url>`) — search, navigate and download books straight to the library.
 - Full-text search inside the current book with highlighted matches (`/`, `n`, `N`).
 - Bookmarks (`b`) with text previews and a bookmark list (`B`).
 - Table of contents navigation (`t`), book info (`i`) and a help screen (`?`).
-- Simplified reading mode (`toggle_simplified`) that flattens lists, poems and tables into paragraphs.
-- 41 built-in color themes and a user config file (`config.toml`).
-- Vim-like multi-key bindings (e.g. `gg` / `G`) with a command line (`:`).
+- Simplified reading mode that flattens lists, poems and tables into paragraphs (`:simplified`).
+- Typography control: line measure, paragraph spacing/indent, hyphenation and text justification (`J`).
+- 41 built-in color themes (36 dark, 5 light) switchable at runtime (`:theme`, `:themes`, `W` toggles wide screen).
+- Reading progress restored on reopen; progress bar in the status bar.
+- Vim-like multi-key bindings (e.g. `gg` / `G`) with a fully remappable keymap and a command line (`:`).
+- Clipboard paste (`Ctrl+V`) and a config editor (`:config edit`) — opens `config.toml` in `$EDITOR` and reloads it live.
 
 ## Requirements
 
@@ -24,6 +28,20 @@ vim-like controls. Built with TypeScript, React + Ink and SQLite.
 - Linux (or another OS with a real terminal)
 
 ## Install
+
+### From the AUR (Arch Linux)
+
+```bash
+paru -S tabook
+# or with yay:
+yay -S tabook
+```
+
+The package bundles the prebuilt native SQLite binding for both x86_64 and
+aarch64. Optional dependencies: `ueberzugpp` (book cover previews),
+`zenity` / `kdialog` (graphical file picker for `o`).
+
+### From source
 
 ```bash
 npm install
@@ -61,9 +79,9 @@ tabook ~/books
 ```
 
 Or from inside the app: `:library add <path>`, `:library list`, `:library scan`,
-`:library remove <path>` (see `docs/CONFIGURATION.md`). Attached folders are
-auto-rescanned when you enter the library if their files changed (mtime
-comparison), so unchanged folders are never re-parsed.
+`:library remove <path>`. Attached folders are auto-rescanned when you enter the
+library if their files changed (mtime comparison), so unchanged folders are
+never re-parsed.
 
 Additional options:
 
@@ -74,42 +92,65 @@ tabook --config ~/.config/tabook/config.toml  # use a specific config file
 
 ## Keybindings
 
-| Key                 | Action                               |
-| ------------------- | ------------------------------------ |
-| `j` / `k`           | Scroll down / up                     |
-| `h` / `l`           | Move left / right                    |
-| `gg` / `G`          | Go to start / end                    |
-| `space`             | Page down                            |
-| `backspace`         | Page up                              |
-| `ctrl+d` / `ctrl+u` | Page down / up                       |
-| `/`                 | Search in book                       |
-| `n` / `N`           | Next / previous match                |
-| `o`                 | Open a book file                     |
-| `s`                 | Save current book to library         |
-| `b`                 | Add bookmark                         |
-| `B`                 | List bookmarks                       |
-| `t`                 | Table of contents                    |
-| `i`                 | Book info                            |
-| `?`                 | Help                                 |
-| `:`                 | Command line                         |
-| `enter`             | Select / open                        |
-| `escape`            | Back                                 |
-| `q`                 | Quit (library) / close book (reader) |
+| Key                   | Action                               |
+| --------------------- | ------------------------------------ |
+| `j` / `k`             | Scroll down / up                     |
+| `h` / `l`             | Move left / right                    |
+| `gg` / `G`            | Go to start / end                    |
+| `space` / `backspace` | Page down / up                       |
+| `ctrl+d` / `ctrl+u`   | Page down / up                       |
+| `/`                   | Search in book                       |
+| `n` / `N`             | Next / previous match                |
+| `o`                   | Open a book file                     |
+| `s`                   | Save current book to library         |
+| `d`                   | Delete current book from library     |
+| `b` / `B`             | Add / list bookmarks                 |
+| `t`                   | Table of contents                    |
+| `i`                   | Book info                            |
+| `R`                   | Toggle recent books                  |
+| `J`                   | Toggle text justify                  |
+| `W`                   | Toggle wide screen                   |
+| `?`                   | Help                                 |
+| `:`                   | Command line                         |
+| `enter`               | Select / open                        |
+| `escape`              | Back                                 |
+| `q`                   | Quit (library) / close book (reader) |
+
+### OPDS view keys
+
+| Key       | Action                             |
+| --------- | ---------------------------------- |
+| `j` / `k` | Navigate catalog entries           |
+| `enter`   | Open entry / download book         |
+| `d`       | Download selected book             |
+| `/`       | Search in catalog                  |
+| `u`       | Go up one level                    |
+| `c`       | Switch between configured catalogs |
+| `n`       | Next page                          |
+| `g` / `G` | Jump to start / end of list        |
+| `q`       | Quit OPDS view                     |
 
 ### Command line
 
 | Command                  | Description                                              |
 | ------------------------ | -------------------------------------------------------- |
 | `:open <path>`           | Open a book file (falls back to picker)                  |
-| `:theme <name>`          | Switch theme                                             |
+| `:theme <name>`          | Switch theme (persisted to config)                       |
 | `:themes`                | List available themes                                    |
 | `:sort <field>`          | Sort library by `title`, `author`, `added` or `progress` |
 | `:group`                 | Toggle group-by-series in the library                    |
-| `:goto <page>`           | Jump to a page number in the reader                      |
+| `:goto <page>`           | Jump to a page number (`:goto 10%` also works)           |
 | `:simplified`            | Toggle simplified reading mode                           |
 | `:search <query>`        | Search the current book                                  |
+| `:config init`           | Write a default config file                              |
+| `:config edit`           | Open the config in `$EDITOR` and reload it live          |
+| `:opds`                  | Open the OPDS catalog browser                            |
+| `:opds add <name> <url>` | Add an OPDS catalog (`[username] [password]` optional)   |
+| `:opds remove <name>`    | Remove an OPDS catalog                                   |
+| `:opds list`             | List configured OPDS catalogs                            |
 | `:library add <path>`    | Attach a folder as a library                             |
-| `:library scan`          | Rescan attached folders                                  |
+| `:library list`          | List attached folders                                    |
+| `:library scan`          | Rescan all attached folders                              |
 | `:library remove <path>` | Detach a folder and remove its books                     |
 | `:q` / `:quit`           | Quit                                                     |
 
@@ -179,7 +220,7 @@ src/
   renderer/   block-to-lines layout engine, simplified mode
   search/     in-book full-text search index
   themes/     built-in color themes
-  tui/        Ink components (library, reader, help, modals)
+  tui/        Ink components (library, reader, help, modals, OPDS)
   utils/      text, paths, zip and error helpers
 ```
 
