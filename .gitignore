@@ -6,3 +6,7 @@ coverage/
 .DS_Store
 bugs.md
 bugs-low.md
+
+# graphify code-graph artifacts (regenerated with `graphify update .`)
+graphify-out/
+.opencode/
