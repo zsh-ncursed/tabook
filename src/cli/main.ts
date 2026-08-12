@@ -10,6 +10,7 @@ import { LibraryDb } from '../db/db.js';
 import { resolveFolderPath } from '../db/scan.js';
 import { defaultDbPath, expandTilde } from '../utils/paths.js';
 import { appVersion } from '../utils/version.js';
+import { nativeRuntimeError } from '../utils/runtime.js';
 import { App } from '../tui/App.js';
 
 export function main(): void {
@@ -37,6 +38,15 @@ function run(
   file: string | undefined,
   options: { theme?: string; config?: string; library?: boolean },
 ): void {
+  // Must run before anything touches LibraryDb: an unsupported Node-API
+  // version makes the better-sqlite3 addon segfault at dlopen() time, which no
+  // try/catch below could ever intercept.
+  const runtimeError = nativeRuntimeError();
+  if (runtimeError !== null) {
+    console.error(`tabook: ${runtimeError}`);
+    process.exit(1);
+  }
+
   let loaded;
   try {
     loaded = loadConfig(options.config);

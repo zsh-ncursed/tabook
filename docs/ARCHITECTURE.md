@@ -5,7 +5,7 @@ format-neutral block model, lays that model out into styled lines, and renders
 them with React + Ink. A SQLite database backs the library, reading progress,
 bookmarks and statistics.
 
-- Runtime: Node.js ≥ 18
+- Runtime: Node.js ≥ 22.14 (better-sqlite3 prebuilds target Node-API 10)
 - UI: React 18 + Ink
 - Formats: `fast-xml-parser`, `adm-zip`, custom encoding detection
 - Storage: `better-sqlite3`
