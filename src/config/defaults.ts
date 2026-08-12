@@ -15,6 +15,7 @@ export type KeyAction =
   | 'open_file'
   | 'save_to_library'
   | 'delete_from_library'
+  | 'delete_file'
   | 'add_bookmark'
   | 'list_bookmarks'
   | 'toc'
@@ -50,6 +51,7 @@ export const KEY_ACTIONS: readonly KeyAction[] = [
   'open_file',
   'save_to_library',
   'delete_from_library',
+  'delete_file',
   'add_bookmark',
   'list_bookmarks',
   'toc',
@@ -89,6 +91,7 @@ export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
   J: 'toggle_justify',
   W: 'toggle_wide',
   d: 'delete_from_library',
+  D: 'delete_file',
   t: 'toc',
   i: 'book_info',
   '?': 'help',

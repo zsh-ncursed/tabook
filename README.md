@@ -11,7 +11,7 @@ vim-like controls. Built with TypeScript, React + Ink and SQLite.
 - Windows-1251 / UTF-8 / UTF-16 XML detection with BOM handling.
 - A local library backed by SQLite: metadata, reading progress, bookmarks, reading sessions and history.
 - Attach local folders as libraries (`:library add ~/books`) — recursive scans import metadata in bulk, and attached folders are auto-rescanned (mtime-based, async) when you enter the library if their files changed.
-- Browse online book catalogs over **OPDS** (`:opds add <name> <url>`) — search, navigate and download books straight to the library.
+- Browse online book catalogs over **OPDS** (`:opds add <name> <url>`) — search, navigate and download books straight to the library. Project Gutenberg and Flibusta are pre-seeded on first run.
 - Full-text search inside the current book with highlighted matches (`/`, `n`, `N`).
 - Bookmarks (`b`) with text previews and a bookmark list (`B`).
 - Table of contents navigation (`t`), book info (`i`) and a help screen (`?`).

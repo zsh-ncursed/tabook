@@ -28,6 +28,7 @@ export interface ReaderViewProps {
   onHelp: () => void;
   runCommand: (text: string) => void;
   completeCommand?: (value: string) => string | null;
+  validCommandPrefix?: (value: string) => number;
   inputDisabled?: boolean;
 }
 
@@ -70,6 +71,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     onHelp,
     runCommand,
     completeCommand,
+    validCommandPrefix,
     inputDisabled = false,
   } = props;
   const [width, height] = useTerminalSize();
@@ -319,9 +321,10 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       return;
     }
 
-    // Info modal: only Esc closes.
+    // Info modal: Esc closes, ? opens help.
     if (currentMode === 'info') {
       if (keyName === 'escape') closeModal('reading');
+      else if (keyName === '?') onHelp();
       return;
     }
 
@@ -419,6 +422,9 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           return;
         case '/':
           if (currentMode === 'toc') setMode('toc-filter');
+          return;
+        case '?':
+          onHelp();
           return;
         default:
           return;
@@ -596,6 +602,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           placeholder="e.g. :goto 42, :simplified, :open book.fb2, :theme nord, :q"
           historyKey="command"
           onTab={completeCommand}
+          validPrefixLength={validCommandPrefix}
           onSubmit={(value) => {
             closeModal('reading');
             runCommand(value);
@@ -782,13 +789,13 @@ function readerHint(mode: Mode): string {
     case 'bookmark-edit':
       return 'type · enter save · esc cancel';
     case 'bookmarks':
-      return 'j/k · enter · e · d · esc';
+      return 'j/k · enter · e · d · ? help · esc';
     case 'toc':
-      return 'j/k · space expand · enter jump · / · esc';
+      return 'j/k · space expand · enter jump · / · ? help · esc';
     case 'toc-filter':
       return 'type · enter · esc';
     case 'info':
-      return 'esc close';
+      return '? help · esc close';
     default:
       return '';
   }

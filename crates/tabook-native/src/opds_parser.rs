@@ -1,0 +1,1 @@
+//! OPDS Atom parser — port of `src/opds/parser.ts`. Phase 12 stub.

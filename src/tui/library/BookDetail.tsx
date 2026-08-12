@@ -13,6 +13,7 @@ export interface BookDetailProps {
   theme: Theme;
   onRead: () => void;
   onClose: () => void;
+  onHelp?: () => void;
 }
 
 // Modal chrome: border-top(1) + paddingY-top(1) + title(1) + marginY(1) +
@@ -46,7 +47,7 @@ function wrapText(text: string, maxW: number): string[] {
 }
 
 export function BookDetail(props: BookDetailProps): React.JSX.Element {
-  const { book, theme, onRead, onClose } = props;
+  const { book, theme, onRead, onClose, onHelp } = props;
   const { stdout } = useStdout();
   const termHeight = stdout.rows ?? 24;
   const hasCover = !!book.coverKey;
@@ -131,6 +132,10 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
       setScroll((s) => Math.max(0, s - 3));
       return;
     }
+    if (input === '?' && onHelp) {
+      onHelp();
+      return;
+    }
   });
 
   const showCoverColumn = hasCover && coverData && coverData.length > 0;
@@ -140,7 +145,7 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
       theme={theme}
       title={truncate(book.title, 76)}
       width={80}
-      footer="Enter — read · esc — back · j/k scroll"
+      footer="Enter — read · ? help · esc — back · j/k scroll"
     >
       <Box flexDirection="row" height={maxVisible}>
         {showCoverColumn ? <Box width={27} /> : null}

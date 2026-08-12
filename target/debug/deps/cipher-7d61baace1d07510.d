@@ -1,0 +1,12 @@
+/home/osha/Workshop/tabook/target/debug/deps/cipher-7d61baace1d07510.d: /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/lib.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/block.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/errors.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/stream.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/stream_core.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/stream_wrapper.rs
+
+/home/osha/Workshop/tabook/target/debug/deps/libcipher-7d61baace1d07510.rlib: /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/lib.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/block.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/errors.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/stream.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/stream_core.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/stream_wrapper.rs
+
+/home/osha/Workshop/tabook/target/debug/deps/libcipher-7d61baace1d07510.rmeta: /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/lib.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/block.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/errors.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/stream.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/stream_core.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/stream_wrapper.rs
+
+/home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/lib.rs:
+/home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/block.rs:
+/home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/errors.rs:
+/home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/stream.rs:
+/home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/stream_core.rs:
+/home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cipher-0.4.4/src/stream_wrapper.rs:

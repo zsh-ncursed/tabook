@@ -17,7 +17,7 @@ export class OpdsError extends Error {
   }
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_REDIRECTS = 5;
 const UA = `tabook/${appVersion()} (+https://github.com/zsh-ncursed/tabook)`;
 

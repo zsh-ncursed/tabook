@@ -10,6 +10,7 @@ import { BookDetail } from './BookDetail.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { forceRedraw } from '../screenRefresh.js';
 import { truncateW } from '../../utils/text.js';
+import { existsSync, unlinkSync } from 'node:fs';
 
 interface LibraryCommandBus {
   sort?: SortField;
@@ -30,6 +31,7 @@ export interface LibraryViewProps {
   onHelp: () => void;
   runCommand: (text: string) => void;
   completeCommand?: (value: string) => string | null;
+  validCommandPrefix?: (value: string) => number;
   inputDisabled?: boolean;
 }
 
@@ -58,6 +60,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
     onHelp,
     runCommand,
     completeCommand,
+    validCommandPrefix,
     inputDisabled = false,
   } = props;
   const [width, height] = useTerminalSize();
@@ -72,6 +75,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   const [view, setView] = useState<'all' | 'recent'>('all');
   const [detailBook, setDetailBook] = useState<BookRecord | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<BookRecord | null>(null);
+  const [confirmDeleteFile, setConfirmDeleteFile] = useState(false);
   const resolver = useMemo(() => createActionResolver(config), [config]);
 
   useEffect(() => {
@@ -203,6 +207,14 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       case 'delete_from_library':
         if (selectedBook) {
           setConfirmTarget(selectedBook);
+          setConfirmDeleteFile(false);
+          setMode('confirm-delete');
+        }
+        break;
+      case 'delete_file':
+        if (selectedBook) {
+          setConfirmTarget(selectedBook);
+          setConfirmDeleteFile(true);
           setMode('confirm-delete');
         }
         break;
@@ -355,6 +367,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           placeholder="type a command, e.g. :open book.fb2, :sort author, :group, :theme dracula"
           historyKey="command"
           onTab={completeCommand}
+          validPrefixLength={validCommandPrefix}
           onSubmit={(value) => {
             setMode('normal');
             runCommand(value);
@@ -368,6 +381,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           book={detailBook}
           theme={theme}
           onRead={() => onOpenBook(detailBook)}
+          onHelp={onHelp}
           onClose={() => {
             setDetailBook(null);
             setMode('normal');
@@ -379,18 +393,33 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       {mode === 'confirm-delete' && confirmTarget ? (
         <DeleteConfirm
           book={confirmTarget}
+          deleteFile={confirmDeleteFile}
           theme={theme}
           onConfirm={() => {
+            const filePath = confirmTarget.path;
             db.removeBook(confirmTarget.id);
+            if (confirmDeleteFile) {
+              try {
+                if (existsSync(filePath)) unlinkSync(filePath);
+                notify(`Deleted file and library record: ${confirmTarget.title}`);
+              } catch (err) {
+                notify(
+                  `Removed from library, but file delete failed: ${err instanceof Error ? err.message : String(err)}`,
+                );
+              }
+            } else {
+              notify(`Removed from library: ${confirmTarget.title}`);
+            }
             const next = db.listBooks();
             setBooks(next);
             setCursor((c) => Math.min(Math.max(0, c), Math.max(0, next.length - 1)));
-            notify(`Removed from library: ${confirmTarget.title}`);
             setConfirmTarget(null);
+            setConfirmDeleteFile(false);
             setMode('normal');
           }}
           onCancel={() => {
             setConfirmTarget(null);
+            setConfirmDeleteFile(false);
             setMode('normal');
           }}
         />
@@ -465,6 +494,8 @@ function hintBar(config: Config, view: string): string {
       key('sort_cycle'),
       key('toggle_recent'),
       key('delete_from_library'),
+      key('delete_file'),
+      key('help'),
       key('command'),
       key('quit'),
     ];
@@ -484,17 +515,20 @@ const actionsList: KeyAction[] = [
   'sort_cycle',
   'toggle_recent',
   'delete_from_library',
+  'delete_file',
+  'help',
   'command',
   'quit',
 ];
 
 function DeleteConfirm(props: {
   book: BookRecord;
+  deleteFile: boolean;
   theme: Theme;
   onConfirm: () => void;
   onCancel: () => void;
 }): React.JSX.Element {
-  const { book, theme, onConfirm, onCancel } = props;
+  const { book, deleteFile, theme, onConfirm, onCancel } = props;
   useInput((input, key) => {
     const keyName = resolveKeyName(input, key);
     if (keyName === 'y' || keyName === 'enter') {
@@ -508,10 +542,14 @@ function DeleteConfirm(props: {
   return (
     <Box flexDirection="column">
       <Text color={theme.colors.error} bold>
-        Remove "{truncateW(book.title, 40)}" from the library? (y/N · esc cancel)
+        {deleteFile
+          ? `Delete file AND library record for "${truncateW(book.title, 40)}"? (y/N · esc cancel)`
+          : `Remove "${truncateW(book.title, 40)}" from the library? (y/N · esc cancel)`}
       </Text>
       <Text color={theme.colors.dim} dimColor>
-        Only the database record is removed; the file on disk is untouched.
+        {deleteFile
+          ? 'This permanently deletes the file from disk. Cannot be undone.'
+          : 'Only the database record is removed; the file on disk is untouched.'}
       </Text>
     </Box>
   );

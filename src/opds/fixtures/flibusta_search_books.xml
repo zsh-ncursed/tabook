@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/terms/" xmlns:os="http://a9.com/-/spec/opensearch/1.1/" xmlns:opds="http://opds-spec.org/2010/catalog">
+  <id>tag:search:books:пелевин:</id>
+  <title>Результат поиска</title>
+  <updated>2026-08-12T07:55:25+02:00</updated>
+  <icon>/favicon.ico</icon>
+  <link href="/opds-opensearch.xml" rel="search" type="application/opensearchdescription+xml" />
+  <link href="/opds/search?searchTerm={searchTerms}" rel="search" type="application/atom+xml" />
+  <link href="/opds" rel="start" type="application/atom+xml;profile=opds-catalog" />
+  <link href="/opds/search?searchTerm=%D0%BF%D0%B5%D0%BB%D0%B5%D0%B2%D0%B8%D0%BD" rel="up" type="application/atom+xml;profile=opds-catalog" />
+  <link href="/opds/search?searchType=books&amp;searchTerm=%D0%BF%D0%B5%D0%BB%D0%B5%D0%B2%D0%B8%D0%BD&amp;pageNumber=1" rel="next" type="application/atom+xml;profile=opds-catalog" />
+  <entry>
+    <updated>2026-08-12T07:55:25+02:00</updated>
+    <title>46 интервью с Пелевиным. 46 интервью с писателем, который никогда не дает интервью</title>
+    <author>
+      <name>Пелевин Виктор Олегович</name>
+      <uri>/a/9450</uri>
+    </author>
+    <link href="/opds/author/9450" rel="related" type="application/atom+xml" title="Все книги автора Пелевин Виктор Олегович" />
+    <category term="Анекдоты" label="Анекдоты" />
+    <category term="Биографии и мемуары: прочее" label="Биографии и мемуары: прочее" />
+    <dc:language>ru</dc:language>
+    <dc:format>fb2+zip</dc:format>
+    <dc:issued>2019</dc:issued>
+    <link href="/opds/sequencebooks/57058" rel="related" type="application/atom+xml" title="Все книги серии &quot;Эксклюзивное мнение&quot;" />
+    <content type="text/html">46 интервью с Виктором Пелевиным  с сайта pelevinlive.ru, для удобства чтения представлены в fb2. Дополнено расшифровкой двух видеоинтервью.
+&lt;br/&gt;Год издания: 2019&lt;br/&gt;Формат: fb2&lt;br/&gt;Язык: ru&lt;br/&gt;Размер: 2461 Kb&lt;br/&gt;Скачиваний: 9960&lt;br/&gt;Серия: Эксклюзивное мнение #2&lt;br/&gt;</content>
+    <link href="/i/33/703433/_0.jpg" rel="http://opds-spec.org/image" type="image/jpeg" />
+    <link href="/i/33/703433/_0.jpg" rel="x-stanza-cover-image" type="image/jpeg" />
+    <link href="/i/33/703433/_0.jpg" rel="http://opds-spec.org/thumbnail" type="image/jpeg" />
+    <link href="/i/33/703433/_0.jpg" rel="x-stanza-cover-image-thumbnail" type="image/jpeg" />
+    <link href="/b/703433/fb2" rel="http://opds-spec.org/acquisition/open-access" type="application/fb2+zip" />
+    <link href="/b/703433/html" rel="http://opds-spec.org/acquisition/open-access" type="application/html+zip" />
+    <link href="/b/703433/txt" rel="http://opds-spec.org/acquisition/open-access" type="application/txt+zip" />
+    <link href="/b/703433/rtf" rel="http://opds-spec.org/acquisition/open-access" type="application/rtf+zip" />
+    <link href="/b/703433/epub" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip" />
+    <link href="/b/703433/mobi" rel="http://opds-spec.org/acquisition/open-access" type="application/x-mobipocket-ebook" />
+    <link href="/b/703433" rel="alternate" type="text/html" title="Книга на сайте" />
+    <id>tag:book:204e741b52bb4282b50b8d0dc4ed31d2</id>
+  </entry>
+  <entry>
+    <updated>2026-08-12T07:55:25+02:00</updated>
+    <title>&quot;Нео-пелевин&quot;</title>
+    <author>
+      <name>Сеновский Вадим</name>
+      <uri>/a/225324</uri>
+    </author>
+    <link href="/opds/author/225324" rel="related" type="application/atom+xml" title="Все книги автора Сеновский Вадим" />
+    <category term="Контркультура" label="Контркультура" />
+    <category term="Самиздат, сетевая литература" label="Самиздат, сетевая литература" />
+    <dc:language>ru</dc:language>
+    <dc:format>fb2+zip</dc:format>
+    <content type="text/html">Формат: fb2&lt;br/&gt;Язык: ru&lt;br/&gt;Размер: 40 Kb&lt;br/&gt;Скачиваний: 2165&lt;br/&gt;</content>
+    <link href="/b/300887/fb2" rel="http://opds-spec.org/acquisition/open-access" type="application/fb2+zip" />
+    <link href="/b/300887/html" rel="http://opds-spec.org/acquisition/open-access" type="application/html+zip" />
+    <link href="/b/300887/txt" rel="http://opds-spec.org/acquisition/open-access" type="application/txt+zip" />
+    <link href="/b/300887/rtf" rel="http://opds-spec.org/acquisition/open-access" type="application/rtf+zip" />
+    <link href="/b/300887/epub" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip" />
+    <link href="/b/300887/mobi" rel="http://opds-spec.org/acquisition/open-access" type="application/x-mobipocket-ebook" />
+    <link href="/b/300887" rel="alternate" type="text/html" title="Книга на сайте" />
+    <id>tag:book:42c48a678e008dcc37c5166fe3e03ca2</id>
+  </entry>
+</feed>

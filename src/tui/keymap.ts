@@ -101,6 +101,7 @@ export function actionLabel(action: KeyAction): string {
     open_file: 'Open file',
     save_to_library: 'Save to library',
     delete_from_library: 'Delete from library',
+    delete_file: 'Delete file',
     add_bookmark: 'Add bookmark',
     list_bookmarks: 'List bookmarks',
     toc: 'Table of contents',

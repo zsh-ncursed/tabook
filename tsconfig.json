@@ -19,7 +19,10 @@
     "resolveJsonModule": true,
     "declaration": true,
     "sourceMap": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@tabook/native": ["./src/native-types.d.ts"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist"]

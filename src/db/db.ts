@@ -152,7 +152,7 @@ function rowToBook(row: BookRow): BookRecord {
   };
 }
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 export class LibraryDb {
   private readonly db: Database.Database;
@@ -270,6 +270,26 @@ export class LibraryDb {
       }[];
       if (!cols.some((c) => c.name === 'last_scanned_at')) {
         this.db.exec('ALTER TABLE library_folders ADD COLUMN last_scanned_at INTEGER');
+      }
+    }
+    if (version < 5) {
+      // Seed Flibusta for existing users who already have OPDS catalogs but
+      // are missing it. Fresh DBs (v0) get all defaults via the CLI pre-seed
+      // in main.ts, so only act when catalogs already exist.
+      const count = this.db
+        .prepare('SELECT COUNT(*) AS n FROM opds_catalogs')
+        .get() as { n: number };
+      if (count.n > 0) {
+        const hasFlibusta = this.db
+          .prepare("SELECT COUNT(*) AS n FROM opds_catalogs WHERE url = 'https://flibusta.is/opds'")
+          .get() as { n: number };
+        if (hasFlibusta.n === 0) {
+          this.db
+            .prepare(
+              "INSERT INTO opds_catalogs (name, url) VALUES ('Flibusta', 'https://flibusta.is/opds')",
+            )
+            .run();
+        }
       }
     }
     this.db.pragma(`user_version = ${SCHEMA_VERSION}`);

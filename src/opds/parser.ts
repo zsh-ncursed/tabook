@@ -8,6 +8,7 @@ import {
   type XmlNode,
 } from '../formats/xml.js';
 import { ParseError } from '../utils/errors.js';
+import { stripHtml } from '../utils/text.js';
 import type { OpdsFeed, OpdsEntry, OpdsLink, FeedKind } from './model.js';
 import { ACQUISITION_RELS } from './model.js';
 
@@ -81,7 +82,12 @@ function parseEntry(node: XmlNode): OpdsEntry {
   const updated = textOf(firstChild(node, 'updated')) || '';
   const summary = textOf(firstChild(node, 'summary')) || undefined;
   const contentNode = firstChild(node, 'content');
-  const content = contentNode ? fullTextOf(contentNode) : undefined;
+  const contentType = contentNode ? attributesOf(contentNode).type : undefined;
+  const rawContent = contentNode ? fullTextOf(contentNode) : undefined;
+  const content =
+    rawContent && contentType && /html/i.test(contentType)
+      ? stripHtml(rawContent)
+      : rawContent;
   const rights = textOf(firstChild(node, 'rights')) || undefined;
   const published = textOf(firstChild(node, 'published')) || undefined;
 
@@ -112,9 +118,20 @@ function parseEntry(node: XmlNode): OpdsEntry {
 
   const thumbnailHref = links.find((l) => l.rel === 'http://opds-spec.org/image/thumbnail')?.href;
   const imageHref = links.find((l) => l.rel === 'http://opds-spec.org/image')?.href;
-  const subsectionHref = links.find(
-    (l) => l.rel === 'subsection' || l.rel === 'http://opds-spec.org/subsection',
-  )?.href;
+  const subsectionHref =
+    links.find((l) => l.rel === 'subsection' || l.rel === 'http://opds-spec.org/subsection')?.href ??
+    // Flibusta and some other catalogs omit rel on navigation links. An entry
+    // with no acquisition links but a link to an OPDS catalog feed is a
+    // navigation entry — use that link as the subsection href.
+    links.find(
+      (l) =>
+        !ACQUISITION_RELS.has(l.rel) &&
+        l.rel !== 'alternate' &&
+        l.rel !== 'http://opds-spec.org/image' &&
+        l.rel !== 'http://opds-spec.org/image/thumbnail' &&
+        l.rel !== 'related' &&
+        l.type?.includes('opds-catalog'),
+    )?.href;
 
   const isAcquisition = acquisitionLinks.length > 0;
   const isNavigation = !isAcquisition && subsectionHref !== undefined;

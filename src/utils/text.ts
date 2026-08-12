@@ -234,6 +234,20 @@ export function normalizeWhitespace(input: string): string {
   return input.replace(/\s+/g, ' ').trim();
 }
 
+export function stripHtml(html: string): string {
+  return decodeEntities(
+    html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|blockquote|h[1-6]|li)>/gi, '\n')
+      .replace(/<li[^>]*>/gi, '\n• ')
+      .replace(/<\/?(p|div|blockquote|h[1-6]|ul|ol|hr|tr|table)[^>]*>/gi, '\n')
+      .replace(/<[^>]+>/g, ''),
+  )
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]+$/gm, '')
+    .trim();
+}
+
 export function truncate(input: string, maxLength: number, suffix = '...'): string {
   if (input.length <= maxLength) return input;
   if (maxLength <= suffix.length) return suffix.slice(0, maxLength);

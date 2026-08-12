@@ -16,6 +16,10 @@ export interface TextPromptProps {
   onValueChange?: (value: string) => void;
   historyKey?: string;
   onTab?: (currentValue: string) => string | null;
+  /** Returns the length of the typed value prefix that is "valid" (e.g.
+   * matches a known command name). The valid prefix is rendered with the
+   * accent color, the invalid tail with the normal text color. */
+  validPrefixLength?: (value: string) => number;
 }
 
 const HISTORY_MAX = 50;
@@ -65,6 +69,7 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
     onValueChange,
     historyKey,
     onTab,
+    validPrefixLength,
   } = props;
   const [value, setValue] = useState(initialValue);
   const [cursor, setCursor] = useState(initialValue.length);
@@ -206,20 +211,39 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
   }, [value, onValueChange]);
 
   const rendered = secret ? '\u2022'.repeat(value.length) : value;
-  const before = rendered.slice(0, cursor);
+  const validLen = validPrefixLength && !secret ? validPrefixLength(value) : 0;
   const atCursor = rendered[cursor] ?? ' ';
+  const before = rendered.slice(0, cursor);
   const after = rendered.slice(cursor + 1);
+  const colorAt = (index: number): string =>
+    index < validLen ? theme.colors.accent : theme.colors.text;
 
   return (
     <Box flexDirection="row">
       <Text color={theme.colors.accent} bold>
         {prefix}
       </Text>
-      <Text color={theme.colors.text}>{before}</Text>
+      {before.length > 0 ? (
+        <Text>
+          {before.split('').map((ch, i) => (
+            <Text key={i} color={colorAt(i)}>
+              {ch}
+            </Text>
+          ))}
+        </Text>
+      ) : null}
       <Text backgroundColor={theme.colors.accent} color={theme.colors.background}>
         {atCursor}
       </Text>
-      <Text color={theme.colors.text}>{after}</Text>
+      {after.length > 0 ? (
+        <Text>
+          {after.split('').map((ch, i) => (
+            <Text key={i} color={colorAt(cursor + 1 + i)}>
+              {ch}
+            </Text>
+          ))}
+        </Text>
+      ) : null}
       {placeholder && value === '' ? <Text dimColor>{placeholder}</Text> : null}
     </Box>
   );

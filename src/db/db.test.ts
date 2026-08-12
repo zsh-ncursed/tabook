@@ -309,6 +309,58 @@ describe('LibraryDb OPDS catalogs', () => {
     expect(d2.listCatalogs()).toHaveLength(1);
     d2.close();
   });
+
+  it('migrates from v4 to v5 seeding Flibusta for existing users', () => {
+    const filePath = path.join(dir, 'migrate-v5.sqlite');
+    const d1 = new LibraryDb(filePath);
+    d1.addCatalog({ name: 'Project Gutenberg', url: 'https://m.gutenberg.org/ebooks.opds/' });
+    d1.close();
+    // Simulate a v4 DB with an existing catalog but no Flibusta.
+    const raw = new (require('better-sqlite3'))(filePath) as import('better-sqlite3').Database;
+    raw.pragma('user_version = 4');
+    raw.close();
+
+    const d2 = new LibraryDb(filePath);
+    const catalogs = d2.listCatalogs();
+    expect(catalogs).toHaveLength(2);
+    expect(catalogs.some((c) => c.name === 'Flibusta')).toBe(true);
+    expect(catalogs.some((c) => c.name === 'Project Gutenberg')).toBe(true);
+    d2.close();
+  });
+
+  it('v5 migration does not duplicate Flibusta if already present', () => {
+    const filePath = path.join(dir, 'migrate-v5-dup.sqlite');
+    const d1 = new LibraryDb(filePath);
+    d1.addCatalog({ name: 'Flibusta', url: 'https://flibusta.is/opds' });
+    d1.addCatalog({ name: 'Project Gutenberg', url: 'https://m.gutenberg.org/ebooks.opds/' });
+    d1.close();
+    const raw = new (require('better-sqlite3'))(filePath) as import('better-sqlite3').Database;
+    raw.pragma('user_version = 4');
+    raw.close();
+
+    const d2 = new LibraryDb(filePath);
+    const flibustas = d2
+      .listCatalogs()
+      .filter((c) => c.url === 'https://flibusta.is/opds');
+    expect(flibustas).toHaveLength(1);
+    d2.close();
+  });
+
+  it('v5 migration does not seed Flibusta on a fresh empty DB', () => {
+    const filePath = path.join(dir, 'migrate-v5-fresh.sqlite');
+    const d1 = new LibraryDb(filePath);
+    d1.close();
+    // Fresh DB, no catalogs — set back to v4 to simulate pre-v5 schema.
+    const raw = new (require('better-sqlite3'))(filePath) as import('better-sqlite3').Database;
+    raw.pragma('user_version = 4');
+    raw.close();
+
+    const d2 = new LibraryDb(filePath);
+    // No catalogs exist → migration should not insert Flibusta (CLI pre-seed
+    // handles fresh DBs).
+    expect(d2.listCatalogs()).toEqual([]);
+    d2.close();
+  });
 });
 
 describe('LibraryDb library folders', () => {

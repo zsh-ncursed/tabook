@@ -1,0 +1,26 @@
+#!/bin/sh
+# Pre-commit hook: fail the commit if any staged file isn't Prettier-formatted.
+# Mirrors CI's `npm run format:check` so unformatted code never reaches GitHub.
+#
+# Only staged files are checked (fast, precise, and blocks exactly what would
+# break CI). The full-repo check CI runs would also flag files you are not
+# committing, which only produces confusing blocks for unrelated dirty files.
+#
+# Enabled automatically by the `prepare` script in package.json
+# (`git config core.hooksPath .githooks`), which runs on every npm install/ci.
+
+set -e
+
+# Fresh clone before `npm install`: no prettier yet — skip instead of failing.
+if [ ! -x node_modules/.bin/prettier ]; then
+  echo "pre-commit: prettier not installed, skipping format check" >&2
+  exit 0
+fi
+
+# Staged files prettier can format (added/copied/modified/renamed). NUL-separated
+# output (-z) piped to xargs -0 keeps filenames with spaces or glob chars intact.
+git diff --cached --name-only -z --diff-filter=ACMR -- \
+  '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.json' '*.jsonc' \
+  '*.md' '*.markdown' '*.yml' '*.yaml' '*.css' '*.scss' '*.less' \
+  '*.html' '*.htm' '*.graphql' '*.gql' |
+  xargs -0 -r node_modules/.bin/prettier --check

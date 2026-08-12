@@ -1,0 +1,11 @@
+/home/osha/Workshop/tabook/target/release/deps/convert_case-b2b9f93b27ff8eff.d: /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/lib.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/case.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/converter.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/pattern.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/segmentation.rs
+
+/home/osha/Workshop/tabook/target/release/deps/libconvert_case-b2b9f93b27ff8eff.rlib: /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/lib.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/case.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/converter.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/pattern.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/segmentation.rs
+
+/home/osha/Workshop/tabook/target/release/deps/libconvert_case-b2b9f93b27ff8eff.rmeta: /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/lib.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/case.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/converter.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/pattern.rs /home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/segmentation.rs
+
+/home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/lib.rs:
+/home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/case.rs:
+/home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/converter.rs:
+/home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/pattern.rs:
+/home/osha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/convert_case-0.6.0/src/segmentation.rs:

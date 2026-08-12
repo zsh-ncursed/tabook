@@ -284,6 +284,120 @@ describe('parseOpdsAtom', () => {
     });
   });
 
+  describe('Flibusta root (navigation without rel="subsection")', () => {
+    const feed = parseOpdsAtom(fixture('flibusta_root.xml'));
+
+    it('parses feed title and id', () => {
+      expect(feed.title).toBe('Flibusta catalog');
+      expect(feed.id).toBe('tag:root');
+    });
+
+    it('has search links', () => {
+      expect(feed.searchHref).toBe('/opds-opensearch.xml');
+    });
+
+    it('has 5 navigation entries', () => {
+      expect(feed.entries).toHaveLength(5);
+    });
+
+    it('entries are navigation (isNavigation=true) despite no rel="subsection"', () => {
+      for (const entry of feed.entries) {
+        expect(entry.isNavigation).toBe(true);
+        expect(entry.isAcquisition).toBe(false);
+        expect(entry.subsectionHref).toBeDefined();
+      }
+    });
+
+    it('Новинки points to /opds/new', () => {
+      const newEntry = feed.entries.find((e) => e.title === 'Новинки')!;
+      expect(newEntry.subsectionHref).toBe('/opds/new');
+    });
+
+    it('По авторам points to /opds/authorsindex', () => {
+      const authors = feed.entries.find((e) => e.title === 'По авторам')!;
+      expect(authors.subsectionHref).toBe('/opds/authorsindex');
+    });
+
+    it('Моя полка points to /opds/polka', () => {
+      const shelf = feed.entries.find((e) => e.title === 'Моя полка')!;
+      expect(shelf.subsectionHref).toBe('/opds/polka');
+    });
+  });
+
+  describe('Flibusta search results (HTML content, fb2+zip, issued)', () => {
+    const feed = parseOpdsAtom(fixture('flibusta_search_books.xml'));
+
+    it('parses feed title and id', () => {
+      expect(feed.title).toBe('Результат поиска');
+      expect(feed.id).toBe('tag:search:books:пелевин:');
+    });
+
+    it('has up and next pagination links', () => {
+      expect(feed.upHref).toContain('searchTerm=');
+      expect(feed.nextHref).toContain('pageNumber=1');
+    });
+
+    it('has two entries', () => {
+      expect(feed.entries).toHaveLength(2);
+    });
+
+    it('strips HTML from content (text/html type)', () => {
+      const entry = feed.entries.find((e) =>
+        e.title.includes('46 интервью'),
+      )!;
+      expect(entry.content).toBeDefined();
+      expect(entry.content).not.toContain('<');
+      expect(entry.content).not.toContain('&');
+      expect(entry.content).toContain('Год издания: 2019');
+      expect(entry.content).toContain('Серия: Эксклюзивное мнение #2');
+      expect(entry.content).toContain('\n');
+    });
+
+    it('extracts issued year (dc:issued)', () => {
+      const entry = feed.entries.find((e) => e.title.includes('46 интервью'))!;
+      expect(entry.issued).toBe('2019');
+    });
+
+    it('entry without issued is undefined', () => {
+      const entry = feed.entries.find((e) => e.title.includes('Нео-пелевин'))!;
+      expect(entry.issued).toBeUndefined();
+    });
+
+    it('detects fb2+zip and epub acquisition links', () => {
+      const entry = feed.entries.find((e) =>
+        e.title.includes('46 интервью'),
+      )!;
+      expect(entry.isAcquisition).toBe(true);
+      const fb2 = entry.acquisitionLinks.find((l) => l.type === 'application/fb2+zip');
+      expect(fb2).toBeDefined();
+      expect(fb2!.href).toBe('/b/703433/fb2');
+      const epub = entry.acquisitionLinks.find((l) => l.type === 'application/epub+zip');
+      expect(epub).toBeDefined();
+      expect(epub!.href).toBe('/b/703433/epub');
+    });
+
+    it('extracts author and language', () => {
+      const entry = feed.entries[0]!;
+      expect(entry.authors[0]!.name).toBe('Пелевин Виктор Олегович');
+      expect(entry.language).toBe('ru');
+    });
+
+    it('extracts categories (genres)', () => {
+      const entry = feed.entries.find((e) =>
+        e.title.includes('46 интервью'),
+      )!;
+      expect(entry.categories.length).toBeGreaterThan(0);
+      expect(entry.categories.some((c) => c.term === 'Анекдоты')).toBe(true);
+    });
+
+    it('has image link', () => {
+      const entry = feed.entries.find((e) =>
+        e.title.includes('46 интервью'),
+      )!;
+      expect(entry.imageHref).toContain('_0.jpg');
+    });
+  });
+
   describe('error handling', () => {
     it('throws on non-XML input', () => {
       expect(() => parseOpdsAtom('not xml')).toThrow();

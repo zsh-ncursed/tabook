@@ -1,0 +1,1 @@
+Map<std::slice::Iter<'_, Vec<Inline>>, for<'a> fn(&'a [Inline]) -> std::string::String {inline_text}>

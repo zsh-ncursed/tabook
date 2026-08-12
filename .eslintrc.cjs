@@ -12,7 +12,7 @@ module.exports = {
     node: true,
     es2022: true,
   },
-  ignorePatterns: ['dist', 'node_modules', 'coverage', '*.test.ts'],
+  ignorePatterns: ['dist', 'node_modules', 'coverage', 'crates', '*.test.ts'],
   rules: {
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/no-explicit-any': 'warn',

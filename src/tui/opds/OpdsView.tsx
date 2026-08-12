@@ -6,6 +6,7 @@ import type { LibraryDb, CatalogRecord } from '../../db/db.js';
 import { resolveKeyName } from '../keymap.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TextPrompt } from '../components/TextPrompt.js';
+import { Spinner } from '../components/Spinner.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { useInputDispatch } from '../useInputDispatch.js';
 import { forceRedraw } from '../screenRefresh.js';
@@ -389,6 +390,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
             setCursor((c) => Math.max(0, c - Math.max(1, height - 6)));
             break;
           case 'enter':
+          case 'l':
             handleSelect();
             break;
           case '/':
@@ -407,6 +409,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
             }
             break;
           case 'u':
+          case 'h':
             goBack();
             break;
           case 'c':
@@ -435,11 +438,13 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         switch (keyName) {
           case 'enter':
           case 'd':
+          case 'l':
             if (selectedEntry) {
               void downloadEntry(selectedEntry);
-              setSelectedEntry(null);
-              setMode('browsing');
             }
+            break;
+          case 'h':
+            goBack();
             break;
           default:
             break;
@@ -514,7 +519,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         <CatalogList catalogs={catalogs} cursor={catalogCursor} theme={theme} width={width} />
       ) : mode === 'loading' ? (
         <Box paddingX={2} paddingY={1}>
-          <Text color={theme.colors.dim}>Loading…</Text>
+          <Spinner label="Loading" theme={theme} />
         </Box>
       ) : mode === 'error' ? (
         <Box paddingX={2} paddingY={1} flexDirection="column">
@@ -522,7 +527,14 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
           <Text color={theme.colors.dim}>esc — back</Text>
         </Box>
       ) : mode === 'entry-detail' && selectedEntry ? (
-        <EntryDetail entry={selectedEntry} theme={theme} width={width} height={height} />
+        <Box flexDirection="column">
+          <EntryDetail entry={selectedEntry} theme={theme} width={width} height={height} />
+          {downloading ? (
+            <Box paddingX={2}>
+              <Spinner label="Downloading" theme={theme} />
+            </Box>
+          ) : null}
+        </Box>
       ) : rows.length === 0 ? (
         <Box paddingX={2} paddingY={1} flexDirection="column">
           <Text color={theme.colors.text}>This feed is empty.</Text>
@@ -644,12 +656,14 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         left={statusLeft}
         right={
           mode === 'catalog-list'
-            ? 'j/k navigate · enter open · q quit'
+            ? 'j/k navigate · enter open · ? help · q quit'
             : mode === 'browsing'
-              ? 'j/k navigate · enter open · d download · / search · u up · n next · c catalogs'
+              ? 'j/k · enter/l open · d download · / search · u/h up · n next · c catalogs · ? help'
               : mode === 'entry-detail'
-                ? 'enter/d download · esc back'
-                : ''
+                ? 'enter/d/l download · h/esc back · ? help'
+                : mode === 'error'
+                  ? '? help · esc back'
+                  : ''
         }
       />
     </Box>

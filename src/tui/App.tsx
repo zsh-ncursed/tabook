@@ -17,6 +17,7 @@ import { useInputDispatch } from './useInputDispatch.js';
 import { resolveKeyName } from './keymap.js';
 import { pickBookFile } from '../utils/open.js';
 import { shellSplit } from '../utils/text.js';
+import { validCommandPrefixLength } from './commands.js';
 import { loadConfig, serializeConfig } from '../config/config.js';
 import { defaultConfig } from '../config/defaults.js';
 import { defaultConfigPath } from '../utils/paths.js';
@@ -645,6 +646,10 @@ export function App(props: AppProps): React.JSX.Element {
     return null;
   }, []);
 
+  const validCommandPrefix = useCallback((value: string): number => {
+    return validCommandPrefixLength(value);
+  }, []);
+
   useEffect(() => {
     if (props.initialPath) {
       void openBookPath(props.initialPath);
@@ -736,11 +741,8 @@ export function App(props: AppProps): React.JSX.Element {
     }
   };
 
-  // Help overlay: Esc closes. Single useInput, active only when help is open.
-  const helpDispatchRef = useInputDispatch(helpOpen);
-  helpDispatchRef.current = (input: string, key: Key) => {
-    if (resolveKeyName(input, key) === 'escape') setHelpOpen(false);
-  };
+  // Help overlay: HelpView handles its own input (j/k scroll, esc close)
+  // via useInput while mounted. No App-level handler needed.
 
   // :library remove confirmation — y/enter detaches the folder and deletes
   // its books (progress/bookmarks included), n/esc cancels. Mirrors the
@@ -805,6 +807,7 @@ export function App(props: AppProps): React.JSX.Element {
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
           completeCommand={completeCommand}
+          validCommandPrefix={validCommandPrefix}
           inputDisabled={
             promptOpenPath || helpOpen || themePickerOpen || folderRemoveConfirm !== null
           }
@@ -838,6 +841,7 @@ export function App(props: AppProps): React.JSX.Element {
           onHelp={() => setHelpOpen(true)}
           runCommand={handleCommand}
           completeCommand={completeCommand}
+          validCommandPrefix={validCommandPrefix}
           inputDisabled={
             promptOpenPath || helpOpen || themePickerOpen || folderRemoveConfirm !== null
           }
@@ -855,7 +859,9 @@ export function App(props: AppProps): React.JSX.Element {
           </Text>
         </Box>
       ) : null}
-      {helpOpen ? <HelpView config={liveConfig} theme={theme} /> : null}
+      {helpOpen ? (
+        <HelpView config={liveConfig} theme={theme} screen={screen} onClose={() => setHelpOpen(false)} />
+      ) : null}
       {themePickerOpen ? (
         <ListModal
           theme={theme}

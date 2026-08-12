@@ -46,6 +46,7 @@
     "smol-toml": "^1.7.1"
   },
   "devDependencies": {
+    "@napi-rs/cli": "^3.8.6",
     "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.10.5",

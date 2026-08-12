@@ -9,6 +9,7 @@ import {
   shellSplit,
   splitChars,
   formatLocalTimestamp,
+  stripHtml,
 } from './text.js';
 import type { Inline } from '../formats/model.js';
 
@@ -207,5 +208,52 @@ describe('formatLocalTimestamp', () => {
   it('returns invalid input unchanged', () => {
     expect(formatLocalTimestamp('')).toBe('');
     expect(formatLocalTimestamp('not a date')).toBe('not a date');
+  });
+});
+
+describe('stripHtml', () => {
+  it('converts <br/> to newlines', () => {
+    expect(stripHtml('line1<br/>line2<br/>line3')).toBe('line1\nline2\nline3');
+  });
+
+  it('converts <br> without self-close', () => {
+    expect(stripHtml('a<br>b')).toBe('a\nb');
+  });
+
+  it('adds newline after block tags', () => {
+    expect(stripHtml('<p>one</p><p>two</p>')).toBe('one\n\ntwo');
+  });
+
+  it('strips inline tags', () => {
+    expect(stripHtml('<b>bold</b> and <i>italic</i>')).toBe('bold and italic');
+  });
+
+  it('decodes HTML entities', () => {
+    expect(stripHtml('&lt;tag&gt; &amp; &quot;quote&quot;')).toBe('<tag> & "quote"');
+  });
+
+  it('handles nested tags', () => {
+    const html = '<blockquote><p>quoted</p></blockquote>';
+    expect(stripHtml(html)).toBe('quoted');
+  });
+
+  it('collapses excessive newlines', () => {
+    expect(stripHtml('a<br/><br/><br/>b')).toBe('a\n\nb');
+  });
+
+  it('trims leading/trailing whitespace', () => {
+    expect(stripHtml('  <p>text</p>  ')).toBe('text');
+  });
+
+  it('handles empty input', () => {
+    expect(stripHtml('')).toBe('');
+  });
+
+  it('handles flibusta-style content', () => {
+    const html = 'Формат: fb2<br/>Язык: ru<br/>Размер: 40 Kb<br/>';
+    const out = stripHtml(html);
+    expect(out).toBe('Формат: fb2\nЯзык: ru\nРазмер: 40 Kb');
+    expect(out).not.toContain('<');
+    expect(out).not.toContain('&');
   });
 });
