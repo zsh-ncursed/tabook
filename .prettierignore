@@ -2,3 +2,8 @@ technical_specification.md
 coverage
 dist
 node_modules
+target
+crates/tabook-native/target
+Cargo.lock
+*.node
+graphify-out

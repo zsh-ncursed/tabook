@@ -6,6 +6,7 @@
     dead_code
 )]
 
+mod db;
 mod encoding;
 mod epub;
 mod fb2;
@@ -229,4 +230,62 @@ pub fn parse_opds_atom(_text: String) -> NapiResult<()> {
     Err(NapiError::from_reason(
         "parseOpdsAtom: not yet implemented (phase 12)",
     ))
+}
+
+// search.rs
+#[cfg(feature = "napi-runtime")]
+#[napi]
+pub fn build_search_index(blocks: Vec<Block>) -> BookSearchIndex {
+    let blocks_owned: Vec<crate::model::Block> = blocks;
+    BookSearchIndex(crate::search::BookSearchIndex::new(&blocks_owned))
+}
+
+#[cfg(feature = "napi-runtime")]
+#[napi]
+pub struct BookSearchIndex(pub(crate) crate::search::BookSearchIndex);
+
+#[cfg(feature = "napi-runtime")]
+#[napi]
+impl BookSearchIndex {
+    #[napi(getter)]
+    pub fn block_count(&self) -> i32 {
+        self.0.block_count()
+    }
+
+    #[napi]
+    pub fn search(&self, query: String) -> Vec<SearchMatch> {
+        self.0
+            .search(&query)
+            .into_iter()
+            .map(|m| SearchMatch {
+                block_index: m.block_index,
+                start: m.start,
+                end: m.end,
+            })
+            .collect()
+    }
+
+    #[napi]
+    pub fn block_highlights(&self, query: String, block_index: i32) -> Vec<HighlightRange> {
+        self.0
+            .block_highlights(&query, block_index)
+            .into_iter()
+            .map(|h| HighlightRange { start: h.start, end: h.end })
+            .collect()
+    }
+}
+
+#[cfg(feature = "napi-runtime")]
+#[napi(object)]
+pub struct SearchMatch {
+    pub block_index: i32,
+    pub start: i32,
+    pub end: i32,
+}
+
+#[cfg(feature = "napi-runtime")]
+#[napi(object)]
+pub struct HighlightRange {
+    pub start: i32,
+    pub end: i32,
 }
