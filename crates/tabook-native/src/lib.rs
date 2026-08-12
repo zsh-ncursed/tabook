@@ -8,6 +8,7 @@
 
 mod db;
 mod encoding;
+mod scan;
 mod epub;
 mod fb2;
 mod formats_index;
