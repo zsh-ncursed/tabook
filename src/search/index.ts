@@ -1,5 +1,5 @@
+import { native } from '../native.js';
 import type { Block } from '../formats/model.js';
-import { blockToPlainText } from '../renderer/blocks.js';
 import type { HighlightRange } from '../renderer/layout.js';
 
 export interface SearchMatch {
@@ -8,15 +8,21 @@ export interface SearchMatch {
   end: number;
 }
 
+// BookSearchIndex delegates to native (code-point based, audit bugfix) when
+// available, falls back to TS (UTF-16) when not.
+
+interface SearchIndex {
+  readonly blockCount: number;
+  search(query: string): SearchMatch[];
+  blockHighlights(query: string, blockIndex: number): HighlightRange[];
+  highlightRanges(query: string): Map<number, HighlightRange[]>;
+}
+
+// TS fallback
 const MAX_MATCHES = 10000;
 
 interface FoldedBlock {
-  // Block text folded char-by-char. toLowerCase() can change the string
-  // length (e.g. 'İ' → 'i̇'), so a naive toLowerCase() of the whole text
-  // would produce offsets that no longer point into the original text.
   folded: string;
-  // For every position in `folded`, the index (in the original block text)
-  // of the character it came from.
   foldToOrig: number[];
 }
 
@@ -27,17 +33,10 @@ function foldText(text: string): FoldedBlock {
   for (let i = 0; i < text.length;) {
     const cp = text.codePointAt(i)!;
     const ch = String.fromCodePoint(cp);
-    // Lowercase, decompose, then strip combining marks: 'İ' folds to 'i' (not
-    // 'i̇'), so 'istanbul' matches 'İstanbul' and fold lengths stay stable.
     const lc = ch
       .toLowerCase()
       .normalize('NFKD')
       .replace(/[\u0300-\u036f]/g, '');
-    // Collapse whitespace runs to a single space, matching normalizeQuery
-    // (which does \s+ → ' '). Without this, adjacent text inlines with
-    // trailing/leading spaces — or list/poem/table blocks joined with '\n' —
-    // produce double spaces in blockToPlainText that never match a
-    // single-space query.
     for (let k = 0; k < lc.length; k++) {
       const c = lc[k]!;
       if (/\s/.test(c)) {
@@ -53,17 +52,55 @@ function foldText(text: string): FoldedBlock {
     }
     i += ch.length;
   }
-  // Known limitation: foldToOrig stores UTF-16 code-unit indices, while
-  // renderer/layout.ts counts code points per char. For BMP text (Cyrillic,
-  // Latin, most CJK) the two agree; an astral (surrogate-pair) char before a
-  // match would make search offsets diverge from layout charOffsets.
   return { folded, foldToOrig };
 }
 
-export class BookSearchIndex {
+export class BookSearchIndex implements SearchIndex {
+  private readonly impl: SearchIndex;
+
+  constructor(blocks: Block[]) {
+    if (native) {
+      const inner = new native.BookSearchIndex(blocks);
+      this.impl = {
+        get blockCount() { return inner.blockCount; },
+        search: (q) => inner.search(q) as SearchMatch[],
+        blockHighlights: (q, i) => inner.blockHighlights(q, i) as HighlightRange[],
+        highlightRanges: (q) => {
+          const map = new Map<number, HighlightRange[]>();
+          for (let b = 0; b < inner.blockCount; b++) {
+            const ranges = inner.blockHighlights(q, b) as HighlightRange[];
+            if (ranges.length > 0) map.set(b, ranges);
+          }
+          return map;
+        },
+      };
+    } else {
+      this.impl = new TsSearchIndexImpl(blocks);
+    }
+  }
+
+  get blockCount(): number {
+    return this.impl.blockCount;
+  }
+
+  search(query: string): SearchMatch[] {
+    return this.impl.search(query);
+  }
+
+  blockHighlights(query: string, blockIndex: number): HighlightRange[] {
+    return this.impl.blockHighlights(query, blockIndex);
+  }
+
+  highlightRanges(query: string): Map<number, HighlightRange[]> {
+    return this.impl.highlightRanges(query);
+  }
+}
+
+class TsSearchIndexImpl implements SearchIndex {
   private readonly folded: FoldedBlock[];
 
   constructor(blocks: Block[]) {
+    const { blockToPlainText } = require('../renderer/blocks.js') as typeof import('../renderer/blocks.js');
     this.folded = blocks.map((block) => foldText(blockToPlainText(block)));
   }
 
@@ -80,7 +117,6 @@ export class BookSearchIndex {
       if (fb.folded.length === 0) continue;
       let idx = fb.folded.indexOf(q);
       while (idx !== -1) {
-        // Map the folded match back to original-text coordinates.
         const end = fb.foldToOrig[idx + q.length - 1]! + 1;
         matches.push({ blockIndex: b, start: fb.foldToOrig[idx]!, end });
         if (matches.length >= MAX_MATCHES) return matches;
@@ -90,11 +126,6 @@ export class BookSearchIndex {
     return matches;
   }
 
-  /**
-   * Highlight ranges for a single block, computed on demand. The reader
-   * only lays out a few blocks at a time, so this avoids scanning every
-   * block just to highlight the visible page.
-   */
   blockHighlights(query: string, blockIndex: number): HighlightRange[] {
     const q = normalizeQuery(query);
     if (q === '') return [];
@@ -121,7 +152,5 @@ export class BookSearchIndex {
 }
 
 export function normalizeQuery(query: string): string {
-  // Fold with the same per-character rules used for block text, then collapse
-  // whitespace. Folding here keeps 'İ' → 'i' consistent with block folding.
   return foldText(query).folded.replace(/\s+/g, ' ').trim();
 }
