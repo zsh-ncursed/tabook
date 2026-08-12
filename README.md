@@ -24,7 +24,7 @@ vim-like controls. Built with TypeScript, React + Ink and SQLite.
 
 ## Requirements
 
-- Node.js >= 18 (tested on 22)
+- Node.js >= 22.14 (the bundled better-sqlite3 addon requires Node-API 10)
 - Linux (or another OS with a real terminal)
 
 ## Install

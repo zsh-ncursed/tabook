@@ -9,7 +9,7 @@ pkgdesc='Terminal-based e-book reader for FB2 and EPUB formats'
 arch=('any')
 url='https://github.com/zsh-ncursed/tabook'
 license=('MIT')
-depends=('nodejs>=18')
+depends=('nodejs>=22.14')
 # better-sqlite3 ships prebuilt .node binaries for x86_64 and aarch64;
 # stripping/debug-packing them fails on cross-arch files and gains nothing.
 options=(!strip !debug)
