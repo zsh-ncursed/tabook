@@ -1,7 +1,4 @@
 // Native module loader with graceful fallback to pure-JS implementations.
-//
-// Phase 0: fallback is the existing TS code. Once all phases complete and
-// native is stable, fallback can be removed (phase 16).
 
 import type * as NativeTypes from '@tabook/native';
 import { createRequire } from 'node:module';
@@ -10,10 +7,19 @@ const require = createRequire(import.meta.url);
 
 let native: typeof NativeTypes | null = null;
 
+// Try CJS require first (works in vitest), then dynamic import (works in ESM)
 try {
   native = require('@tabook/native') as typeof NativeTypes;
 } catch {
-  native = null;
+  // CJS failed (ESM-only env); try dynamic import
+  // This is async, so native stays null until it resolves
+  import('@tabook/native')
+    .then((mod) => {
+      native = (mod as unknown as typeof NativeTypes) ?? null;
+    })
+    .catch(() => {
+      // native not available, use TS fallbacks
+    });
 }
 
 export function isNativeAvailable(): boolean {
@@ -23,7 +29,7 @@ export function isNativeAvailable(): boolean {
 export function getNative(): typeof NativeTypes {
   if (!native) {
     throw new Error(
-      'tabook-native is not installed. Install @tabook/native or use pure-JS fallback.',
+      'tabook-native is not installed or not yet loaded.',
     );
   }
   return native;

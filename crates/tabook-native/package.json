@@ -1,0 +1,10 @@
+{
+  "name": "@tabook/native",
+  "version": "0.1.0",
+  "description": "Native Rust core for tabook",
+  "main": "index.cjs",
+  "module": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.cjs", "index.js", "index.d.ts", "*.node"],
+  "license": "MIT"
+}
