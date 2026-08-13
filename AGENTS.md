@@ -4,7 +4,8 @@
 
 `crates/tabook-native` holds the Rust core — FB2/EPUB parsing, the layout
 engine and in-book search — exposed to TypeScript as a napi binding
-(`crates/tabook-native/index.linux-x64-gnu.node`). `src/native.ts` loads it and
+(`crates/tabook-native/index.linux-<arch>-gnu.node`, arch-specific name).
+`src/native.ts` loads it and
 delegates to it; when the binding is missing the pure-TS implementations in
 `src/formats/`, `src/renderer/`, `src/search/` and `src/opds/parser.ts` are
 used as fallbacks.

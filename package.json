@@ -19,7 +19,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "build:native": "cargo build --release --manifest-path crates/tabook-native/Cargo.toml && cp target/release/libtabook_native.so crates/tabook-native/index.linux-x64-gnu.node",
+    "build:native": "cargo build --release --manifest-path crates/tabook-native/Cargo.toml && node scripts/copy-native.mjs",
     "dev": "tsx src/cli/main.ts",
     "start": "node dist/cli/main.js",
     "typecheck": "tsc --noEmit",
