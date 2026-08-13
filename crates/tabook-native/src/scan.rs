@@ -254,8 +254,16 @@ mod tests {
         // After scan, no rescan needed
         let folder = db.get_library_folder_by_path(dir.to_string_lossy().as_ref()).unwrap().unwrap();
         assert!(!folder_needs_rescan(&db, &folder));
-        // Add a new file → needs rescan
-        make_fb2(&dir.join("b.fb2"));
+        // Add a new file → needs rescan. Set its mtime explicitly to a time
+        // after the scan timestamp: filesystem mtime granularity is coarse (1s
+        // on some CI filesystems), so a file created in the same second as the
+        // scan could compare as "not newer" and flake this assertion.
+        let b = dir.join("b.fb2");
+        make_fb2(&b);
+        let f = std::fs::File::options().write(true).open(&b).unwrap();
+        f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
+            .unwrap();
+        drop(f);
         assert!(folder_needs_rescan(&db, &folder));
         std::fs::remove_dir_all(&dir).unwrap();
     }
