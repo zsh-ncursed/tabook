@@ -223,7 +223,12 @@ describe('folderNeedsRescan', () => {
     const folder = db.getLibraryFolderByPath(dir)!;
     await expect(folderNeedsRescan(db, folder)).resolves.toBe(false);
 
-    writeBook('new.epub', buildEpub());
+    const added = writeBook('new.epub', buildEpub());
+    // Set its mtime explicitly to a time after the scan timestamp:
+    // filesystem mtime granularity is coarse (1s on some CI filesystems), so
+    // a file created in the same second as the scan could compare as "not
+    // newer" and flake this assertion.
+    fs.utimesSync(added, Date.now() / 1000 + 5, Date.now() / 1000 + 5);
     await expect(folderNeedsRescan(db, folder)).resolves.toBe(true);
   });
 
