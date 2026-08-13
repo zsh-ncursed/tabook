@@ -1,7 +1,8 @@
 # tabook
 
 A terminal e-book reader for **FB2**, **FB2-in-ZIP** and **EPUB** (2.x / 3.x) with
-vim-like controls. Built with TypeScript, React + Ink and SQLite.
+vim-like controls. Built with TypeScript, React + Ink and a native Rust core
+(parsers, layout, search and the SQLite database).
 
 ## Features
 
@@ -10,8 +11,9 @@ vim-like controls. Built with TypeScript, React + Ink and SQLite.
 - EPUB TOC from both the EPUB 3 `<nav>` document and EPUB 2 NCX.
 - Windows-1251 / UTF-8 / UTF-16 XML detection with BOM handling.
 - **Native Rust core** (`crates/tabook-native`, loaded as a napi binding): FB2/EPUB
-  parsing, the layout engine and in-book search are compiled to Rust for speed,
-  with transparent pure-TS fallbacks when the binding is unavailable.
+  parsing, the layout engine, in-book search and the **SQLite library database**
+  (rusqlite, SQLite compiled in) are written in Rust for speed, with transparent
+  pure-TS fallbacks when the binding is unavailable.
 - In-book **images and cover previews** rendered directly in the terminal:
   terminals that implement the kitty graphics protocol (kitty, WezTerm,
   Ghostty, Konsole, Warp, …) display them **natively** via the built-in
@@ -21,7 +23,7 @@ vim-like controls. Built with TypeScript, React + Ink and SQLite.
   detail view, the reading-view info modal and the book list.
 - **Image zoom** (`z`): enlarge the illustration on the current page ~2.5× to
   inspect it, then press `Esc` to restore it in place.
-- A local library backed by SQLite: metadata, reading progress, bookmarks, reading sessions and history.
+- A local library backed by SQLite (stored in the native core via bundled rusqlite): metadata, reading progress, bookmarks, reading sessions and history.
 - Attach local folders as libraries (`:library add ~/books`) — recursive scans import metadata in bulk, and attached folders are auto-rescanned (mtime-based, async) when you enter the library if their files changed.
 - Browse online book catalogs over **OPDS** (`:opds add <name> <url>`) — search, navigate and download books straight to the library. Project Gutenberg and Flibusta are pre-seeded on first run.
 - Full-text search inside the current book with highlighted matches (`/`, `n`, `N`).
@@ -55,10 +57,12 @@ paru -S tabook
 yay -S tabook
 ```
 
-The AUR package downloads a small (~4 MB) prebuilt tarball for your
+The AUR package downloads a small (~3 MB) prebuilt tarball for your
 architecture (x86_64 / aarch64) from the GitHub release and installs it
 as-is — no Rust or Node compilation at install time, only the system `node`
-runtime. Images work natively in kitty-family terminals; optional
+runtime. The tarball ships a single native module that contains everything:
+parsers, layout, search **and the SQLite database** (better-sqlite3 is not
+needed). Images work natively in kitty-family terminals; optional
 dependencies: `ueberzugpp` (images in terminals without native protocol
 support, e.g. alacritty, xterm — also inside tmux), `zenity` / `kdialog`
 (graphical file picker for `o`).
@@ -246,7 +250,8 @@ module layout, data flow and rendering pipeline.
 src/
   cli/        command-line entry point (commander + ink render)
   config/     defaults, TOML parsing, keybinding normalization
-  db/         SQLite library (books, progress, bookmarks, sessions, history)
+  db/         SQLite library facade — native rusqlite backend with a pure-TS
+              fallback (books, progress, bookmarks, sessions, history)
   formats/    FB2 and EPUB parsers, XML/encoding helpers, block model
   native.ts   napi binding loader for the Rust core (with TS fallbacks)
   renderer/   block-to-lines layout engine, simplified mode
@@ -255,7 +260,7 @@ src/
   tui/        Ink components (library, reader, help, modals, OPDS)
   utils/      text, paths, zip and error helpers
 crates/
-  tabook-native/  Rust core: parsers, layout, search (napi cdylib)
+  tabook-native/  Rust core: parsers, layout, search, database (napi cdylib)
 ```
 
 ## License
