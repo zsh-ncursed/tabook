@@ -88,7 +88,8 @@ jobs:
       - name: Smoke test
         run: |
           DIR=$(ls -d build/tabook-*-linux-${{ matrix.arch }})
-          "$DIR/tabook" --version
+          # The launcher lives inside the PKGBUILD; here run the bundle directly.
+          node "$DIR/tabook.bundle.mjs" --version
           # The bundled native module must actually load (not silently fall
           # back to the pure-TS implementations).
           node -e "
