@@ -860,7 +860,12 @@ export function App(props: AppProps): React.JSX.Element {
         </Box>
       ) : null}
       {helpOpen ? (
-        <HelpView config={liveConfig} theme={theme} screen={screen} onClose={() => setHelpOpen(false)} />
+        <HelpView
+          config={liveConfig}
+          theme={theme}
+          screen={screen}
+          onClose={() => setHelpOpen(false)}
+        />
       ) : null}
       {themePickerOpen ? (
         <ListModal

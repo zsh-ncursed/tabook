@@ -1,1 +1,0 @@
-std::iter::Map<std::slice::Iter<'_, &XmlNode>, for<'a> fn(&'a XmlNode) -> OpdsEntry {parse_entry}>

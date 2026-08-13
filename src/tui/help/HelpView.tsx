@@ -23,24 +23,60 @@ interface CommandDef {
 }
 
 const COMMANDS: CommandDef[] = [
-  { cmd: ':open [path]', desc: 'Open a book file (falls back to picker)', screens: ['library', 'reader'] },
-  { cmd: ':theme <name>', desc: 'Switch theme (persisted to config)', screens: ['library', 'reader', 'opds'] },
+  {
+    cmd: ':open [path]',
+    desc: 'Open a book file (falls back to picker)',
+    screens: ['library', 'reader'],
+  },
+  {
+    cmd: ':theme <name>',
+    desc: 'Switch theme (persisted to config)',
+    screens: ['library', 'reader', 'opds'],
+  },
   { cmd: ':themes', desc: 'List available themes', screens: ['library', 'reader', 'opds'] },
   { cmd: ':sort <field>', desc: 'Sort by title, author, added or progress', screens: ['library'] },
   { cmd: ':group', desc: 'Toggle group-by-series', screens: ['library'] },
   { cmd: ':goto <page>', desc: 'Jump to a page (:goto 10% also works)', screens: ['reader'] },
   { cmd: ':simplified', desc: 'Toggle simplified reading mode', screens: ['reader'] },
   { cmd: ':search <query>', desc: 'Search the current book', screens: ['reader'] },
-  { cmd: ':config init', desc: 'Write a default config file', screens: ['library', 'reader', 'opds'] },
-  { cmd: ':config edit', desc: 'Open config in $EDITOR, reload live', screens: ['library', 'reader', 'opds'] },
+  {
+    cmd: ':config init',
+    desc: 'Write a default config file',
+    screens: ['library', 'reader', 'opds'],
+  },
+  {
+    cmd: ':config edit',
+    desc: 'Open config in $EDITOR, reload live',
+    screens: ['library', 'reader', 'opds'],
+  },
   { cmd: ':opds', desc: 'Open the OPDS catalog browser', screens: ['library', 'reader'] },
-  { cmd: ':opds add <name> <url> [user] [pass]', desc: 'Add an OPDS catalog', screens: ['library', 'reader', 'opds'] },
-  { cmd: ':opds remove <name>', desc: 'Remove an OPDS catalog', screens: ['library', 'reader', 'opds'] },
-  { cmd: ':opds list', desc: 'List configured OPDS catalogs', screens: ['library', 'reader', 'opds'] },
-  { cmd: ':library add <path>', desc: 'Attach a folder as a library', screens: ['library', 'reader'] },
+  {
+    cmd: ':opds add <name> <url> [user] [pass]',
+    desc: 'Add an OPDS catalog',
+    screens: ['library', 'reader', 'opds'],
+  },
+  {
+    cmd: ':opds remove <name>',
+    desc: 'Remove an OPDS catalog',
+    screens: ['library', 'reader', 'opds'],
+  },
+  {
+    cmd: ':opds list',
+    desc: 'List configured OPDS catalogs',
+    screens: ['library', 'reader', 'opds'],
+  },
+  {
+    cmd: ':library add <path>',
+    desc: 'Attach a folder as a library',
+    screens: ['library', 'reader'],
+  },
   { cmd: ':library list', desc: 'List attached folders', screens: ['library', 'reader'] },
   { cmd: ':library scan', desc: 'Rescan all attached folders', screens: ['library', 'reader'] },
-  { cmd: ':library remove <path>', desc: 'Detach a folder and remove its books', screens: ['library', 'reader'] },
+  {
+    cmd: ':library remove <path>',
+    desc: 'Detach a folder and remove its books',
+    screens: ['library', 'reader'],
+  },
   { cmd: ':q / :quit', desc: 'Quit', screens: ['library', 'reader', 'opds'] },
 ];
 
@@ -70,9 +106,7 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
 
   const colW = Math.max(30, Math.floor((width - 6) / 2));
 
-  const visibleCmds = screen
-    ? COMMANDS.filter((c) => c.screens.includes(screen))
-    : COMMANDS;
+  const visibleCmds = screen ? COMMANDS.filter((c) => c.screens.includes(screen)) : COMMANDS;
   const cmdColW = Math.max(34, Math.floor((width - 6) / 2));
 
   // Build the full content as an array of line-elements so we can slice it

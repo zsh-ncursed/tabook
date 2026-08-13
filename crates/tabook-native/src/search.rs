@@ -142,10 +142,24 @@ fn search_in_block_raw(fb: &FoldedBlock, query: &str) -> Vec<(usize, usize)> {
         if end_idx > fb.folded.len() {
             break;
         }
-        let orig_start = fb.fold_to_orig[start];
-        let orig_end = fb.fold_to_orig.get(end_idx - 1).copied().unwrap_or(0) + 1;
+        // `find` returns BYTE offsets, but fold_to_orig is indexed by CHAR
+        // position (one entry per folded char). Converting keeps match offsets
+        // correct on multi-byte text; indexing it with the byte offset silently
+        // corrupted Cyrillic matches.
+        let char_start = fb.folded[..start].chars().count();
+        let char_end = char_start + query.chars().count();
+        let orig_start = fb.fold_to_orig[char_start];
+        let orig_end = fb.fold_to_orig.get(char_end - 1).copied().unwrap_or(0) + 1;
         out.push((orig_start, orig_end));
-        idx = fb.folded[start + 1..].find(query).map(|i| start + 1 + i);
+        // Advance one *char* past the match start (TS: indexOf(q, idx + 1),
+        // allowing overlapping matches). Byte-slicing folded[start + 1..]
+        // panics when the char at `start` is multi-byte (Cyrillic 'с' is
+        // 2 bytes) — real crash: "start byte index 284 is not a char boundary".
+        let next_start = start + fb.folded[start..].chars().next().map_or(1, |c| c.len_utf8());
+        if next_start >= fb.folded.len() {
+            break;
+        }
+        idx = fb.folded[next_start..].find(query).map(|i| next_start + i);
     }
     out
 }
@@ -269,6 +283,45 @@ mod tests {
         let index = BookSearchIndex::new(&blocks);
         assert_eq!(index.search("hello world").len(), 1);
         assert_eq!(index.search("a b").len(), 1);
+    }
+
+    #[test]
+    fn search_cyrillic_no_panic_correct_offsets() {
+        // Regression: searching Russian text panicked at "start byte index ...
+        // is not a char boundary" (byte-slicing folded[start + 1..]) and
+        // fold_to_orig was indexed by byte offset, corrupting match positions.
+        let text = "сумрачную затхлую комнату и сумрачную лекцию";
+        let blocks = vec![para(text)];
+        let index = BookSearchIndex::new(&blocks);
+        let matches = index.search("сумрачную");
+        assert_eq!(matches.len(), 2);
+        // Offsets are in original-text char coordinates, not bytes.
+        assert_eq!(matches[0].start, 0);
+        assert_eq!(matches[0].end, 9);
+        assert_eq!(matches[1].start, 28);
+        assert_eq!(matches[1].end, 37);
+    }
+
+    #[test]
+    fn block_highlights_cyrillic_offsets() {
+        let blocks = vec![para("сумрачную комнату")];
+        let index = BookSearchIndex::new(&blocks);
+        let hls = index.block_highlights("сумрачную", 0);
+        assert_eq!(hls.len(), 1);
+        assert_eq!(hls[0].start, 0);
+        assert_eq!(hls[0].end, 9);
+    }
+
+    #[test]
+    fn search_overlapping_cyrillic_matches() {
+        // The advance-by-one-char logic mirrors TS indexOf(q, idx + 1) and
+        // must keep overlapping matches (e.g. "аа" inside "ааа").
+        let blocks = vec![para("ааа")];
+        let index = BookSearchIndex::new(&blocks);
+        let matches = index.search("аа");
+        assert_eq!(matches.len(), 2);
+        assert_eq!(matches[0].start, 0);
+        assert_eq!(matches[1].start, 1);
     }
 
     #[test]

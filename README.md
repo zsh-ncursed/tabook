@@ -9,6 +9,14 @@ vim-like controls. Built with TypeScript, React + Ink and SQLite.
 - Full structural rendering: headings, paragraphs, lists, quotes, poems, tables, annotations, epigraphs and inline styling (bold / italic / underline / strike / links / code).
 - EPUB TOC from both the EPUB 3 `<nav>` document and EPUB 2 NCX.
 - Windows-1251 / UTF-8 / UTF-16 XML detection with BOM handling.
+- **Native Rust core** (`crates/tabook-native`, loaded as a napi binding): FB2/EPUB
+  parsing, the layout engine and in-book search are compiled to Rust for speed,
+  with transparent pure-TS fallbacks when the binding is unavailable.
+- In-book **images and cover previews** rendered over the terminal via
+  `ueberzugpp` (optional): illustrations in the text, book covers in the
+  library detail view, the reading-view info modal and the book list.
+- **Image zoom** (`z`): enlarge the illustration on the current page ~2.5× to
+  inspect it, then press `Esc` to restore it in place.
 - A local library backed by SQLite: metadata, reading progress, bookmarks, reading sessions and history.
 - Attach local folders as libraries (`:library add ~/books`) — recursive scans import metadata in bulk, and attached folders are auto-rescanned (mtime-based, async) when you enter the library if their files changed.
 - Browse online book catalogs over **OPDS** (`:opds add <name> <url>`) — search, navigate and download books straight to the library. Project Gutenberg and Flibusta are pre-seeded on first run.
@@ -26,6 +34,9 @@ vim-like controls. Built with TypeScript, React + Ink and SQLite.
 
 - Node.js >= 18 (tested on 22)
 - Linux (or another OS with a real terminal)
+- A Rust toolchain (`cargo`) only when building from source — the AUR package
+  compiles the native module for you. `ueberzugpp` (optional) enables image
+  rendering; without it the app falls back to `[Image: …]` placeholders.
 
 ## Install
 
@@ -37,14 +48,16 @@ paru -S tabook
 yay -S tabook
 ```
 
-The package bundles the prebuilt native SQLite binding for both x86_64 and
-aarch64. Optional dependencies: `ueberzugpp` (book cover previews),
+The AUR build compiles the Rust core (`crates/tabook-native`) for the target
+architecture (x86_64 / aarch64) and bundles it with the app. Optional
+dependencies: `ueberzugpp` (book images, covers and image zoom),
 `zenity` / `kdialog` (graphical file picker for `o`).
 
 ### From source
 
 ```bash
 npm install
+npm run build:native   # compile the Rust core into the napi binding
 npm run build
 ```
 
@@ -107,6 +120,7 @@ tabook --config ~/.config/tabook/config.toml  # use a specific config file
 | `b` / `B`             | Add / list bookmarks                 |
 | `t`                   | Table of contents                    |
 | `i`                   | Book info                            |
+| `z`                   | Zoom image (`Esc` to restore)        |
 | `R`                   | Toggle recent books                  |
 | `J`                   | Toggle text justify                  |
 | `W`                   | Toggle wide screen                   |
@@ -200,10 +214,12 @@ built-in themes (36 dark, 5 light) and how to switch them.
 ```bash
 npm run dev -- book.fb2       # run from source via tsx
 npm test                      # unit tests (vitest)
+npm run test:native           # Rust core tests (cargo)
 npm run test:coverage         # tests with coverage thresholds
 npm run lint                  # eslint
 npm run typecheck             # tsc --noEmit
 npm run build                 # compile to dist/
+npm run build:native          # compile the Rust core into the napi binding
 ```
 
 A pre-commit hook (`.githooks/pre-commit`) runs Prettier on staged files so
@@ -222,11 +238,14 @@ src/
   config/     defaults, TOML parsing, keybinding normalization
   db/         SQLite library (books, progress, bookmarks, sessions, history)
   formats/    FB2 and EPUB parsers, XML/encoding helpers, block model
+  native.ts   napi binding loader for the Rust core (with TS fallbacks)
   renderer/   block-to-lines layout engine, simplified mode
   search/     in-book full-text search index
   themes/     built-in color themes
   tui/        Ink components (library, reader, help, modals, OPDS)
   utils/      text, paths, zip and error helpers
+crates/
+  tabook-native/  Rust core: parsers, layout, search (napi cdylib)
 ```
 
 ## License

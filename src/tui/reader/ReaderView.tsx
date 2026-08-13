@@ -12,7 +12,7 @@ import { Modal } from '../components/Modal.js';
 import { renderLine } from '../renderLines.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { forceRedraw } from '../screenRefresh.js';
-import { imageLayer, type ImagePlacement, IMAGE_ROWS } from '../imageLayer.js';
+import { imageLayer, type ImagePlacement, IMAGE_ROWS, zoomGeometry } from '../imageLayer.js';
 import { formatBytes, truncate, splitChars, formatLocalTimestamp } from '../../utils/text.js';
 import { joinAuthors, formatSeries } from '../../formats/model.js';
 
@@ -41,7 +41,8 @@ type Mode =
   | 'bookmarks'
   | 'toc'
   | 'toc-filter'
-  | 'info';
+  | 'info'
+  | 'zoom';
 
 interface BookmarkRow {
   id: number;
@@ -242,6 +243,13 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       case 'book_info':
         setMode('info');
         break;
+      case 'zoom_image':
+        if (session.viewportLines().some((l) => l.role === 'image')) {
+          setMode('zoom');
+        } else {
+          notify('No image on this page');
+        }
+        break;
       case 'command':
         setMode('command');
         break;
@@ -325,6 +333,16 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     if (currentMode === 'info') {
       if (keyName === 'escape') closeModal('reading');
       else if (keyName === '?') onHelp();
+      return;
+    }
+
+    // Zoomed image: Esc (or the zoom key again) returns to reading; the
+    // overlay re-renders the normal page placements in the reading-mode
+    // effect. The toggle works under any binding, not just the default 'z'.
+    if (currentMode === 'zoom') {
+      if (keyName === 'escape' || resolver.resolve(keyName) === 'zoom_image') {
+        closeModal('reading');
+      }
       return;
     }
 
@@ -498,6 +516,35 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       } else {
         imageLayer.clear();
       }
+      return;
+    }
+    if (mode === 'zoom') {
+      // Enlarge the first image on the page: same src, a bigger centered box
+      // (zoomGeometry), sent under its own identifier so closing the zoom
+      // re-renders the normal placements. On tiny pages there may be no room
+      // for a meaningful zoom; the on-page placeholder still renders.
+      if (!imageLayer.start()) return;
+      const pageH = session.pageHeight();
+      const contentW = session.contentWidth();
+      const imgIdx = lines.findIndex((l) => l.role === 'image');
+      const imgLine = imgIdx >= 0 ? lines[imgIdx] : undefined;
+      const block = imgLine ? session.book.content[imgLine.blockIndex] : undefined;
+      if (!imgLine || !block || block.type !== 'image') {
+        imageLayer.clear();
+        return;
+      }
+      const baseW = Math.max(8, (contentW - imgLine.indent) | 0);
+      const baseH = Math.min(IMAGE_ROWS, pageH - imgIdx);
+      const g = zoomGeometry({
+        baseWidth: baseW,
+        baseHeight: baseH,
+        contentWidth: contentW,
+        pageHeight: pageH,
+      });
+      imageLayer.update(
+        [{ identifier: 'zoom', x: g.x, y: g.y, width: g.width, height: g.height, src: block.src }],
+        session.book.resources,
+      );
       return;
     }
     if (mode !== 'reading') {
@@ -780,7 +827,9 @@ function formatDuration(totalSeconds: number): string {
 function readerHint(mode: Mode): string {
   switch (mode) {
     case 'reading':
-      return 'j/k · space · [ ] · / · b · t · i · J · W · ? · q';
+      return 'j/k · space · [ ] · / · b · t · i · z · J · W · ? · q';
+    case 'zoom':
+      return 'esc close';
     case 'search':
       return 'type · enter search · esc cancel';
     case 'command':

@@ -32,7 +32,8 @@ export type KeyAction =
   | 'toggle_respect_css'
   | 'toggle_justify'
   | 'toggle_wide'
-  | 'toggle_recent';
+  | 'toggle_recent'
+  | 'zoom_image';
 
 export const KEY_ACTIONS: readonly KeyAction[] = [
   'move_cursor_up',
@@ -69,6 +70,7 @@ export const KEY_ACTIONS: readonly KeyAction[] = [
   'toggle_justify',
   'toggle_wide',
   'toggle_recent',
+  'zoom_image',
 ];
 
 export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
@@ -94,6 +96,7 @@ export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
   D: 'delete_file',
   t: 'toc',
   i: 'book_info',
+  z: 'zoom_image',
   '?': 'help',
   q: 'quit',
   ':': 'command',

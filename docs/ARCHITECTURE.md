@@ -5,12 +5,18 @@ format-neutral block model, lays that model out into styled lines, and renders
 them with React + Ink. A SQLite database backs the library, reading progress,
 bookmarks and statistics.
 
+The hot paths — format parsing, layout and in-book search — live in a **Rust
+core** (`crates/tabook-native`) exposed as a napi binding; `src/native.ts`
+delegates to it when available and falls back to the pure-TS implementations
+otherwise.
+
 - Runtime: Node.js ≥ 18
 - UI: React 18 + Ink
+- Native core: Rust (napi cdylib, `crates/tabook-native`)
 - Formats: `fast-xml-parser`, `adm-zip`, custom encoding detection
 - Storage: `better-sqlite3`
-- Config: TOML (`@iarna/toml`)
-- Tests: Vitest; style: ESLint + Prettier; build: `tsc`
+- Config: TOML (`smol-toml`)
+- Tests: Vitest + `cargo test`; style: ESLint + Prettier; build: `tsc`
 
 ## Module map
 
@@ -27,6 +33,7 @@ src/
     encoding.ts     BOM / declared-encoding detection, decoding
     fb2/            FB2 (and .fb2.zip) parser
     epub/           EPUB 2/3 parser, XHTML block conversion
+  native.ts         napi binding loader + delegation (TS fallbacks)
   renderer/         Document → screen layout
     layout.ts       Block → wrapped, styled lines (measure, hyphenation)
     blocks.ts       Block → plain text helpers
@@ -35,6 +42,12 @@ src/
   themes/           Built-in color themes
   tui/              Ink components (the app itself)
   utils/            text, paths, zip, errors
+crates/
+  tabook-native/    Rust core: FB2/EPUB parsers, layout, search (napi)
+    src/fb2/        FB2 parser
+    src/epub/       EPUB 2/3 parser
+    src/renderer/   Layout engine (port of src/renderer/layout.ts)
+    src/search.rs   In-book search index (port of src/search/index.ts)
 ```
 
 ## Data flow
@@ -43,8 +56,10 @@ src/
 file on disk
   → cli/main.ts (Commander options, config, theme)
   → formats/parseBookFile()          (detect FB2 / FB2.zip / EPUB)
-  → formats/*/parser.ts              (XML → Block model)
-  → renderer/layout.ts BookLayout    (Block + config → wrapped lines)
+  → formats/*/parser.ts              (XML → Block model; native when the
+  |                                  binding is present)
+  → renderer/layout.ts BookLayout    (Block + config → wrapped lines; native
+  |                                  BookLayout class when available)
   → tui/reader/readerModel.ts        (viewport, pages, search, progress)
   → tui/renderLines.tsx              (styled line → Ink <Text>)
   → Ink render
@@ -118,7 +133,25 @@ session methods → `forceTick()` re-render.
 character is lowercased, NFKD-decomposed and stripped of combining marks, so
 `İstanbul` matches `istanbul`. All match offsets are stored in original-text
 coordinates; highlights are generated per block on demand. Searching is
-in-memory and instantaneous after the first index build.
+in-memory and instantaneous after the first index build. With the native
+binding present the index lives in Rust (`crates/tabook-native/src/search.rs`)
+and offsets are char-based, so multi-byte scripts (Cyrillic) match correctly.
+
+## Native core
+
+The Rust core is a napi cdylib built by `npm run build:native` into
+`crates/tabook-native/index.linux-x64-gnu.node`. `src/native.ts` tries to load
+it and exposes `native` (or `null`). Callers gate on it:
+
+- `formats/index.ts` → `parseBookFile`/`parseFb2Buffer`/`parseEpubBuffer`
+- `renderer/layout.ts` → `BookLayout` (napi class) vs `TsBookLayout`
+- `search/index.ts` → `BookSearchIndex` (napi class) vs TS index
+- `opds/parser.ts` → `parseOpdsAtom` (OPDS feed parsing)
+
+Each native implementation keeps a byte-for-byte-compatible TS fallback, so
+the app runs everywhere Node does — just slower. Rust behavior is pinned by
+`cargo test` (`npm run test:native`); the TS coverage thresholds assume the
+core paths are covered there.
 
 ## Config & keybindings
 
@@ -171,6 +204,8 @@ Run: `npm test`, `npm run test:coverage`, `npm run typecheck`, `npm run lint`,
 
 ## Build & distribution
 
-`npm run build` compiles to `dist/`; the `bin` field exposes `tabook`.
-`PKGBUILD` + `.github/workflows/aur-publish.yml` publish to AUR on `v*` tags;
-`docs/AUR.md` documents the release process.
+`npm run build` compiles to `dist/`; `npm run build:native` compiles the Rust
+core into the napi binding (a cargo release build, no Node tooling needed).
+The `bin` field exposes `tabook`. `PKGBUILD` + `.github/workflows/aur-publish.yml`
+publish to AUR on `v*` tags; the AUR build compiles the native module from
+source per architecture; `docs/AUR.md` documents the release process.

@@ -70,6 +70,36 @@ export function reconcile(
 // both sides reference a single source of truth.
 export const IMAGE_ROWS = 10;
 
+export interface ZoomGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Geometry of the enlarged ("zoom") view of a book image: the on-page box
+// scaled by `scale` (default 2.5x), clamped to the viewport with a 2-cell
+// margin and centered. ueberzugpp re-fits the image to the new box when the
+// same src is re-added, so zooming is just a bigger, centered box (sent with
+// its own identifier, 'zoom'); closing the zoom re-renders the normal page
+// placements.
+export function zoomGeometry(opts: {
+  baseWidth: number;
+  baseHeight: number;
+  contentWidth: number;
+  pageHeight: number;
+  scale?: number;
+}): ZoomGeometry {
+  const scale = opts.scale ?? 2.5;
+  const maxW = Math.max(8, opts.contentWidth - 4);
+  const maxH = Math.max(2, opts.pageHeight - 4);
+  const width = Math.max(8, Math.min(Math.round(opts.baseWidth * scale), maxW));
+  const height = Math.max(2, Math.min(Math.round(opts.baseHeight * scale), maxH));
+  const x = 1 + Math.max(0, Math.floor((opts.contentWidth - width) / 2));
+  const y = 1 + Math.max(0, Math.floor((opts.pageHeight - height) / 2));
+  return { x, y, width, height };
+}
+
 class ImageLayer {
   private proc: ChildProcessWithoutNullStreams | null = null;
   private cache = new Map<string, string>(); // resource id -> temp file path

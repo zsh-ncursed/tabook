@@ -58,7 +58,10 @@ fn normalize_attr_name(name: &str) -> &str {
 }
 
 fn xx_check_inner(text: &str) -> Result<(), String> {
-    let doctype_slice = &text[..text.len().min(2048)];
+    // Byte-slicing at an arbitrary index would panic when a multi-byte UTF-8
+    // char (e.g. Cyrillic) straddles the 2048 boundary — clamp to the nearest
+    // char boundary instead.
+    let doctype_slice = &text[..text.floor_char_boundary(text.len().min(2048))];
     if let Some(start) = doctype_slice.find("<!DOCTYPE") {
         if let Some(end) = doctype_slice[start..].find('>') {
             let decl = &doctype_slice[start..start + end];
@@ -241,6 +244,33 @@ mod tests {
         let xml = "<!DOCTYPE foo SYSTEM \"file:///etc/passwd\"><root/>";
         let result = xx_check_inner(xml);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn xx_check_multibyte_straddle_no_panic() {
+        // A Cyrillic 'в' straddling byte 2048 used to panic with "end byte
+        // index 2048 is not a char boundary" (real Flibusta OPDS feeds with
+        // Russian titles hit this). Must not panic and must still detect a
+        // DOCTYPE that sits inside the scanned window.
+        let mut xml = String::from("<!DOCTYPE a SYSTEM \"x\">");
+        // Pad with ASCII to exactly 2047 bytes, so the 'в' below occupies
+        // bytes 2047..2049 — straddling byte 2048.
+        while xml.len() < 2047 {
+            xml.push('a');
+        }
+        assert_eq!(xml.len(), 2047);
+        xml.push('в');
+        xml.push_str("<root/>");
+        assert!(xx_check_inner(&xml).is_err());
+
+        // A safe feed with Cyrillic content past the boundary must parse.
+        let mut ok = String::from("<feed><title>Книги по авторам</title>");
+        while ok.len() < 3000 {
+            ok.push_str("Пелевин ");
+        }
+        ok.push_str("</feed>");
+        let nodes = parse_xml_inner(&ok).unwrap();
+        assert_eq!(normalize_tag(nodes[0].tag()), "feed");
     }
 
     #[test]

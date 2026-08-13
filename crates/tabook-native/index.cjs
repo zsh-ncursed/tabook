@@ -1,6 +1,7 @@
 // @tabook/native — CJS binding for require()
 //
-// Loads the platform-specific .node binary.
+// Loads the platform-specific .node binary. The binary is produced by
+// `npm run build:native` (cargo build --release + rename of the cdylib).
 
 const { existsSync } = require('node:fs');
 const { join, dirname } = require('node:path');

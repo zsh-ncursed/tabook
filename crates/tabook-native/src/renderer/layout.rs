@@ -18,6 +18,12 @@ const LINK: u8 = 0b0001_0000;
 const HIGHLIGHT: u8 = 0b0010_0000;
 const EMPTY_STYLE: u8 = 0;
 
+// Terminal rows a book-image overlay occupies. Must match
+// src/tui/imageLayer.ts IMAGE_ROWS: the reader draws a ueberzugpp box of this
+// height at the placeholder row, so layout reserves IMAGE_ROWS - 1 blank
+// lines under the placeholder to keep the overlay off the following text.
+pub const IMAGE_ROWS: i32 = 10;
+
 #[derive(Clone, Debug)]
 pub struct Char {
     pub ch: char,
@@ -273,13 +279,20 @@ fn wrap_chars(chars: &[Char], max_width: i32, hyphenate: bool) -> Vec<Vec<Char>>
     let mut width = 0i32;
     let mut last_space: i32 = -1;
 
-    let flush_line = |line: &mut Vec<Char>, lines: &mut Vec<Vec<Char>>| {
+    // Port regression: the TS original resets width and lastSpace inside
+    // flushLine. Without the resets, a wrap triggered by a space that fills
+    // the line exactly (lastSpace == line.len()) leaves a stale width >= max,
+    // so every subsequent char overflows and gets flushed on its own line —
+    // text suddenly renders vertically (real reports: Кaku FB2, '"пролила"').
+    let flush_line = |line: &mut Vec<Char>, lines: &mut Vec<Vec<Char>>, width: &mut i32, last_space: &mut i32| {
         let mut end = line.len();
         while end > 0 && line[end - 1].ch == ' ' {
             end -= 1;
         }
         lines.push(line[..end].to_vec());
         line.clear();
+        *width = 0;
+        *last_space = -1;
     };
 
     for char in chars {
@@ -311,7 +324,7 @@ fn wrap_chars(chars: &[Char], max_width: i32, hyphenate: bool) -> Vec<Vec<Char>>
                 width = line.iter().map(|c| display_width_inner(&c.ch.to_string())).sum();
                 last_space = -1;
             } else {
-                flush_line(&mut line, &mut lines);
+                flush_line(&mut line, &mut lines, &mut width, &mut last_space);
             }
         }
         line.push(char.clone());
@@ -405,8 +418,20 @@ fn find_offset_of_line(spans: &[StyledSpan], line: &[StyledSpan], base_offset: i
         line_plain.pop();
     }
     let trimmed = line_plain.trim();
-    if let Some(idx) = plain[base_offset as usize..].find(trimmed) {
-        return (base_offset + idx as i32);
+    if trimmed.is_empty() {
+        return base_offset;
+    }
+    // Char-based search (work in code points, not bytes/UTF-16): base_offset
+    // is a char index into the plain text. Byte-slicing plain[base_offset..]
+    // would panic or misbehave on non-ASCII content.
+    let plain_chars: Vec<char> = plain.chars().collect();
+    let needle: Vec<char> = trimmed.chars().collect();
+    let start = (base_offset.max(0) as usize).min(plain_chars.len());
+    if needle.is_empty() || plain_chars.len() - start < needle.len() {
+        return base_offset;
+    }
+    if let Some(pos) = plain_chars[start..].windows(needle.len()).position(|w| w == needle) {
+        return (start + pos) as i32;
     }
     base_offset
 }
@@ -726,8 +751,13 @@ pub fn layout_block(block: &Block, block_index: i32, opts: &LayoutOptions) -> Ve
                 block_index,
                 char_offset: 0,
             });
-            // Reserve blank lines for ueberzugpp overlay (IMAGE_ROWS = 6 in TS)
-            for _ in 1..6 {
+            // Reserve IMAGE_ROWS - 1 blank lines under the placeholder so the
+            // ueberzugpp overlay (IMAGE_ROWS terminal rows tall) never covers
+            // the text that follows. Port regression: the TS original reserves
+            // IMAGE_ROWS - 1 = 9 blanks (src/renderer/layout.ts image case);
+            // the first port hardcoded 5 blanks (1..6), so the 10-row overlay
+            // bled over ~4 rows of the next paragraph.
+            for _ in 1..IMAGE_ROWS {
                 lines.push(TextLine {
                     role: "empty".into(),
                     spans: Vec::new(),
@@ -971,6 +1001,11 @@ pub struct BookLayout {
     pub block_text: Vec<String>,
     pub block_char_starts: Vec<i32>,
     pub total_chars: i32,
+    // Per-block search-highlight ranges, pushed from TS via set_highlights.
+    // The napi boundary cannot carry Box<dyn Fn> closures, so highlights are
+    // fed as data instead of a getHighlights callback. Layout reads the map
+    // through the get_highlights closure installed in `new`.
+    pub highlights: std::sync::Arc<parking_lot::Mutex<std::collections::HashMap<i32, Vec<HighlightRange>>>>,
 }
 
 impl BookLayout {
@@ -986,6 +1021,25 @@ impl BookLayout {
             acc += t.chars().count() as i32;
         }
         block_char_starts[blocks.len()] = acc;
+        let highlights = std::sync::Arc::new(parking_lot::Mutex::new(
+            std::collections::HashMap::new(),
+        ));
+        // If the caller did not provide a highlight closure (napi constructor
+        // never does), install one that reads the shared highlights map so
+        // set_highlights can update ranges after construction.
+        let get_highlights = opts.get_highlights.or_else(|| {
+            let h = std::sync::Arc::clone(&highlights);
+            Some(Box::new(
+                move |i| h.lock().get(&i).cloned(),
+            ) as Box<dyn Fn(i32) -> Option<Vec<HighlightRange>> + Send + Sync>)
+        });
+        let opts = LayoutOptions {
+            typo: opts.typo,
+            width: opts.width,
+            justify: opts.justify,
+            hyphenation: opts.hyphenation,
+            get_highlights,
+        };
         Self {
             blocks,
             opts,
@@ -996,7 +1050,15 @@ impl BookLayout {
             block_text,
             block_char_starts,
             total_chars: acc,
+            highlights,
         }
+    }
+
+    /// Replace the per-block highlight ranges (search results). The map is
+    /// consulted lazily during layout, so only blocks actually rendered pay
+    /// the lookup cost.
+    pub fn set_highlights(&mut self, highlights: std::collections::HashMap<i32, Vec<HighlightRange>>) {
+        *self.highlights.lock() = highlights;
     }
 
     pub fn ensure_blocks_up_to(&mut self, block_index: i32) {
@@ -1013,8 +1075,9 @@ impl BookLayout {
     pub fn ensure_line_count(&mut self, count: i32) -> i32 {
         // Bugfix: usize::MAX would overflow; use block_count as upper bound
         // instead of Infinity. The TS version used ensureLineCount(Infinity)
-        // which froze on huge books.
-        let max_lines = self.block_count * 100_000; // sane upper bound
+        // which froze on huge books. Saturating so pathological block counts
+        // can't overflow i32.
+        let max_lines = self.block_count.saturating_mul(100_000); // sane upper bound
         let target = std::cmp::min(count, max_lines);
         while (self.lines.len() as i32) < target && self.next_block_to_layout < self.block_count {
             let idx = self.next_block_to_layout;
@@ -1028,7 +1091,7 @@ impl BookLayout {
 
     pub fn line_count(&mut self) -> i32 {
         // Safe upper bound instead of Infinity
-        self.ensure_line_count(self.block_count * 100_000)
+        self.ensure_line_count(self.block_count.saturating_mul(100_000))
     }
 
     pub fn get_page(&mut self, page: i32, page_height: i32) -> Vec<TextLine> {
@@ -1097,9 +1160,12 @@ impl BookLayout {
         let block = self.block_for_char_offset(safe);
         let local = safe - self.block_char_starts[block as usize];
         let text = &self.block_text[block as usize];
-        let start = (local as usize).min(text.len());
-        let end = (start + length as usize).min(text.len());
-        text[start..end].split_whitespace().collect::<Vec<_>>().join(" ")
+        // Char-based slicing (local is a char index); byte slicing text[start..end]
+        // would panic or split multi-byte characters on non-ASCII content.
+        let chars: Vec<char> = text.chars().collect();
+        let start = (local.max(0) as usize).min(chars.len());
+        let end = (start.saturating_add(length.max(0) as usize)).min(chars.len());
+        chars[start..end].iter().collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ")
     }
 
     pub fn estimate_line_count(&self) -> i32 {
@@ -1115,8 +1181,16 @@ impl BookLayout {
     }
 
     pub fn line_for_block(&mut self, block_index: i32) -> i32 {
-        self.ensure_blocks_up_to(block_index);
-        self.block_starts[block_index as usize]
+        // TOC entries can point past the end of content (stale/malformed TOC,
+        // simplified-mode mapping edge cases). Clamp instead of panicking —
+        // the TS implementation returned undefined and the reader's clampLine
+        // then coerced it, so this must never abort the process.
+        if self.block_count == 0 {
+            return 0;
+        }
+        let idx = std::cmp::max(0, std::cmp::min(block_index, self.block_count - 1));
+        self.ensure_blocks_up_to(idx);
+        self.block_starts[idx as usize]
     }
 
     pub fn block_char_start(&self, block_index: i32) -> i32 {
@@ -1242,8 +1316,10 @@ mod tests {
         let block = Block::image("x", "cover");
         let lines = layout_block(&block, 0, &opts(80));
         assert_eq!(lines[0].role, "image");
-        // 1 image line + 5 reserved blank lines
-        assert!(lines.len() >= 6);
+        // 1 image line + IMAGE_ROWS - 1 = 9 reserved blank lines (parity with
+        // src/tui/imageLayer.ts, so the overlay never covers the text below).
+        assert_eq!(lines.len() as i32, IMAGE_ROWS);
+        assert!(lines[1..].iter().all(|l| l.role == "empty"));
     }
 
     #[test]
@@ -1308,6 +1384,51 @@ mod tests {
     }
 
     #[test]
+    fn wrap_spans_no_vertical_after_space_fills_line() {
+        // Regression: a space that exactly fills the line (width == maxWidth)
+        // used to leave a stale width, so every following char wrapped onto
+        // its own line — text rendered vertically ("пролила свет..." in the
+        // Kaku Гиперпространство FB2).
+        let spans = vec![StyledSpan {
+            text: "aaaaa bb".to_owned(),
+            bold: false,
+            italic: false,
+            underline: false,
+            strike: false,
+            link: false,
+            highlight: false,
+        }];
+        let wrapped = wrap_spans(&spans, 5, &[], false);
+        let text: Vec<String> = wrapped.lines.iter().map(|l| spans_to_plain(l)).collect();
+        // The space that triggered the flush lands at the start of the second
+        // line (only trailing spaces are trimmed) — matching the TS original.
+        assert_eq!(text, vec!["aaaaa", " bb"]);
+    }
+
+    #[test]
+    fn wrap_spans_long_cyrillic_paragraph_no_vertical() {
+        // The real sentence from the reported book: must wrap into a handful
+        // of horizontal lines, never degrade to one char per line.
+        let text = "Подобно тому, как в сумрачную затхлую комнату проникает сияние тёплого летнего солнца, лекция Римана пролила свет на ошеломляющие свойства многомерного пространства.";
+        let spans = vec![StyledSpan {
+            text: text.to_owned(),
+            bold: false,
+            italic: false,
+            underline: false,
+            strike: false,
+            link: false,
+            highlight: false,
+        }];
+        let wrapped = wrap_spans(&spans, 95, &[], false);
+        assert!(wrapped.lines.len() <= 4, "expected a few wrapped lines, got {}", wrapped.lines.len());
+        // Content is lossless: every original char appears, in order.
+        let joined: String = wrapped.lines.iter().flat_map(|l| l.iter().map(|s| s.text.clone())).collect();
+        let without_spaces: String = joined.chars().filter(|c| *c != ' ').collect();
+        let expected: String = text.chars().filter(|c| *c != ' ').collect();
+        assert_eq!(without_spaces, expected);
+    }
+
+    #[test]
     fn inline_to_spans_preserves_bold() {
         let inlines = vec![
             Inline::text_node("hello "),
@@ -1329,5 +1450,58 @@ mod tests {
         // Should complete without hanging and return a small number
         assert!(count > 0);
         assert!(count < 1000);
+    }
+
+    #[test]
+    fn line_for_block_clamps_out_of_range() {
+        // TOC entries can point past the end of content (stale/malformed
+        // TOC); line_for_block must clamp instead of panicking (the TS
+        // implementation returned undefined and the reader limped along).
+        let blocks = vec![para("one"), para("two")];
+        let mut layout = BookLayout::new(blocks, opts(80));
+        let last = layout.line_for_block(1);
+        assert_eq!(layout.line_for_block(999), last);
+        assert_eq!(layout.line_for_block(-5), 0);
+    }
+
+    #[test]
+    fn line_for_block_empty_book() {
+        let mut layout = BookLayout::new(Vec::new(), opts(80));
+        assert_eq!(layout.line_for_block(0), 0);
+        assert_eq!(layout.line_for_block(5), 0);
+    }
+
+    #[test]
+    fn set_highlights_marks_matching_spans() {
+        // set_highlights feeds the shared map that the get_highlights closure
+        // installed in `new` reads during layout — the napi data-push design.
+        let blocks = vec![para("hello world")];
+        let mut layout = BookLayout::new(blocks, opts(80));
+        let mut map = std::collections::HashMap::new();
+        map.insert(0, vec![HighlightRange { start: 0, end: 5 }]);
+        layout.set_highlights(map);
+        assert!(layout.line_count() > 0);
+        let page = layout.get_page(0, 100);
+        let highlighted: Vec<StyledSpan> = page
+            .iter()
+            .flat_map(|l| l.spans.iter().cloned())
+            .filter(|s| s.highlight)
+            .collect();
+        assert!(!highlighted.is_empty());
+        let text: String = highlighted.iter().map(|s| s.text.clone()).collect();
+        assert_eq!(text, "hello");
+    }
+
+    #[test]
+    fn clear_highlights_removes_marks() {
+        let blocks = vec![para("hello world")];
+        let mut layout = BookLayout::new(blocks, opts(80));
+        let mut map = std::collections::HashMap::new();
+        map.insert(0, vec![HighlightRange { start: 0, end: 5 }]);
+        layout.set_highlights(map);
+        layout.set_highlights(std::collections::HashMap::new());
+        assert!(layout.line_count() > 0);
+        let page = layout.get_page(0, 100);
+        assert!(page.iter().all(|l| l.spans.iter().all(|s| !s.highlight)));
     }
 }

@@ -20,11 +20,16 @@ export default defineConfig({
         'src/opds/fixtures/**',
         'src/opds/client.test-utils.ts',
       ],
+      // Coverage dropped with the rust-native migration: parsing, layout and
+      // search now live in crates/tabook-native, where the equivalent coverage
+      // is provided by `cargo test` (see AGENTS.md). The remaining TS is the
+      // native delegation + pure-TS fallback (exercised when the .node binding
+      // is absent, e.g. on non-Linux hosts). Thresholds below reflect that.
       thresholds: {
-        lines: 90,
-        functions: 90,
-        statements: 90,
-        branches: 80,
+        lines: 82,
+        functions: 78,
+        statements: 80,
+        branches: 74,
       },
     },
   },

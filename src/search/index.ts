@@ -1,6 +1,7 @@
 import { native } from '../native.js';
 import type { Block } from '../formats/model.js';
 import type { HighlightRange } from '../renderer/layout.js';
+import { blockToPlainText } from '../renderer/blocks.js';
 
 export interface SearchMatch {
   blockIndex: number;
@@ -62,14 +63,17 @@ export class BookSearchIndex implements SearchIndex {
     if (native) {
       const inner = new native.BookSearchIndex(blocks);
       this.impl = {
-        get blockCount() { return inner.blockCount; },
+        get blockCount() {
+          return inner.blockCount;
+        },
         search: (q) => inner.search(q) as SearchMatch[],
         blockHighlights: (q, i) => inner.blockHighlights(q, i) as HighlightRange[],
         highlightRanges: (q) => {
           const map = new Map<number, HighlightRange[]>();
-          for (let b = 0; b < inner.blockCount; b++) {
-            const ranges = inner.blockHighlights(q, b) as HighlightRange[];
-            if (ranges.length > 0) map.set(b, ranges);
+          // Single native crossing: native.highlightRanges returns every
+          // block's ranges at once (avoids per-block napi calls).
+          for (const { blockIndex, ranges } of inner.highlightRanges(q)) {
+            map.set(blockIndex, ranges as HighlightRange[]);
           }
           return map;
         },
@@ -100,7 +104,6 @@ class TsSearchIndexImpl implements SearchIndex {
   private readonly folded: FoldedBlock[];
 
   constructor(blocks: Block[]) {
-    const { blockToPlainText } = require('../renderer/blocks.js') as typeof import('../renderer/blocks.js');
     this.folded = blocks.map((block) => foldText(blockToPlainText(block)));
   }
 

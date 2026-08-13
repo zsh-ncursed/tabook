@@ -7,6 +7,10 @@ coverage/
 bugs.md
 bugs-low.md
 
+# Rust build artifacts — the AUR PKGBUILD clones the repo at the tag, so
+# committing target/ would bloat every user build by gigabytes.
+target/
+
 # graphify code-graph artifacts (regenerated with `graphify update .`)
 graphify-out/
 .opencode/

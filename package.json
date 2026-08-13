@@ -1,6 +1,6 @@
 {
   "name": "tabook",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "TUI e-book reader for FB2 and EPUB with vim-like controls",
   "license": "MIT",
   "type": "module",
@@ -11,21 +11,26 @@
   "files": [
     "dist"
   ],
+  "workspaces": [
+    "crates/tabook-native"
+  ],
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:native": "cargo build --release --manifest-path crates/tabook-native/Cargo.toml && cp target/release/libtabook_native.so crates/tabook-native/index.linux-x64-gnu.node",
     "dev": "tsx src/cli/main.ts",
     "start": "node dist/cli/main.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git config core.hooksPath .githooks",
+    "prepare": "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:native": "cargo test --no-default-features --manifest-path crates/tabook-native/Cargo.toml",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

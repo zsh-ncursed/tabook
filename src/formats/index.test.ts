@@ -36,6 +36,25 @@ describe('file-based parsing', () => {
     }
   });
 
+  it('returns resources as a Map keyed by resource id', () => {
+    // Regression: the native parser returns resources as an array of
+    // { key, data }, but imageLayer/BookDetail/InfoModal call resources.get()/
+    // has() — images (and covers) silently disappeared on the native path.
+    const file = path.join(os.tmpdir(), 'tabook-resources-test.fb2');
+    fs.writeFileSync(file, FB2_SAMPLE);
+    try {
+      const book = parseBookFile(file);
+      expect(book.resources).toBeInstanceOf(Map);
+      expect(book.resources.has('cover.jpg')).toBe(true);
+      expect(book.resources.has('img1')).toBe(true);
+      const data = book.resources.get('img1');
+      expect(data).toBeInstanceOf(Uint8Array);
+      expect(data!.length).toBeGreaterThan(0);
+    } finally {
+      fs.unlinkSync(file);
+    }
+  });
+
   it('openBook parses epub asynchronously', async () => {
     const file = path.join(os.tmpdir(), 'tabook-detect-test.epub');
     fs.writeFileSync(file, buildEpub());

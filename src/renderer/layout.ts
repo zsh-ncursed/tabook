@@ -3,6 +3,8 @@ import { displayWidth, inlinesToText } from '../utils/text.js';
 import type { TypographyConfig } from '../config/defaults.js';
 import { blockToPlainText } from './blocks.js';
 import { IMAGE_ROWS } from '../tui/imageLayer.js';
+import { native } from '../native.js';
+import type * as NativeTypes from '@tabook/native';
 
 export type LineRole =
   | 'heading1'
@@ -783,7 +785,197 @@ function layoutTable(
   return lines;
 }
 
-export class BookLayout {
+interface BookLayoutImpl {
+  readonly blockCount: number;
+  readonly totalChars: number;
+  ensureBlocksUpTo(blockIndex: number): void;
+  ensureLineCount(count: number): number;
+  lineCount(): number;
+  getPage(page: number, pageHeight: number): TextLine[];
+  getRange(start: number, count: number): TextLine[];
+  pageForCharOffset(charOffset: number, pageHeight: number): number;
+  textNear(charOffset: number, length?: number): string;
+  estimateLineCount(): number;
+  blockStartLine(blockIndex: number): number | undefined;
+  lineForBlock(blockIndex: number): number;
+  blockCharStart(blockIndex: number): number;
+  lineForCharOffset(charOffset: number): number;
+  charOffsetForLine(line: number): number;
+  invalidate(): void;
+}
+
+type NativeBookLayoutInstance = InstanceType<typeof NativeTypes.BookLayout>;
+
+// Native-backed layout: owns the block/line state in Rust, so scrolling and
+// layout never round-trip the whole book through JS. Highlights are pushed as
+// data (napi cannot carry a JS callback into the Rust layout): the wrapper
+// keeps the getHighlights callback and feeds it into setHighlights whenever
+// the query changes (invalidate) or the layout is (re)built.
+class NativeBookLayout implements BookLayoutImpl {
+  private readonly inner: NativeBookLayoutInstance;
+  private readonly getHighlights:
+    ((blockIndex: number) => HighlightRange[] | undefined) | undefined;
+  readonly blockCount: number;
+  readonly totalChars: number;
+
+  constructor(blocks: Block[], opts: LayoutOptions) {
+    this.getHighlights = opts.getHighlights;
+    this.inner = new native!.BookLayout(blocks, opts.typo, opts.width, opts.justify ?? false);
+    this.blockCount = this.inner.blockCount;
+    this.totalChars = this.inner.totalChars;
+    this.syncHighlights();
+  }
+
+  // Ask the callback for every block and push the non-empty ranges into the
+  // Rust layout. When no query is active the callback returns undefined
+  // immediately, so this is a cheap pass; when a query is active it is one
+  // native scan — the same cost as the search itself.
+  private syncHighlights(): void {
+    if (!this.getHighlights) return;
+    const highlights: NativeTypes.BlockHighlights[] = [];
+    for (let b = 0; b < this.blockCount; b++) {
+      const ranges = this.getHighlights(b);
+      if (ranges && ranges.length > 0) {
+        highlights.push({ blockIndex: b, ranges: ranges.map((r) => ({ ...r })) });
+      }
+    }
+    this.inner.setHighlights(highlights);
+  }
+
+  ensureBlocksUpTo(blockIndex: number): void {
+    this.inner.ensureBlocksUpTo(blockIndex);
+  }
+
+  ensureLineCount(count: number): number {
+    return this.inner.ensureLineCount(count);
+  }
+
+  lineCount(): number {
+    return this.inner.lineCount();
+  }
+
+  getPage(page: number, pageHeight: number): TextLine[] {
+    return this.inner.getPage(page, pageHeight) as unknown as TextLine[];
+  }
+
+  getRange(start: number, count: number): TextLine[] {
+    return this.inner.getRange(start, count) as unknown as TextLine[];
+  }
+
+  pageForCharOffset(charOffset: number, pageHeight: number): number {
+    return this.inner.pageForCharOffset(charOffset, pageHeight);
+  }
+
+  textNear(charOffset: number, length = 60): string {
+    return this.inner.textNear(charOffset, length);
+  }
+
+  estimateLineCount(): number {
+    return this.inner.estimateLineCount();
+  }
+
+  blockStartLine(blockIndex: number): number | undefined {
+    const v = this.inner.blockStartLine(blockIndex);
+    return v === null ? undefined : v;
+  }
+
+  lineForBlock(blockIndex: number): number {
+    return this.inner.lineForBlock(blockIndex);
+  }
+
+  blockCharStart(blockIndex: number): number {
+    return this.inner.blockCharStart(blockIndex);
+  }
+
+  lineForCharOffset(charOffset: number): number {
+    return this.inner.lineForCharOffset(charOffset);
+  }
+
+  charOffsetForLine(line: number): number {
+    return this.inner.charOffsetForLine(line);
+  }
+
+  invalidate(): void {
+    // Highlights may have changed (query set/cleared): re-sync before the
+    // Rust layout is re-computed on the next render.
+    this.syncHighlights();
+    this.inner.invalidate();
+  }
+}
+
+export class BookLayout implements BookLayoutImpl {
+  private readonly impl: BookLayoutImpl;
+  readonly blockCount: number;
+  readonly totalChars: number;
+
+  constructor(blocks: Block[], opts: LayoutOptions) {
+    if (native) {
+      this.impl = new NativeBookLayout(blocks, opts);
+    } else {
+      this.impl = new TsBookLayout(blocks, opts);
+    }
+    this.blockCount = this.impl.blockCount;
+    this.totalChars = this.impl.totalChars;
+  }
+
+  ensureBlocksUpTo(blockIndex: number): void {
+    this.impl.ensureBlocksUpTo(blockIndex);
+  }
+
+  ensureLineCount(count: number): number {
+    return this.impl.ensureLineCount(count);
+  }
+
+  lineCount(): number {
+    return this.impl.lineCount();
+  }
+
+  getPage(page: number, pageHeight: number): TextLine[] {
+    return this.impl.getPage(page, pageHeight);
+  }
+
+  getRange(start: number, count: number): TextLine[] {
+    return this.impl.getRange(start, count);
+  }
+
+  pageForCharOffset(charOffset: number, pageHeight: number): number {
+    return this.impl.pageForCharOffset(charOffset, pageHeight);
+  }
+
+  textNear(charOffset: number, length?: number): string {
+    return this.impl.textNear(charOffset, length);
+  }
+
+  estimateLineCount(): number {
+    return this.impl.estimateLineCount();
+  }
+
+  blockStartLine(blockIndex: number): number | undefined {
+    return this.impl.blockStartLine(blockIndex);
+  }
+
+  lineForBlock(blockIndex: number): number {
+    return this.impl.lineForBlock(blockIndex);
+  }
+
+  blockCharStart(blockIndex: number): number {
+    return this.impl.blockCharStart(blockIndex);
+  }
+
+  lineForCharOffset(charOffset: number): number {
+    return this.impl.lineForCharOffset(charOffset);
+  }
+
+  charOffsetForLine(line: number): number {
+    return this.impl.charOffsetForLine(line);
+  }
+
+  invalidate(): void {
+    this.impl.invalidate();
+  }
+}
+
+class TsBookLayout implements BookLayoutImpl {
   readonly blockCount: number;
   private readonly blocks: Block[];
   private readonly opts: LayoutOptions;

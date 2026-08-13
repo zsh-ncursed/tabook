@@ -84,6 +84,7 @@ Actions you can bind to:
 | `list_bookmarks`      | `B`                   | List bookmarks                   |
 | `toc`                 | `t`                   | Table of contents                |
 | `book_info`           | `i`                   | Book info                        |
+| `zoom_image`          | `z`                   | Zoom image (`Esc` to restore)    |
 | `help`                | `?`                   | Help screen                      |
 | `command`             | `:`                   | Command line                     |
 | `search`              | `/`                   | Search in book                   |

@@ -6,8 +6,10 @@ The `aur-publish.yml` workflow runs when a `v*` tag is pushed to `main`.
 It runs the full test suite, then publishes the updated `PKGBUILD` + `.SRCINFO`
 to the AUR `tabook` package via SSH.
 
-The package ships better-sqlite3 prebuilds for both `x86_64` and `aarch64`, so it
-installs on either architecture.
+The AUR build compiles the Rust core (`crates/tabook-native`) for the target
+architecture and bundles it with the app, alongside the better-sqlite3
+prebuilds for both `x86_64` and `aarch64`, so the package installs on either
+architecture.
 
 ## Prerequisites
 
@@ -57,18 +59,35 @@ After that, all subsequent updates are handled by the GitHub Actions workflow.
 ## Release process
 
 ```bash
-# 1. Update version in package.json
-npm version patch  # or minor, major
+# 1. Update the version everywhere:
+#    package.json / package-lock.json, crates/tabook-native/Cargo.toml,
+#    crates/tabook-native/package.json and PKGBUILD (pkgver).
+#    The workflow re-derives pkgver from the tag anyway, but keep the
+#    repo copy in sync.
+npm version 0.3.0 --no-git-tag-version
 
-# 2. Push the tag
-git push origin main --tags
+# 2. Commit and push the release:
+git push origin main
 
-# 3. The workflow triggers automatically:
-#    - Runs all tests (format, typecheck, lint, coverage, build)
-#    - Updates PKGBUILD version
+# 3. Tag and push the tag:
+git tag v0.3.0
+git push origin v0.3.0
+
+# 4. The workflow triggers automatically:
+#    - Runs tests (format, typecheck, lint, coverage, build)
+#    - Rewrites PKGBUILD pkgver from the tag
 #    - Generates .SRCINFO
 #    - Pushes to AUR
 ```
+
+Notes:
+
+- The `target/` directory is git-ignored; never commit Rust build artifacts
+  (the AUR PKGBUILD clones the repo at the tag, so a tracked `target/` would
+  bloat every user build).
+- TS coverage thresholds in `vitest.config.ts` are lower than the pre-Rust
+  era because the Rust core is covered by `cargo test` instead — run
+  `npm run test:native` locally before tagging.
 
 Users can then install via:
 

@@ -43,7 +43,7 @@ use crate::model::{Author, Block, BookMetadata, ParsedBook, SeriesInfo};
 #[cfg(feature = "napi-runtime")]
 #[napi]
 pub fn hello() -> String {
-    "tabook-native 0.1.0".to_owned()
+    format!("tabook-native {}", env!("CARGO_PKG_VERSION"))
 }
 
 // text.rs
@@ -449,6 +449,23 @@ impl BookSearchIndex {
             .map(|h| HighlightRange { start: h.start, end: h.end })
             .collect()
     }
+
+    /// All block highlight ranges for a query in a single crossing (avoids
+    /// per-block napi calls when the layout wrapper syncs highlights).
+    #[napi]
+    pub fn highlight_ranges(&self, query: String) -> Vec<BlockHighlights> {
+        self.0
+            .highlight_ranges(&query)
+            .into_iter()
+            .map(|(block_index, ranges)| BlockHighlights {
+                block_index,
+                ranges: ranges
+                    .into_iter()
+                    .map(|h| HighlightRange { start: h.start, end: h.end })
+                    .collect(),
+            })
+            .collect()
+    }
 }
 
 #[cfg(feature = "napi-runtime")]
@@ -461,6 +478,7 @@ pub struct SearchMatch {
 
 #[cfg(feature = "napi-runtime")]
 #[napi(object)]
+#[derive(Clone)]
 pub struct HighlightRange {
     pub start: i32,
     pub end: i32,
@@ -478,6 +496,17 @@ pub struct StyledSpan {
     pub strike: bool,
     pub link: bool,
     pub highlight: bool,
+}
+
+// Per-block search-highlight ranges pushed into BookLayout from TS. The napi
+// boundary cannot carry Box<dyn Fn> closures, so readerModel computes ranges
+// via BookSearchIndex.blockHighlights and feeds them here as data.
+#[cfg(feature = "napi-runtime")]
+#[napi(object)]
+#[derive(Clone)]
+pub struct BlockHighlights {
+    pub block_index: i32,
+    pub ranges: Vec<HighlightRange>,
 }
 
 #[cfg(feature = "napi-runtime")]
@@ -621,6 +650,25 @@ impl BookLayout {
     #[napi]
     pub fn invalidate(&self) {
         self.inner.lock().invalidate();
+    }
+
+    /// Replace the per-block search-highlight ranges. Ranges are in block-
+    /// local char offsets (same coordinates as BookSearchIndex.blockHighlights).
+    #[napi]
+    pub fn set_highlights(&self, highlights: Vec<BlockHighlights>) {
+        let map: std::collections::HashMap<i32, Vec<crate::renderer::layout::HighlightRange>> =
+            highlights
+                .into_iter()
+                .map(|h| {
+                    let ranges = h
+                        .ranges
+                        .into_iter()
+                        .map(|r| crate::renderer::layout::HighlightRange { start: r.start, end: r.end })
+                        .collect();
+                    (h.block_index, ranges)
+                })
+                .collect();
+        self.inner.lock().set_highlights(map);
     }
 }
 

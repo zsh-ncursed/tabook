@@ -339,9 +339,7 @@ describe('LibraryDb OPDS catalogs', () => {
     raw.close();
 
     const d2 = new LibraryDb(filePath);
-    const flibustas = d2
-      .listCatalogs()
-      .filter((c) => c.url === 'https://flibusta.is/opds');
+    const flibustas = d2.listCatalogs().filter((c) => c.url === 'https://flibusta.is/opds');
     expect(flibustas).toHaveLength(1);
     d2.close();
   });

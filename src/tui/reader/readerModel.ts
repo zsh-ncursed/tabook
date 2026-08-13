@@ -79,8 +79,12 @@ export class ReaderSession {
     return new BookLayout(this.blocks, {
       typo: this.typo,
       width: this.contentWidth(),
-      // Highlights are computed lazily per block — the layout only requests
-      // them for blocks it actually renders, so a book-wide scan is avoided.
+      // getHighlights feeds the native layout's highlight map (via
+      // setHighlights on construction/invalidate) and the TS fallback's
+      // lazy per-block lookup. On the native path an active query costs one
+      // book-wide pass per query change — the same order as the search
+      // itself; when no query is active the callback short-circuits to
+      // undefined and the pass is cheap.
       getHighlights: (blockIndex) =>
         this.query === '' ? undefined : this.search.blockHighlights(this.query, blockIndex),
       justify: this.justify,

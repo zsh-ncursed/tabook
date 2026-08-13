@@ -276,9 +276,9 @@ export class LibraryDb {
       // Seed Flibusta for existing users who already have OPDS catalogs but
       // are missing it. Fresh DBs (v0) get all defaults via the CLI pre-seed
       // in main.ts, so only act when catalogs already exist.
-      const count = this.db
-        .prepare('SELECT COUNT(*) AS n FROM opds_catalogs')
-        .get() as { n: number };
+      const count = this.db.prepare('SELECT COUNT(*) AS n FROM opds_catalogs').get() as {
+        n: number;
+      };
       if (count.n > 0) {
         const hasFlibusta = this.db
           .prepare("SELECT COUNT(*) AS n FROM opds_catalogs WHERE url = 'https://flibusta.is/opds'")

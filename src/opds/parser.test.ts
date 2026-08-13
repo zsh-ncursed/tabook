@@ -342,9 +342,7 @@ describe('parseOpdsAtom', () => {
     });
 
     it('strips HTML from content (text/html type)', () => {
-      const entry = feed.entries.find((e) =>
-        e.title.includes('46 интервью'),
-      )!;
+      const entry = feed.entries.find((e) => e.title.includes('46 интервью'))!;
       expect(entry.content).toBeDefined();
       expect(entry.content).not.toContain('<');
       expect(entry.content).not.toContain('&');
@@ -364,9 +362,7 @@ describe('parseOpdsAtom', () => {
     });
 
     it('detects fb2+zip and epub acquisition links', () => {
-      const entry = feed.entries.find((e) =>
-        e.title.includes('46 интервью'),
-      )!;
+      const entry = feed.entries.find((e) => e.title.includes('46 интервью'))!;
       expect(entry.isAcquisition).toBe(true);
       const fb2 = entry.acquisitionLinks.find((l) => l.type === 'application/fb2+zip');
       expect(fb2).toBeDefined();
@@ -383,17 +379,13 @@ describe('parseOpdsAtom', () => {
     });
 
     it('extracts categories (genres)', () => {
-      const entry = feed.entries.find((e) =>
-        e.title.includes('46 интервью'),
-      )!;
+      const entry = feed.entries.find((e) => e.title.includes('46 интервью'))!;
       expect(entry.categories.length).toBeGreaterThan(0);
       expect(entry.categories.some((c) => c.term === 'Анекдоты')).toBe(true);
     });
 
     it('has image link', () => {
-      const entry = feed.entries.find((e) =>
-        e.title.includes('46 интервью'),
-      )!;
+      const entry = feed.entries.find((e) => e.title.includes('46 интервью'))!;
       expect(entry.imageHref).toContain('_0.jpg');
     });
   });
