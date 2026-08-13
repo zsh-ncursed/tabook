@@ -88,16 +88,18 @@ jobs:
       - name: Smoke test
         run: |
           DIR=$(ls -d build/tabook-*-linux-${{ matrix.arch }})
+          cd "$DIR"
           # The launcher lives inside the PKGBUILD; here run the bundle directly.
-          node "$DIR/tabook.bundle.mjs" --version
+          node tabook.bundle.mjs --version
           # The packaged @tabook/native must expose the full API through the
           # bundle's resolution path (createRequire → index.cjs). A regression
           # here (e.g. resolving index.js's ESM { default } wrapper instead)
           # silently disables every native feature — check the key exports and
-          # exercise one real call.
+          # exercise one real call. Ran from inside the tarball layout so the
+          # require resolves to the packaged node_modules, not the repo's.
           node --input-type=module -e "
             import { createRequire } from 'node:module';
-            import { readFileSync } from 'node:fs';
+            import { rmSync } from 'node:fs';
             const require = createRequire(import.meta.url);
             const n = require('@tabook/native');
             for (const fn of ['parseOpdsAtom', 'BookLayout', 'parseBookFile', 'imageToPng']) {
@@ -105,7 +107,23 @@ jobs:
             }
             const feed = n.parseOpdsAtom('<?xml version=\"1.0\"?><feed xmlns=\"http://www.w3.org/2005/Atom\"><title>T</title></feed>');
             if (!feed || feed.title !== 'T') throw new Error('parseOpdsAtom broken');
-            console.log('native exports + OPDS parse OK');
+            // The DB layer is native (rusqlite) in the package — no
+            // better-sqlite3 ships. Verify a real open/add/get cycle works
+            // without it (regression guard for the 0.3.x native-loader bugs).
+            const dbPath = '/tmp/tabook-smoke-' + process.pid + '.sqlite';
+            const db = n.openLibraryDb(dbPath);
+            // napi-rs object fields reject explicit null for optional structs
+            // (Option<T> fields accept undefined/omitted only) — send a minimal
+            // metadata object the way the app's parsers do.
+            const id = db.addBook('/tmp/smoke.fb2', 'smoke.fb2', 'fb2', 10, {
+              title: 'Smoke', authors: [], genres: [], annotation: '',
+            }, null);
+            if (!(id > 0)) throw new Error('LibraryDb.addBook broken');
+            const got = db.getBook(id);
+            if (!got || got.title !== 'Smoke') throw new Error('LibraryDb.getBook broken');
+            db.close();
+            rmSync(dbPath, { force: true });
+            console.log('native exports + OPDS parse + DB cycle OK');
           "
 
       - name: Upload artifact

@@ -1,10 +1,12 @@
-import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DatabaseError, messageOf } from '../utils/errors.js';
-import { ensureDir } from '../utils/paths.js';
+import { createRequire } from 'node:module';
 import type { BookMetadata } from '../formats/model.js';
 import { joinAuthors, formatSeries } from '../formats/model.js';
+import { native, isNativeErrorResult } from '../native.js';
+import type * as NativeTypes from '@tabook/native';
+import { DatabaseError, messageOf } from '../utils/errors.js';
+import { ensureDir } from '../utils/paths.js';
 
 export interface BookRecord extends BookMetadata {
   id: number;
@@ -99,6 +101,8 @@ interface CatalogRow {
   password: string | null;
 }
 
+// ---- shared helpers --------------------------------------------------------
+
 function rowToCatalog(row: CatalogRow): CatalogRecord {
   return {
     id: row.id,
@@ -152,14 +156,403 @@ function rowToBook(row: BookRow): BookRecord {
   };
 }
 
-const SCHEMA_VERSION = 5;
+// Convert a native (rusqlite-backed) book record into the TS BookRecord shape.
+// Native returns structured authors/series; the TS contract additionally
+// carries authorsText/seriesText and null (not undefined) for absent fields.
+function nativeToBookRecord(b: NativeTypes.BookRecord): BookRecord {
+  const authors: BookMetadata['authors'] = b.authors.map((a) => ({
+    firstName: a.firstName,
+    lastName: a.lastName,
+    middleName: a.middleName ?? '',
+    nickname: a.nickname,
+  }));
+  const metadata: BookMetadata = {
+    title: b.title,
+    authors,
+    genres: b.genres,
+    annotation: b.annotation,
+    lang: b.lang ?? undefined,
+    coverKey: b.coverKey ?? undefined,
+    publisher: b.publisher ?? undefined,
+    isbn: b.isbn ?? undefined,
+    year: b.year ?? undefined,
+  };
+  if (b.series) {
+    metadata.series = { name: b.series.name, number: b.series.number };
+  }
+  return {
+    ...metadata,
+    id: b.id,
+    path: b.path,
+    filename: b.filename,
+    format: b.format as 'fb2' | 'epub',
+    size: b.size,
+    addedAt: b.addedAt,
+    lastOpenedAt: b.lastOpenedAt ?? null,
+    authorsText: joinAuthors(authors),
+    seriesText: formatSeries(metadata.series) ?? null,
+    progressPercent: b.progressPercent ?? null,
+    progressPosition: b.progressPosition ?? null,
+  };
+}
 
-export class LibraryDb {
-  private readonly db: Database.Database;
+function nativeToCatalog(c: NativeTypes.CatalogRecord): CatalogRecord {
+  return {
+    id: c.id,
+    name: c.name,
+    url: c.url,
+    username: c.username ?? null,
+    password: c.password ?? null,
+  };
+}
+
+function nativeToFolder(f: NativeTypes.LibraryFolderRecord): LibraryFolderRecord {
+  return {
+    id: f.id,
+    path: f.path,
+    addedAt: f.addedAt,
+    lastScannedAt: f.lastScannedAt ?? null,
+  };
+}
+
+// napi-rs returns Err from Result-returning #[napi] fns as a value
+// ({ code: ... }) rather than throwing. DB methods that can fail must check
+// the return for that shape and surface a DatabaseError, matching the TS
+// better-sqlite3 fallback which throws on SQL errors.
+function unwrapNative<T>(result: T): T {
+  if (isNativeErrorResult(result)) {
+    throw new DatabaseError(result.message ?? String(result));
+  }
+  return result;
+}
+
+// ---- shared interface for the two backends ---------------------------------
+
+interface DbBackend {
+  readonly filePath: string;
+  close(): void;
+  fileExists(): boolean;
+  addBook(record: {
+    path: string;
+    filename: string;
+    format: 'fb2' | 'epub';
+    size: number;
+    metadata: BookMetadata;
+    libraryRoot?: string;
+  }): number;
+  getBook(id: number): BookRecord | undefined;
+  getBookByPath(filePath: string): BookRecord | undefined;
+  listBooks(opts?: {
+    limit?: number;
+    offset?: number;
+    orderBy?: 'title' | 'added' | 'opened';
+  }): BookRecord[];
+  removeBook(id: number): boolean;
+  setProgress(bookId: number, position: number, percent: number): void;
+  getProgress(bookId: number): ProgressRecord | undefined;
+  addBookmark(bookId: number, position: number, label: string): number;
+  listBookmarks(bookId: number): BookmarkRecord[];
+  getBookmark(id: number): BookmarkRecord | undefined;
+  deleteBookmark(id: number): boolean;
+  updateBookmarkLabel(id: number, label: string): boolean;
+  recordOpen(bookId: number): void;
+  listHistory(limit?: number): HistoryRecord[];
+  listRecentBooks(limit?: number): BookRecord[];
+  startSession(bookId: number): number;
+  endSession(sessionId: number, pagesRead: number): void;
+  getStats(bookId: number): SessionStats;
+  addCatalog(catalog: { name: string; url: string; username?: string; password?: string }): number;
+  listCatalogs(): CatalogRecord[];
+  getCatalog(id: number): CatalogRecord | undefined;
+  getCatalogByName(name: string): CatalogRecord | undefined;
+  updateCatalog(
+    id: number,
+    fields: { name?: string; url?: string; username?: string; password?: string },
+  ): void;
+  removeCatalog(id: number): void;
+  addLibraryFolder(folderPath: string): number;
+  listLibraryFolders(): LibraryFolderRecord[];
+  getLibraryFolderByPath(folderPath: string): LibraryFolderRecord | undefined;
+  setFolderScannedAt(id: number, scannedAtMs: number): void;
+  removeLibraryFolder(id: number): boolean;
+  listPathsByLibraryRoot(root: string): string[];
+  removeBooksByPaths(paths: string[]): number;
+  removeBooksByLibraryRoot(root: string): number;
+}
+
+// ---- native (rusqlite) backend ----------------------------------------------
+
+class NativeDbBackend implements DbBackend {
+  private readonly db: NativeTypes.LibraryDb;
   readonly filePath: string;
 
   constructor(filePath: string) {
     this.filePath = filePath;
+    // Created via the napi factory (no JS constructor): napi-rs surfaces the
+    // open failure as an error-value ({ code, message }), not a throw.
+    const opened = native!.openLibraryDb(filePath);
+    if (isNativeErrorResult(opened)) {
+      throw new DatabaseError(
+        `Cannot open database at ${filePath}: ${opened.message ?? String(opened)}`,
+        {
+          cause: opened,
+        },
+      );
+    }
+    this.db = opened;
+  }
+
+  close(): void {
+    this.db.close();
+  }
+
+  fileExists(): boolean {
+    return this.db.fileExists();
+  }
+
+  addBook(record: {
+    path: string;
+    filename: string;
+    format: 'fb2' | 'epub';
+    size: number;
+    metadata: BookMetadata;
+    libraryRoot?: string;
+  }): number {
+    const id = unwrapNative(
+      this.db.addBook(
+        record.path,
+        record.filename,
+        record.format,
+        record.size,
+        record.metadata,
+        record.libraryRoot ?? null,
+      ),
+    );
+    return Number(id);
+  }
+
+  getBook(id: number): BookRecord | undefined {
+    const b = this.db.getBook(id);
+    return b ? nativeToBookRecord(b) : undefined;
+  }
+
+  getBookByPath(filePath: string): BookRecord | undefined {
+    const b = this.db.getBookByPath(filePath);
+    return b ? nativeToBookRecord(b) : undefined;
+  }
+
+  listBooks(opts?: {
+    limit?: number;
+    offset?: number;
+    orderBy?: 'title' | 'added' | 'opened';
+  }): BookRecord[] {
+    const rows = this.db.listBooks(
+      opts?.limit ?? null,
+      opts?.offset ?? 0,
+      opts?.orderBy ?? 'title',
+    );
+    return rows.map(nativeToBookRecord);
+  }
+
+  removeBook(id: number): boolean {
+    return this.db.removeBook(id);
+  }
+
+  setProgress(bookId: number, position: number, percent: number): void {
+    unwrapNative(this.db.setProgress(bookId, position, percent));
+  }
+
+  getProgress(bookId: number): ProgressRecord | undefined {
+    const p = this.db.getProgress(bookId);
+    return p
+      ? {
+          bookId: p.bookId,
+          position: p.position,
+          percent: p.percent,
+          updatedAt: p.updatedAt,
+        }
+      : undefined;
+  }
+
+  addBookmark(bookId: number, position: number, label: string): number {
+    return Number(unwrapNative(this.db.addBookmark(bookId, position, label)));
+  }
+
+  listBookmarks(bookId: number): BookmarkRecord[] {
+    return this.db.listBookmarks(bookId).map((b) => ({
+      id: b.id,
+      bookId: b.bookId,
+      position: b.position,
+      label: b.label,
+      createdAt: b.createdAt,
+    }));
+  }
+
+  getBookmark(id: number): BookmarkRecord | undefined {
+    const b = this.db.getBookmark(id);
+    return b
+      ? {
+          id: b.id,
+          bookId: b.bookId,
+          position: b.position,
+          label: b.label,
+          createdAt: b.createdAt,
+        }
+      : undefined;
+  }
+
+  deleteBookmark(id: number): boolean {
+    return this.db.deleteBookmark(id);
+  }
+
+  updateBookmarkLabel(id: number, label: string): boolean {
+    return this.db.updateBookmarkLabel(id, label);
+  }
+
+  recordOpen(bookId: number): void {
+    unwrapNative(this.db.recordOpen(bookId));
+  }
+
+  listHistory(limit = 20): HistoryRecord[] {
+    return this.db.listHistory(limit).map((h) => ({
+      bookId: h.bookId,
+      title: h.title,
+      openedAt: h.openedAt,
+    }));
+  }
+
+  listRecentBooks(limit = 20): BookRecord[] {
+    return this.db.listRecentBooks(limit).map(nativeToBookRecord);
+  }
+
+  startSession(bookId: number): number {
+    return Number(unwrapNative(this.db.startSession(bookId)));
+  }
+
+  endSession(sessionId: number, pagesRead: number): void {
+    unwrapNative(this.db.endSession(sessionId, pagesRead));
+  }
+
+  getStats(bookId: number): SessionStats {
+    const s = this.db.getStats(bookId);
+    return {
+      totalSeconds: s.totalSeconds,
+      totalPages: s.totalPages,
+      sessionCount: s.sessionCount,
+      lastReadAt: s.lastReadAt ?? null,
+    };
+  }
+
+  addCatalog(catalog: { name: string; url: string; username?: string; password?: string }): number {
+    const id = unwrapNative(
+      this.db.addCatalog(
+        catalog.name,
+        catalog.url,
+        catalog.username ?? null,
+        catalog.password ?? null,
+      ),
+    );
+    return Number(id);
+  }
+
+  listCatalogs(): CatalogRecord[] {
+    return this.db.listCatalogs().map(nativeToCatalog);
+  }
+
+  getCatalog(id: number): CatalogRecord | undefined {
+    const c = this.db.getCatalog(id);
+    return c ? nativeToCatalog(c) : undefined;
+  }
+
+  getCatalogByName(name: string): CatalogRecord | undefined {
+    const c = this.db.getCatalogByName(name);
+    return c ? nativeToCatalog(c) : undefined;
+  }
+
+  updateCatalog(
+    id: number,
+    fields: { name?: string; url?: string; username?: string; password?: string },
+  ): void {
+    unwrapNative(
+      this.db.updateCatalog(id, fields.name, fields.url, fields.username, fields.password),
+    );
+  }
+
+  removeCatalog(id: number): void {
+    unwrapNative(this.db.removeCatalog(id));
+  }
+
+  addLibraryFolder(folderPath: string): number {
+    return Number(unwrapNative(this.db.addLibraryFolder(folderPath)));
+  }
+
+  listLibraryFolders(): LibraryFolderRecord[] {
+    return this.db.listLibraryFolders().map(nativeToFolder);
+  }
+
+  getLibraryFolderByPath(folderPath: string): LibraryFolderRecord | undefined {
+    const f = this.db.getLibraryFolderByPath(folderPath);
+    return f ? nativeToFolder(f) : undefined;
+  }
+
+  setFolderScannedAt(id: number, scannedAtMs: number): void {
+    unwrapNative(this.db.setFolderScannedAt(id, scannedAtMs));
+  }
+
+  removeLibraryFolder(id: number): boolean {
+    return this.db.removeLibraryFolder(id);
+  }
+
+  listPathsByLibraryRoot(root: string): string[] {
+    return this.db.listPathsByLibraryRoot(root);
+  }
+
+  removeBooksByPaths(paths: string[]): number {
+    return Number(unwrapNative(this.db.removeBooksByPaths(paths)));
+  }
+
+  removeBooksByLibraryRoot(root: string): number {
+    return Number(unwrapNative(this.db.removeBooksByLibraryRoot(root)));
+  }
+}
+
+// ---- better-sqlite3 fallback backend ----------------------------------------
+
+// Loaded lazily so the release bundle never touches better-sqlite3 unless the
+// native module is genuinely unavailable (the package ships no better-sqlite3;
+// a static import here would crash the bundle at load time like the 0.3.1
+// native-loader regression). The id goes through a function so esbuild can't
+// fold the require into a top-level import.
+function sqlitePackageId(): string {
+  return 'better-sqlite3';
+}
+
+const require = createRequire(import.meta.url);
+
+// better-sqlite3 types use `export =` (class + namespace merged), so the
+// module type IS the constructor — no .default unwrap needed. Type-only import
+// to satisfy the consistent-type-imports rule (erased at compile time).
+import type BetterSqlite3 from 'better-sqlite3';
+type SqliteDatabase = BetterSqlite3.Database;
+type SqliteCtor = typeof BetterSqlite3;
+
+const SCHEMA_VERSION = 5;
+
+class SqliteDbBackend implements DbBackend {
+  private readonly db: SqliteDatabase;
+  readonly filePath: string;
+
+  constructor(filePath: string) {
+    this.filePath = filePath;
+    let Database: SqliteCtor;
+    try {
+      Database = require(sqlitePackageId());
+    } catch (err) {
+      throw new DatabaseError(
+        `Cannot open database at ${filePath}: better-sqlite3 is not installed (${messageOf(err)})`,
+        { cause: err },
+      );
+    }
     try {
       ensureDir(path.dirname(filePath));
       this.db = new Database(filePath);
@@ -234,8 +627,6 @@ export class LibraryDb {
         );
       `);
     }
-    // Example for the next migration:
-    //   if (version < 2) { this.db.exec('ALTER TABLE books ADD COLUMN x ...'); }
     if (version < 2) {
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS opds_catalogs (
@@ -307,9 +698,6 @@ export class LibraryDb {
     format: 'fb2' | 'epub';
     size: number;
     metadata: BookMetadata;
-    // Which attached library folder this book was scanned from (if any).
-    // Detaching that folder removes its books, so a manually saved book
-    // (no root) keeps the existing root instead of nulling it on re-save.
     libraryRoot?: string;
   }): number {
     const metadata = record.metadata;
@@ -717,5 +1105,170 @@ export class LibraryDb {
   removeBooksByLibraryRoot(root: string): number {
     const info = this.db.prepare('DELETE FROM books WHERE library_root = ?').run(root);
     return info.changes;
+  }
+}
+
+// ---- public facade -----------------------------------------------------------
+
+// Picks the native (rusqlite) backend when the Rust core is available and
+// falls back to better-sqlite3 otherwise, mirroring how formats/index.ts and
+// search/index.ts gate on native. The public interface is identical either way.
+export class LibraryDb implements DbBackend {
+  private readonly impl: DbBackend;
+  readonly filePath: string;
+
+  constructor(filePath: string) {
+    this.filePath = filePath;
+    this.impl = native ? new NativeDbBackend(filePath) : new SqliteDbBackend(filePath);
+  }
+
+  close(): void {
+    this.impl.close();
+  }
+
+  fileExists(): boolean {
+    return this.impl.fileExists();
+  }
+
+  addBook(record: {
+    path: string;
+    filename: string;
+    format: 'fb2' | 'epub';
+    size: number;
+    metadata: BookMetadata;
+    libraryRoot?: string;
+  }): number {
+    return this.impl.addBook(record);
+  }
+
+  getBook(id: number): BookRecord | undefined {
+    return this.impl.getBook(id);
+  }
+
+  getBookByPath(filePath: string): BookRecord | undefined {
+    return this.impl.getBookByPath(filePath);
+  }
+
+  listBooks(opts?: {
+    limit?: number;
+    offset?: number;
+    orderBy?: 'title' | 'added' | 'opened';
+  }): BookRecord[] {
+    return this.impl.listBooks(opts);
+  }
+
+  removeBook(id: number): boolean {
+    return this.impl.removeBook(id);
+  }
+
+  setProgress(bookId: number, position: number, percent: number): void {
+    this.impl.setProgress(bookId, position, percent);
+  }
+
+  getProgress(bookId: number): ProgressRecord | undefined {
+    return this.impl.getProgress(bookId);
+  }
+
+  addBookmark(bookId: number, position: number, label: string): number {
+    return this.impl.addBookmark(bookId, position, label);
+  }
+
+  listBookmarks(bookId: number): BookmarkRecord[] {
+    return this.impl.listBookmarks(bookId);
+  }
+
+  getBookmark(id: number): BookmarkRecord | undefined {
+    return this.impl.getBookmark(id);
+  }
+
+  deleteBookmark(id: number): boolean {
+    return this.impl.deleteBookmark(id);
+  }
+
+  updateBookmarkLabel(id: number, label: string): boolean {
+    return this.impl.updateBookmarkLabel(id, label);
+  }
+
+  recordOpen(bookId: number): void {
+    this.impl.recordOpen(bookId);
+  }
+
+  listHistory(limit?: number): HistoryRecord[] {
+    return this.impl.listHistory(limit);
+  }
+
+  listRecentBooks(limit?: number): BookRecord[] {
+    return this.impl.listRecentBooks(limit);
+  }
+
+  startSession(bookId: number): number {
+    return this.impl.startSession(bookId);
+  }
+
+  endSession(sessionId: number, pagesRead: number): void {
+    this.impl.endSession(sessionId, pagesRead);
+  }
+
+  getStats(bookId: number): SessionStats {
+    return this.impl.getStats(bookId);
+  }
+
+  addCatalog(catalog: { name: string; url: string; username?: string; password?: string }): number {
+    return this.impl.addCatalog(catalog);
+  }
+
+  listCatalogs(): CatalogRecord[] {
+    return this.impl.listCatalogs();
+  }
+
+  getCatalog(id: number): CatalogRecord | undefined {
+    return this.impl.getCatalog(id);
+  }
+
+  getCatalogByName(name: string): CatalogRecord | undefined {
+    return this.impl.getCatalogByName(name);
+  }
+
+  updateCatalog(
+    id: number,
+    fields: { name?: string; url?: string; username?: string; password?: string },
+  ): void {
+    this.impl.updateCatalog(id, fields);
+  }
+
+  removeCatalog(id: number): void {
+    this.impl.removeCatalog(id);
+  }
+
+  addLibraryFolder(folderPath: string): number {
+    return this.impl.addLibraryFolder(folderPath);
+  }
+
+  listLibraryFolders(): LibraryFolderRecord[] {
+    return this.impl.listLibraryFolders();
+  }
+
+  getLibraryFolderByPath(folderPath: string): LibraryFolderRecord | undefined {
+    return this.impl.getLibraryFolderByPath(folderPath);
+  }
+
+  setFolderScannedAt(id: number, scannedAtMs: number): void {
+    this.impl.setFolderScannedAt(id, scannedAtMs);
+  }
+
+  removeLibraryFolder(id: number): boolean {
+    return this.impl.removeLibraryFolder(id);
+  }
+
+  listPathsByLibraryRoot(root: string): string[] {
+    return this.impl.listPathsByLibraryRoot(root);
+  }
+
+  removeBooksByPaths(paths: string[]): number {
+    return this.impl.removeBooksByPaths(paths);
+  }
+
+  removeBooksByLibraryRoot(root: string): number {
+    return this.impl.removeBooksByLibraryRoot(root);
   }
 }

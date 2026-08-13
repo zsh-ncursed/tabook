@@ -6,10 +6,10 @@ The `aur-publish.yml` workflow runs when a `v*` tag is pushed to `main`.
 It runs the full test suite, then publishes the updated `PKGBUILD` + `.SRCINFO`
 to the AUR `tabook` package via SSH.
 
-The AUR build compiles the Rust core (`crates/tabook-native`) for the target
-architecture and bundles it with the app, alongside the better-sqlite3
-prebuilds for both `x86_64` and `aarch64`, so the package installs on either
-architecture.
+The release workflow prebuilds the Rust core (`crates/tabook-native`) into
+single-file tarballs for both `x86_64` and `aarch64`. The Rust core owns the
+whole DB layer too (rusqlite, bundled SQLite), so the package ships a single
+native module and installs on either architecture without compiling anything.
 
 ## Prerequisites
 

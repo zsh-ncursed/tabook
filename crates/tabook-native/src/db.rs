@@ -198,10 +198,24 @@ impl LibraryDb {
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     path TEXT NOT NULL UNIQUE,
                     added_at TEXT NOT NULL DEFAULT (datetime('now'))
-                );
-                ALTER TABLE books ADD COLUMN library_root TEXT;
-                CREATE INDEX IF NOT EXISTS idx_books_library_root ON books(library_root);",
+                );",
             ).map_err(|e| e.to_string())?;
+            // ALTER TABLE has no IF NOT EXISTS; guard against a partially
+            // applied migration or a rollback of user_version on a DB that
+            // already has the column (mirrors the TS fallback's PRAGMA check).
+            let cols: Vec<String> = conn
+                .prepare("PRAGMA table_info(books)")
+                .map_err(|e| e.to_string())?
+                .query_map([], |r| r.get::<_, String>(1))
+                .map_err(|e| e.to_string())?
+                .filter_map(Result::ok)
+                .collect();
+            if !cols.iter().any(|c| c == "library_root") {
+                conn.execute("ALTER TABLE books ADD COLUMN library_root TEXT", [])
+                    .map_err(|e| e.to_string())?;
+            }
+            conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_books_library_root ON books(library_root);")
+                .map_err(|e| e.to_string())?;
         }
         if version < 4 {
             // ALTER TABLE library_folders ADD COLUMN last_scanned_at INTEGER
@@ -413,6 +427,26 @@ impl LibraryDb {
         Ok(rows)
     }
 
+    pub fn get_bookmark(&self, id: i32) -> Result<Option<BookmarkRecord>, String> {
+        let conn = self.conn.lock().unwrap();
+        let row = conn
+            .query_row(
+                "SELECT id, book_id, position, label, created_at FROM bookmarks WHERE id = ?",
+                params![id],
+                |r| {
+                    Ok(BookmarkRecord {
+                        id: r.get(0)?,
+                        book_id: r.get(1)?,
+                        position: r.get(2)?,
+                        label: r.get(3)?,
+                        created_at: r.get(4)?,
+                    })
+                },
+            )
+            .ok();
+        Ok(row)
+    }
+
     pub fn delete_bookmark(&self, id: i32) -> Result<bool, String> {
         let conn = self.conn.lock().unwrap();
         let n = conn.execute("DELETE FROM bookmarks WHERE id = ?", params![id]).map_err(|e| e.to_string())?;
@@ -550,6 +584,85 @@ impl LibraryDb {
             .filter_map(Result::ok)
             .collect();
         Ok(rows)
+    }
+
+    pub fn get_catalog(&self, id: i32) -> Result<Option<CatalogRecord>, String> {
+        let conn = self.conn.lock().unwrap();
+        let row = conn
+            .query_row(
+                "SELECT id, name, url, username, password FROM opds_catalogs WHERE id = ?",
+                params![id],
+                |r| {
+                    Ok(CatalogRecord {
+                        id: r.get(0)?,
+                        name: r.get(1)?,
+                        url: r.get(2)?,
+                        username: r.get(3)?,
+                        password: r.get(4)?,
+                    })
+                },
+            )
+            .ok();
+        Ok(row)
+    }
+
+    pub fn get_catalog_by_name(&self, name: &str) -> Result<Option<CatalogRecord>, String> {
+        let conn = self.conn.lock().unwrap();
+        let row = conn
+            .query_row(
+                "SELECT id, name, url, username, password FROM opds_catalogs WHERE name = ?",
+                params![name],
+                |r| {
+                    Ok(CatalogRecord {
+                        id: r.get(0)?,
+                        name: r.get(1)?,
+                        url: r.get(2)?,
+                        username: r.get(3)?,
+                        password: r.get(4)?,
+                    })
+                },
+            )
+            .ok();
+        Ok(row)
+    }
+
+    /// Partial update matching the TS `updateCatalog(id, fields)`: only the
+    /// provided fields are set; `None` fields are left untouched.
+    pub fn update_catalog(
+        &self,
+        id: i32,
+        name: Option<&str>,
+        url: Option<&str>,
+        username: Option<&str>,
+        password: Option<&str>,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        let mut sets: Vec<String> = Vec::new();
+        let mut values: Vec<rusqlite::types::Value> = Vec::new();
+        if let Some(v) = name {
+            sets.push("name = ?".to_string());
+            values.push(rusqlite::types::Value::Text(v.to_owned()));
+        }
+        if let Some(v) = url {
+            sets.push("url = ?".to_string());
+            values.push(rusqlite::types::Value::Text(v.to_owned()));
+        }
+        if let Some(v) = username {
+            sets.push("username = ?".to_string());
+            values.push(rusqlite::types::Value::Text(v.to_owned()));
+        }
+        if let Some(v) = password {
+            sets.push("password = ?".to_string());
+            values.push(rusqlite::types::Value::Text(v.to_owned()));
+        }
+        if sets.is_empty() {
+            return Ok(());
+        }
+        let sql = format!("UPDATE opds_catalogs SET {} WHERE id = ?", sets.join(", "));
+        values.push(rusqlite::types::Value::Integer(i64::from(id)));
+        conn.execute(&sql, rusqlite::params_from_iter(values.iter()))
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     pub fn remove_catalog(&self, id: i32) -> Result<(), String> {
@@ -825,6 +938,17 @@ mod tests {
     }
 
     #[test]
+    fn get_bookmark() {
+        let db = test_db();
+        assert!(db.get_bookmark(1).unwrap().is_none());
+        let id = db.add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None).unwrap();
+        let bm_id = db.add_bookmark(id, 100, "label").unwrap();
+        let bm = db.get_bookmark(bm_id).unwrap().unwrap();
+        assert_eq!(bm.label, "label");
+        assert_eq!(bm.book_id, id);
+    }
+
+    #[test]
     fn history() {
         let db = test_db();
         let id = db.add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None).unwrap();
@@ -862,6 +986,41 @@ mod tests {
         db.add_catalog("Flibusta", "https://flibusta.is/opds", None, None).unwrap();
         let cats = db.list_catalogs().unwrap();
         assert_eq!(cats.len(), 2);
+    }
+
+    #[test]
+    fn get_catalog_and_by_name() {
+        let db = test_db();
+        assert!(db.get_catalog(1).unwrap().is_none());
+        let id = db.add_catalog("Gutenberg", "https://m.gutenberg.org/ebooks.opds/", None, None).unwrap();
+        let by_id = db.get_catalog(id).unwrap().unwrap();
+        assert_eq!(by_id.name, "Gutenberg");
+        let by_name = db.get_catalog_by_name("Gutenberg").unwrap().unwrap();
+        assert_eq!(by_name.id, id);
+        assert!(db.get_catalog_by_name("Nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn update_catalog_partial() {
+        let db = test_db();
+        let id = db.add_catalog("Old", "https://old/opds", Some("u"), Some("p")).unwrap();
+        // Partial update: only name changes, credentials stay.
+        db.update_catalog(id, Some("New"), None, None, None).unwrap();
+        let cat = db.get_catalog(id).unwrap().unwrap();
+        assert_eq!(cat.name, "New");
+        assert_eq!(cat.url, "https://old/opds");
+        assert_eq!(cat.username.as_deref(), Some("u"));
+        assert_eq!(cat.password.as_deref(), Some("p"));
+        // Credentials update only.
+        db.update_catalog(id, None, None, Some("u2"), Some("p2")).unwrap();
+        let cat = db.get_catalog(id).unwrap().unwrap();
+        assert_eq!(cat.username.as_deref(), Some("u2"));
+        assert_eq!(cat.password.as_deref(), Some("p2"));
+        assert_eq!(cat.name, "New");
+        // No-op with no fields.
+        db.update_catalog(id, None, None, None, None).unwrap();
+        let cat = db.get_catalog(id).unwrap().unwrap();
+        assert_eq!(cat.url, "https://old/opds");
     }
 
     #[test]

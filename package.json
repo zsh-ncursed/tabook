@@ -1,6 +1,6 @@
 {
   "name": "tabook",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "TUI e-book reader for FB2 and EPUB with vim-like controls",
   "license": "MIT",
   "type": "module",
@@ -43,7 +43,6 @@
   ],
   "dependencies": {
     "adm-zip": "^0.6.0",
-    "better-sqlite3": "^13.0.2",
     "commander": "^12.1.0",
     "fast-xml-parser": "^4.5.3",
     "ink": "^5.2.1",
@@ -54,6 +53,7 @@
     "@napi-rs/cli": "^3.8.6",
     "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^13.0.2",
     "@types/node": "^22.10.5",
     "@types/react": "^18.3.18",
     "@typescript-eslint/eslint-plugin": "^8.19.1",

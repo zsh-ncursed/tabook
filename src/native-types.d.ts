@@ -250,27 +250,29 @@ export interface LibraryFolderRecord {
   addedAt: string;
   lastScannedAt?: number;
 }
+export declare function openLibraryDb(filePath: string): LibraryDb | NativeErrorValue;
 export declare class LibraryDb {
-  constructor(filePath: string);
   readonly filePath: string;
   close(): void;
   fileExists(): boolean;
+  // napi-rs Option params accept both undefined and null as "no value".
   addBook(
     path: string,
     filename: string,
     format: string,
     size: number,
     metadata: BookMetadata,
-    libraryRoot?: string,
+    libraryRoot?: string | null,
   ): number;
   getBook(id: number): BookRecord | null;
   getBookByPath(path: string): BookRecord | null;
-  listBooks(limit?: number, offset?: number, orderBy?: string): BookRecord[];
+  listBooks(limit?: number | null, offset?: number, orderBy?: string): BookRecord[];
   removeBook(id: number): boolean;
   setProgress(bookId: number, position: number, percent: number): void;
   getProgress(bookId: number): ProgressRecord | null;
   addBookmark(bookId: number, position: number, label: string): number;
   listBookmarks(bookId: number): BookmarkRecord[];
+  getBookmark(id: number): BookmarkRecord | null;
   deleteBookmark(id: number): boolean;
   updateBookmarkLabel(id: number, label: string): boolean;
   recordOpen(bookId: number): void;
@@ -279,8 +281,17 @@ export declare class LibraryDb {
   startSession(bookId: number): number;
   endSession(sessionId: number, pagesRead: number): void;
   getStats(bookId: number): SessionStats;
-  addCatalog(name: string, url: string, username?: string, password?: string): number;
+  addCatalog(name: string, url: string, username?: string | null, password?: string | null): number;
   listCatalogs(): CatalogRecord[];
+  getCatalog(id: number): CatalogRecord | null;
+  getCatalogByName(name: string): CatalogRecord | null;
+  updateCatalog(
+    id: number,
+    name?: string | null,
+    url?: string | null,
+    username?: string | null,
+    password?: string | null,
+  ): void;
   removeCatalog(id: number): void;
   addLibraryFolder(path: string): number;
   listLibraryFolders(): LibraryFolderRecord[];
@@ -305,6 +316,13 @@ export declare function walkBookFiles(root: string): string[];
 export declare function scanLibraryFolder(db: LibraryDb, root: string): ScanSummaryNapi;
 export declare function folderNeedsRescan(db: LibraryDb, folder: LibraryFolderRecord): boolean;
 export declare function resolveFolderPath(p: string): string;
+
+// napi-rs returns Err from Result-returning fns as a plain value
+// ({ code, message }) rather than throwing.
+export interface NativeErrorValue {
+  code: string;
+  message?: string;
+}
 
 // image.rs
 export interface ImageToPng {

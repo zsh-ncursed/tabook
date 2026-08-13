@@ -1,6 +1,6 @@
 {
   "name": "@tabook/native",
-  "version": "0.3.0",
+  "version": "0.3.3",
   "description": "Native Rust core for tabook",
   "main": "index.cjs",
   "module": "index.js",

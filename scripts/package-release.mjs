@@ -4,13 +4,13 @@
 //     tabook.bundle.mjs             # single-file JS: app + ink + react (esbuild)
 //     package.json                  # version, resolved by appVersion() at runtime
 //     node_modules/@tabook/native/  # the Rust core (.node), index.cjs loader
-//     node_modules/better-sqlite3/  # lib/ + one arch prebuild (native dep)
 //     LICENSE
 //
 // (The PKGBUILD writes its own /usr/bin wrapper; the tarball needs no launcher.)
 //
 // No compilation happens at install time: the PKGBUILD just downloads this
 // artifact and unpacks it (system `node` is the only runtime dependency).
+// The Rust core owns the entire DB layer (rusqlite) — no better-sqlite3 ships.
 //
 // Usage: node scripts/package-release.mjs  (TARGET_ARCH=x64|arm64 to override)
 import { build } from 'esbuild';
@@ -24,7 +24,6 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const version = pkg.version;
 const arch = process.env.TARGET_ARCH ?? process.arch; // x64 | arm64
 const nodeName = `index.linux-${arch}-gnu.node`;
-const prebuildName = `linux-${arch}.node`;
 
 // 1. Native module (Rust core). Profile in Cargo.toml already strips + LTOs.
 console.log('[1/4] Building native module...');
@@ -35,7 +34,10 @@ if (!existsSync(nativeSrc)) {
   process.exit(1);
 }
 
-// 2. Single-file JS bundle (everything except the two native modules).
+// 2. Single-file JS bundle (everything except the native module). The DB
+// layer lives in Rust (rusqlite); better-sqlite3 is dev-only, so the bundle
+// must not resolve it at load time — src/db/db.ts loads it lazily via a
+// dynamic require, and esbuild leaves that call alone.
 console.log('[2/4] Bundling JS...');
 await build({
   entryPoints: [join(root, 'src/cli/main.ts')],
@@ -68,7 +70,6 @@ console.log('[3/4] Assembling layout...');
 const outDir = join(root, 'build', `tabook-${version}-linux-${arch}`);
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(join(outDir, 'node_modules/@tabook/native'), { recursive: true });
-mkdirSync(join(outDir, 'node_modules/better-sqlite3/prebuilds'), { recursive: true });
 
 cpSync(join(root, 'dist/tabook.bundle.mjs'), join(outDir, 'tabook.bundle.mjs'));
 
@@ -87,21 +88,6 @@ for (const f of ['index.cjs', 'index.js', 'index.d.ts', 'package.json', nodeName
 }
 execFileSync('strip', [join(outDir, 'node_modules/@tabook/native', nodeName)]);
 
-// better-sqlite3: lib/ (JS incl. the platform-arch binding loader) + the one
-// prebuilt binary for this arch. deps/ (sqlite C sources) and build/ (node-gyp
-// output) are compile-time only and never loaded (lib/binding.js prefers
-// prebuilds/ and only falls back to build/Release when no prebuild exists).
-for (const f of ['lib', 'package.json']) {
-  cpSync(
-    join(root, 'node_modules/better-sqlite3', f),
-    join(outDir, 'node_modules/better-sqlite3', f),
-    { recursive: true },
-  );
-}
-cpSync(
-  join(root, 'node_modules/better-sqlite3/prebuilds', prebuildName),
-  join(outDir, 'node_modules/better-sqlite3/prebuilds', prebuildName),
-);
 cpSync(join(root, 'LICENSE'), join(outDir, 'LICENSE'));
 
 // 4. tar.zst (makepkg's default compression).

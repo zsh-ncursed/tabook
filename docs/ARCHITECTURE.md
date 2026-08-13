@@ -5,16 +5,16 @@ format-neutral block model, lays that model out into styled lines, and renders
 them with React + Ink. A SQLite database backs the library, reading progress,
 bookmarks and statistics.
 
-The hot paths — format parsing, layout and in-book search — live in a **Rust
-core** (`crates/tabook-native`) exposed as a napi binding; `src/native.ts`
-delegates to it when available and falls back to the pure-TS implementations
-otherwise.
+The hot paths — format parsing, layout, in-book search and the **database** —
+live in a **Rust core** (`crates/tabook-native`) exposed as a napi binding;
+`src/native.ts` delegates to it when available and falls back to the pure-TS
+implementations otherwise.
 
 - Runtime: Node.js ≥ 18
 - UI: React 18 + Ink
 - Native core: Rust (napi cdylib, `crates/tabook-native`)
 - Formats: `fast-xml-parser`, `adm-zip`, custom encoding detection
-- Storage: `better-sqlite3`
+- Storage: SQLite via `rusqlite` (bundled) in the Rust core
 - Config: TOML (`smol-toml`)
 - Tests: Vitest + `cargo test`; style: ESLint + Prettier; build: `tsc`
 
@@ -25,7 +25,7 @@ src/
   index.ts          Public package entry (re-exports for embedding)
   cli/              Commander arg parsing, Ink render, process lifecycle
   config/           Defaults, TOML parsing, keybinding normalization
-  db/               better-sqlite3 schema, queries, sessions/stats
+  db/               SQLite facade (native rusqlite; better-sqlite3 dev fallback)
   formats/          Format parsers and the shared document model
     model.ts        Block / Inline types shared by all parsers
     inline.ts       Inline-style parsing (bold, italic, links, ...)
@@ -168,7 +168,10 @@ core paths are covered there.
 
 ## Database
 
-`src/db/db.ts` wraps better-sqlite3 with a prepared-statement `LibraryDb`:
+`src/db/db.ts` exposes a `LibraryDb` facade. With the native module present it
+delegates to the rusqlite-backed `LibraryDb` in the Rust core; otherwise it
+falls back to a better-sqlite3 implementation (kept for development and for
+runners without a prebuilt `.node`):
 
 - **books** — metadata, file path, added/updated timestamps.
 - **bookmarks** — position (char offset), label, created_at.

@@ -37,8 +37,8 @@ they need a live terminal.
 ## Release packaging
 
 The AUR package must NOT compile anything: the PKGBUILD downloads a small
-prebuilt tarball (single-file esbuild bundle + stripped Rust `.node` +
-better-sqlite3 prebuild) attached to the GitHub Release.
+prebuilt tarball (single-file esbuild bundle + stripped Rust `.node` — which
+also owns the SQLite DB via rusqlite) attached to the GitHub Release.
 
 - Build the release tarball: `node scripts/package-release.mjs`
   (`TARGET_ARCH=x64|arm64` to cross-build; output in `build/`)

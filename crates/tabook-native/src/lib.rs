@@ -810,14 +810,6 @@ pub struct LibraryFolderRecord {
 #[cfg(feature = "napi-runtime")]
 #[napi]
 impl LibraryDb {
-    #[napi(constructor)]
-    pub fn new(file_path: String) -> Self {
-        Self {
-            inner: crate::db::LibraryDb::open(&file_path)
-                .expect("Cannot open database"),
-        }
-    }
-
     #[napi(getter)]
     pub fn file_path(&self) -> String {
         self.inner.file_path.clone()
@@ -913,6 +905,21 @@ impl LibraryDb {
                 created_at: b.created_at,
             })
             .collect()
+    }
+
+    #[napi]
+    pub fn get_bookmark(&self, id: f64) -> Option<BookmarkRecord> {
+        self.inner
+            .get_bookmark(id as i32)
+            .ok()
+            .flatten()
+            .map(|b| BookmarkRecord {
+                id: b.id,
+                book_id: b.book_id,
+                position: b.position as f64,
+                label: b.label,
+                created_at: b.created_at,
+            })
     }
 
     #[napi]
@@ -1016,6 +1023,56 @@ impl LibraryDb {
     }
 
     #[napi]
+    pub fn get_catalog(&self, id: f64) -> Option<CatalogRecord> {
+        self.inner
+            .get_catalog(id as i32)
+            .ok()
+            .flatten()
+            .map(|c| CatalogRecord {
+                id: c.id,
+                name: c.name,
+                url: c.url,
+                username: c.username,
+                password: c.password,
+            })
+    }
+
+    #[napi]
+    pub fn get_catalog_by_name(&self, name: String) -> Option<CatalogRecord> {
+        self.inner
+            .get_catalog_by_name(&name)
+            .ok()
+            .flatten()
+            .map(|c| CatalogRecord {
+                id: c.id,
+                name: c.name,
+                url: c.url,
+                username: c.username,
+                password: c.password,
+            })
+    }
+
+    #[napi]
+    pub fn update_catalog(
+        &self,
+        id: f64,
+        name: Option<String>,
+        url: Option<String>,
+        username: Option<String>,
+        password: Option<String>,
+    ) -> NapiResult<()> {
+        self.inner
+            .update_catalog(
+                id as i32,
+                name.as_deref(),
+                url.as_deref(),
+                username.as_deref(),
+                password.as_deref(),
+            )
+            .map_err(NapiError::from_reason)
+    }
+
+    #[napi]
     pub fn remove_catalog(&self, id: f64) -> NapiResult<()> {
         self.inner.remove_catalog(id as i32).map_err(NapiError::from_reason)
     }
@@ -1104,6 +1161,20 @@ fn book_record_to_napi(b: crate::db::BookRecord) -> BookRecord {
         progress_percent: b.progress_percent,
         progress_position: b.progress_position.map(|p| p as f64),
     }
+}
+
+// db.rs — LibraryDb napi class. No `#[napi(constructor)]`: napi-rs constructors
+// cannot return Result, and panicking inside one aborts the whole process
+// (napi-rs does not catch panics). Opening failures (unwritable path, corrupt
+// file, directory as path) must surface as a JS error, so instances are created
+// via the `open_library_db` factory below, which maps Err to a napi error value
+// that the TS facade turns into DatabaseError.
+#[cfg(feature = "napi-runtime")]
+#[napi]
+pub fn open_library_db(file_path: String) -> NapiResult<LibraryDb> {
+    crate::db::LibraryDb::open(&file_path)
+        .map(|inner| LibraryDb { inner })
+        .map_err(NapiError::from_reason)
 }
 
 // scan.rs
