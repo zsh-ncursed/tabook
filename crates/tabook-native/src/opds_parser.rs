@@ -3,9 +3,9 @@
 //! Parses OPDS Atom XML feeds into structured OpdsFeed. Used by the OPDS
 //! browser (TS HTTP client fetches, Rust parses).
 
-use crate::text::{normalize_whitespace_inner, strip_html_inner};
+use crate::text::strip_html_inner;
 use crate::xml::{
-    attr_of, attributes_of, find_children, first_child, full_text_of, normalize_tag, parse_xml_inner,
+    attributes_of, find_children, first_child, full_text_of, normalize_tag, parse_xml_inner,
     text_of, XmlNode,
 };
 

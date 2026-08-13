@@ -22,10 +22,21 @@ dirs = "5"
 once_cell = "1"
 parking_lot = "0.12"
 regex = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
 
 [features]
 default = ["napi-runtime"]
 napi-runtime = []
+
+# Minimal release binary: the .node ships inside the AUR package, so size
+# matters (target: a single-digit-MB module). panic stays "unwind" (default)
+# — napi-rs converts Rust panics into JS errors, and a panic=abort build
+# would turn any Rust panic into a hard process crash.
+[profile.release]
+opt-level = "z"
+lto = "thin"
+codegen-units = 1
+strip = true
 
 [build-dependencies]
 napi-build = "2"

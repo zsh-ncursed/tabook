@@ -1,0 +1,205 @@
+import { describe, expect, it, afterEach, vi } from 'vitest';
+import {
+  KittyImageLayer,
+  buildClear,
+  buildPlace,
+  buildRemove,
+  buildTransmit,
+  detectNativeGraphics,
+  placementRows,
+} from './kittyLayer.js';
+import { reconcile, type ImagePlacement } from './imageLayer.js';
+
+const REAL_ENV = { ...process.env };
+
+afterEach(() => {
+  for (const k of Object.keys(process.env)) delete process.env[k];
+  Object.assign(process.env, REAL_ENV);
+  vi.restoreAllMocks();
+});
+
+describe('detectNativeGraphics', () => {
+  it('detects kitty via KITTY_WINDOW_ID', () => {
+    expect(detectNativeGraphics({ KITTY_WINDOW_ID: '1' }, true)).toBe(true);
+  });
+
+  it('detects kitty via TERM_PROGRAM', () => {
+    expect(detectNativeGraphics({ TERM_PROGRAM: 'kitty' }, true)).toBe(true);
+  });
+
+  it('detects wezterm, ghostty and konsole', () => {
+    expect(detectNativeGraphics({ WEZTERM_PANE: '1' }, true)).toBe(true);
+    expect(detectNativeGraphics({ GHOSTTY_RESOURCES_DIR: '/x' }, true)).toBe(true);
+    expect(detectNativeGraphics({ KONSOLE_VERSION: '230600' }, true)).toBe(true);
+  });
+
+  it('refuses inside multiplexers (escapes are swallowed)', () => {
+    expect(detectNativeGraphics({ KITTY_WINDOW_ID: '1', TMUX: '/tmp/tmux-0/default' }, true)).toBe(
+      false,
+    );
+    expect(detectNativeGraphics({ KITTY_WINDOW_ID: '1', ZELLIJ: '1' }, true)).toBe(false);
+    expect(detectNativeGraphics({ KITTY_WINDOW_ID: '1', STY: 'pts/7' }, true)).toBe(false);
+  });
+
+  it('refuses on non-TTY stdout', () => {
+    expect(detectNativeGraphics({ KITTY_WINDOW_ID: '1' }, false)).toBe(false);
+  });
+
+  it('refuses for terminals without the protocol (alacritty, xterm)', () => {
+    expect(detectNativeGraphics({ TERM: 'xterm-256color' }, true)).toBe(false);
+    expect(detectNativeGraphics({ TERM_PROGRAM: 'alacritty' }, true)).toBe(false);
+  });
+});
+
+describe('escape builders', () => {
+  it('builds a file transmission with base64 path payload', () => {
+    const esc = buildTransmit('/tmp/x/y.png', 7);
+    const payload = Buffer.from('/tmp/x/y.png', 'utf8').toString('base64');
+    expect(esc).toBe(`\x1b_Ga=t,t=f,f=100,i=7,q=2;${payload}\x1b\\`);
+  });
+
+  it('builds a placement anchored at the target cell', () => {
+    const esc = buildPlace(7, 3, 4, 20, 10);
+    // cursor moved to 1-based (5, 4), then placed
+    expect(esc).toBe(`\x1b[5;4H\x1b_Ga=p,i=7,p=1,c=20,r=10,q=2\x1b\\`);
+  });
+
+  it('builds removal and clear', () => {
+    expect(buildRemove(7)).toBe(`\x1b_Ga=d,d=I,i=7,q=2\x1b\\`);
+    expect(buildClear()).toBe(`\x1b_Ga=d,d=A,q=2\x1b\\`);
+  });
+});
+
+describe('placementRows (aspect-preserving box height)', () => {
+  it('fits a wide image into the reserved rows without distortion', () => {
+    // 4:1 image in a 20x10 box -> 5 rows, not 10
+    expect(placementRows(20, 10, 400, 100)).toBe(5);
+  });
+
+  it('clamps to the reserved box for tall images', () => {
+    // 1:2 image in a 20x10 box -> would be 40 rows, clamped to 10
+    expect(placementRows(20, 10, 100, 200)).toBe(10);
+  });
+
+  it('falls back to the full box when dimensions are unknown', () => {
+    expect(placementRows(20, 10, 0, 0)).toBe(10);
+  });
+
+  it('never returns zero rows', () => {
+    expect(placementRows(10, 5, 10000, 1)).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('KittyImageLayer', () => {
+  it('transmits once per identifier and re-places on geometry change', () => {
+    const layer = new KittyImageLayer(() => true);
+    expect(layer.start()).toBe(true);
+
+    const written: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((s: string | Uint8Array) => {
+      written.push(String(s));
+      return true;
+    });
+
+    // canonical 1x1 transparent PNG
+    const png1x1 = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const resources = new Map<string, Uint8Array>([['img1', new Uint8Array(png1x1)]]);
+    const p1: ImagePlacement = {
+      identifier: 'img5',
+      x: 1,
+      y: 2,
+      width: 20,
+      height: 10,
+      src: 'img1',
+    };
+    const p2: ImagePlacement = {
+      identifier: 'img5',
+      x: 1,
+      y: 5,
+      width: 20,
+      height: 10,
+      src: 'img1',
+    };
+
+    layer.update([p1], resources);
+    const first = written.join('');
+    expect(first).toContain('a=t,t=f,f=100,i=1');
+    expect(first).toContain('a=p,i=1,p=1,c=20,r=10,q=2');
+
+    // same identifier, moved down: only a placement, no re-transmit
+    layer.update([p2], resources);
+    const all = written.join('');
+    expect((all.match(/a=t/g) ?? []).length).toBe(1);
+    expect(all).toContain('\x1b[6;2H'); // moved to y=5 x=1
+
+    // scroll away: image removed
+    layer.update([], resources);
+    expect(written.join('')).toContain('a=d,d=I,i=1');
+
+    // back on screen: re-transmitted under a fresh id
+    layer.update([p1], resources);
+    expect(written.join('')).toContain('a=t,t=f,f=100,i=2');
+
+    layer.stop();
+  });
+
+  it('clears the screen on stop() (clear must be emitted while active)', () => {
+    const layer = new KittyImageLayer(() => true);
+    layer.start();
+    const written: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((s: string | Uint8Array) => {
+      written.push(String(s));
+      return true;
+    });
+    const png1x1 = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    layer.update(
+      [{ identifier: 'a', x: 0, y: 0, width: 10, height: 10, src: 's' }],
+      new Map([['s', new Uint8Array(png1x1)]]),
+    );
+    expect(written.join('')).toContain('a=t,');
+    layer.stop();
+    expect(written.join('')).toContain('a=d,d=A');
+  });
+
+  it('skips non-PNG resources when native conversion is unavailable', () => {
+    const layer = new KittyImageLayer(() => true);
+    layer.start();
+    const written: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((s: string | Uint8Array) => {
+      written.push(String(s));
+      return true;
+    });
+    const resources = new Map<string, Uint8Array>([
+      ['img2', new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])], // JPEG magic
+    ]);
+    layer.update(
+      [{ identifier: 'img9', x: 0, y: 0, width: 10, height: 10, src: 'img2' }],
+      resources,
+    );
+    expect(written.join('')).toBe('');
+    layer.stop();
+  });
+
+  it('does not start when the terminal is unsupported', () => {
+    const layer = new KittyImageLayer(() => false);
+    expect(layer.start()).toBe(false);
+  });
+});
+
+describe('reconcile (shared with ueberzugpp backend)', () => {
+  it('reports removals and additions', () => {
+    const shown = new Map([['a', { x: 0, y: 0, width: 10, height: 10 }]]);
+    const r = reconcile(shown, [
+      { identifier: 'a', x: 0, y: 1, width: 10, height: 10, src: 's' },
+      { identifier: 'b', x: 1, y: 1, width: 10, height: 10, src: 't' },
+    ]);
+    expect(r.toRemove).toEqual([]);
+    expect(r.toAdd.map((p) => p.identifier)).toEqual(['a', 'b']);
+  });
+});

@@ -12,9 +12,13 @@ vim-like controls. Built with TypeScript, React + Ink and SQLite.
 - **Native Rust core** (`crates/tabook-native`, loaded as a napi binding): FB2/EPUB
   parsing, the layout engine and in-book search are compiled to Rust for speed,
   with transparent pure-TS fallbacks when the binding is unavailable.
-- In-book **images and cover previews** rendered over the terminal via
-  `ueberzugpp` (optional): illustrations in the text, book covers in the
-  library detail view, the reading-view info modal and the book list.
+- In-book **images and cover previews** rendered directly in the terminal:
+  terminals that implement the kitty graphics protocol (kitty, WezTerm,
+  Ghostty, Konsole, Warp, …) display them **natively** via the built-in
+  protocol support — JPEG/GIF/WebP/BMP are converted to PNG on the fly by the
+  Rust core. Terminals without it (alacritty, xterm, …) fall back to the
+  optional `ueberzugpp` X11/wayland overlay. Covers appear in the library
+  detail view, the reading-view info modal and the book list.
 - **Image zoom** (`z`): enlarge the illustration on the current page ~2.5× to
   inspect it, then press `Esc` to restore it in place.
 - A local library backed by SQLite: metadata, reading progress, bookmarks, reading sessions and history.
@@ -35,8 +39,11 @@ vim-like controls. Built with TypeScript, React + Ink and SQLite.
 - Node.js >= 18 (tested on 22)
 - Linux (or another OS with a real terminal)
 - A Rust toolchain (`cargo`) only when building from source — the AUR package
-  compiles the native module for you. `ueberzugpp` (optional) enables image
-  rendering; without it the app falls back to `[Image: …]` placeholders.
+  ships the prebuilt native module and installs in seconds without compiling
+  anything. Images work out of the box in kitty, WezTerm, Ghostty and other
+  kitty-protocol terminals (no extra dependency). In other terminals
+  (alacritty, xterm, …) install `ueberzugpp` (optional) for images; without it
+  the app falls back to `[Image: …]` placeholders.
 
 ## Install
 
@@ -48,10 +55,13 @@ paru -S tabook
 yay -S tabook
 ```
 
-The AUR build compiles the Rust core (`crates/tabook-native`) for the target
-architecture (x86_64 / aarch64) and bundles it with the app. Optional
-dependencies: `ueberzugpp` (book images, covers and image zoom),
-`zenity` / `kdialog` (graphical file picker for `o`).
+The AUR package downloads a small (~4 MB) prebuilt tarball for your
+architecture (x86_64 / aarch64) from the GitHub release and installs it
+as-is — no Rust or Node compilation at install time, only the system `node`
+runtime. Images work natively in kitty-family terminals; optional
+dependencies: `ueberzugpp` (images in terminals without native protocol
+support, e.g. alacritty, xterm — also inside tmux), `zenity` / `kdialog`
+(graphical file picker for `o`).
 
 ### From source
 

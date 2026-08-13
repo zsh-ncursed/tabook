@@ -11,6 +11,12 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { KittyImageLayer } from './kittyLayer.js';
+import { reconcile, type ShownGeometry } from './imageReconcile.js';
+
+// Re-exported for backward compatibility with existing callers/tests.
+export { reconcile } from './imageReconcile.js';
+export type { LayerReconcile, ShownGeometry } from './imageReconcile.js';
 
 export interface ImagePlacement {
   identifier: string;
@@ -19,49 +25,6 @@ export interface ImagePlacement {
   width: number;
   height: number;
   src: string;
-}
-
-// Geometry of an image currently on screen, keyed by identifier. Used to
-// diff placements so unchanged images aren't re-sent over stdin on every
-// reader render (lines is a fresh array each frame). Diff is geometry-only
-// by design: callers keep `src` stable per identifier (block.src / coverKey),
-// and resolvePath caches the extracted file by src, so the geometry-only
-// comparison is safe.
-export type ShownGeometry = Pick<ImagePlacement, 'x' | 'y' | 'width' | 'height'>;
-
-export interface LayerReconcile {
-  /** Identifiers that scrolled out of view and must be removed. */
-  toRemove: string[];
-  /** Placements to (re)send: new identifiers or changed geometry. */
-  toAdd: ImagePlacement[];
-}
-
-// Pure diff used by ImageLayer.update: given what is currently shown and the
-// new placements, decide which images to remove and which to add/reposition.
-// Extracted as a pure function so the diffing is unit-testable without a
-// ueberzugpp process.
-export function reconcile(
-  shown: ReadonlyMap<string, ShownGeometry>,
-  placements: ImagePlacement[],
-): LayerReconcile {
-  const toRemove: string[] = [];
-  for (const id of shown.keys()) {
-    if (!placements.some((p) => p.identifier === id)) toRemove.push(id);
-  }
-  const toAdd: ImagePlacement[] = [];
-  for (const p of placements) {
-    const prev = shown.get(p.identifier);
-    if (
-      !prev ||
-      prev.x !== p.x ||
-      prev.y !== p.y ||
-      prev.width !== p.width ||
-      prev.height !== p.height
-    ) {
-      toAdd.push(p);
-    }
-  }
-  return { toRemove, toAdd };
 }
 
 // How many terminal rows an image overlay occupies. Layout reserves this
@@ -100,7 +63,7 @@ export function zoomGeometry(opts: {
   return { x, y, width, height };
 }
 
-class ImageLayer {
+class UeberzugImageLayer {
   private proc: ChildProcessWithoutNullStreams | null = null;
   private cache = new Map<string, string>(); // resource id -> temp file path
   private shown = new Map<string, ShownGeometry>(); // identifier -> geometry on screen
@@ -246,6 +209,43 @@ function guessExt(src: string): string {
 
 function sanitize(s: string): string {
   return s.replace(/[^a-zA-Z0-9_.-]/g, '_');
+}
+
+// Facade over the two image backends. Kitty-family terminals get the native
+// graphics protocol (no external dependency); everything else falls back to
+// ueberzugpp (X11/wayland overlay), which is an optional package dependency.
+// The backend is chosen once on the first start() and kept for the process
+// lifetime, so a terminal switch mid-session is not handled (it cannot be).
+class ImageLayer {
+  private backend: UeberzugImageLayer | KittyImageLayer | null = null;
+
+  start(): boolean {
+    if (this.backend) return true;
+    const kitty = new KittyImageLayer();
+    if (kitty.start()) {
+      this.backend = kitty;
+      return true;
+    }
+    const uber = new UeberzugImageLayer();
+    if (uber.start()) {
+      this.backend = uber;
+      return true;
+    }
+    return false;
+  }
+
+  update(placements: ImagePlacement[], resources: Map<string, Uint8Array>): void {
+    this.backend?.update(placements, resources);
+  }
+
+  clear(): void {
+    this.backend?.clear();
+  }
+
+  stop(): void {
+    this.backend?.stop();
+    this.backend = null;
+  }
 }
 
 export const imageLayer = new ImageLayer();

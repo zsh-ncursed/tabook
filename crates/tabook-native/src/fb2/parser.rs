@@ -6,7 +6,7 @@
 //! epigraphs, lists. Metadata-only fast path for scans.
 
 use crate::encoding::{decode_xml_buffer_inner, is_zip_buffer_inner};
-use crate::inline::{parse_inlines, normalize_inlines, plain_of};
+use crate::inline::{parse_inlines, normalize_inlines};
 use crate::model::{
     Author, Block, BookMetadata, Inline, ListItem, ParsedBook, ResourceEntry, Stanza, TocEntry,
 };

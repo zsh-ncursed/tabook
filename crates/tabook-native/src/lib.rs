@@ -13,6 +13,7 @@ mod epub;
 mod fb2;
 mod formats_index;
 mod href;
+mod image;
 mod inline;
 mod model;
 mod opds_parser;
@@ -222,6 +223,27 @@ pub fn parse_epub_buffer(data: Buffer, file_path: String) -> NapiResult<ParsedBo
 #[napi]
 pub fn parse_epub_metadata(data: Buffer, file_path: String) -> NapiResult<BookMetadata> {
     crate::epub::parser::parse_epub_metadata_inner(&data, &file_path).map_err(NapiError::from_reason)
+}
+
+// image.rs
+#[cfg(feature = "napi-runtime")]
+#[napi(object)]
+#[derive(Clone)]
+pub struct ImageToPng {
+    pub data: Buffer,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[cfg(feature = "napi-runtime")]
+#[napi]
+pub fn image_to_png(data: Buffer) -> NapiResult<ImageToPng> {
+    let out = crate::image::image_to_png_inner(&data).map_err(NapiError::from_reason)?;
+    Ok(ImageToPng {
+        data: Buffer::from(out.data),
+        width: out.width,
+        height: out.height,
+    })
 }
 
 // opds_parser.rs

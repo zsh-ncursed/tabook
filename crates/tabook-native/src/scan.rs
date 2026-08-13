@@ -7,8 +7,7 @@ use crate::db::{LibraryDb, LibraryFolderRecord, ScanSummary};
 use crate::epub::parser::parse_epub_metadata_inner;
 use crate::fb2::parser::parse_fb2_metadata_inner;
 use crate::formats_index::detect_format_inner;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::Path;
 use walkdir::WalkDir;
 
 const BOOK_FILE_RE: &str = r"\.(?:epub|fb2(?:\.zip)?)$";

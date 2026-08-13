@@ -8,8 +8,9 @@
 use crate::encoding::decode_xml_buffer_inner;
 use crate::epub::xhtml::parse_xhtml_blocks;
 use crate::href::resolve_href;
-use crate::model::{Author, Block, BookMetadata, Inline, ParsedBook, ResourceEntry, TocEntry};
+use crate::model::{Author, Block, BookMetadata, ParsedBook, ResourceEntry, TocEntry};
 use crate::text::normalize_whitespace_inner;
+
 use crate::xml::{
     attr_of, children_of, find_children, first_child, normalize_tag, parse_xml_inner, text_of,
     XmlNode,

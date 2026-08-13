@@ -1,55 +1,19 @@
 name: Publish to AUR
 
+# Runs after the Release workflow (which builds the per-arch tarballs and
+# attaches them to the GitHub Release). We must wait for those assets: their
+# sha256 hashes are baked into the PKGBUILD that gets pushed to AUR.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_run:
+    workflows: ['Release']
+    types: [completed]
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build native
-        run: npm run build:native
-
-      - name: Rust core tests
-        run: npm run test:native
-
-      - name: Format check
-        run: npm run format:check
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Test & coverage
-        run: npm run test:coverage
-
-      - name: Build
-        run: npm run build
-
   publish:
-    needs: test
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     container: archlinux:latest
     # AUR's SSH server answers every package under the AUR account username.
@@ -59,24 +23,46 @@ jobs:
       GIT_SSH_COMMAND: ssh -i ~/.ssh/aur_key -l ${{ secrets.AUR_USERNAME }} -o StrictHostKeyChecking=accept-new
 
     steps:
-      - name: Checkout
+      - name: Install build tools
+        run: pacman -Syu --noconfirm --needed base-devel git openssh namcap github-cli
+
+      - name: Checkout the tagged commit
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - name: Install build tools
-        run: pacman -Syu --noconfirm --needed base-devel git openssh namcap
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Extract version from tag
         id: version
         run: |
-          TAG="${GITHUB_REF#refs/tags/v}"
+          git fetch --tags --force
+          TAG="$(git describe --tags --abbrev=0 HEAD)"
+          TAG="${TAG#v}"
           echo "version=$TAG" >> "$GITHUB_OUTPUT"
           echo "Publishing version $TAG to AUR"
 
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          mkdir -p /tmp/assets
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'tabook-*.tar.zst' \
+            --dir /tmp/assets
+          ls -lh /tmp/assets
+
+      - name: Fill in sha256 hashes
+        run: |
+          SHA_X64="$(sha256sum /tmp/assets/tabook-*-linux-x64.tar.zst | cut -d' ' -f1)"
+          SHA_ARM64="$(sha256sum /tmp/assets/tabook-*-linux-arm64.tar.zst | cut -d' ' -f1)"
+          sed -i "s/__SHA256_X64__/${SHA_X64}/; s/__SHA256_ARM64__/${SHA_ARM64}/" PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=${{ steps.version.outputs.version }}/" PKGBUILD
+          grep -E 'pkgver|sha256sums' PKGBUILD
+
       - name: Generate .SRCINFO
         run: |
-          sed -i "s/^pkgver=.*/pkgver=${{ steps.version.outputs.version }}/" PKGBUILD
           # makepkg refuses to run as root, but the container's default user is
           # root (needed earlier for pacman). Create a builder user, hand it the
           # checkout, and generate .SRCINFO as that user.

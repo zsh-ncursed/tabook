@@ -306,6 +306,14 @@ export declare function scanLibraryFolder(db: LibraryDb, root: string): ScanSumm
 export declare function folderNeedsRescan(db: LibraryDb, folder: LibraryFolderRecord): boolean;
 export declare function resolveFolderPath(p: string): string;
 
+// image.rs
+export interface ImageToPng {
+  data: Buffer;
+  width: number;
+  height: number;
+}
+export declare function imageToPng(data: Buffer | Uint8Array): ImageToPng;
+
 // opds_parser.rs
 export interface OpdsLink {
   rel: string;
