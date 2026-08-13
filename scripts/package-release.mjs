@@ -80,7 +80,9 @@ cpSync(join(root, 'package.json'), join(outDir, 'package.json'));
 // index.d.ts are kept for Node ESM resolution / future tooling. The profile's
 // strip=true is not applied by cargo for cdylibs here, so strip explicitly
 // (the binary is native to this machine/runner, so this is always safe).
-for (const f of ['index.cjs', 'index.js', 'index.d.ts', nodeName]) {
+// package.json matters here: its `main: index.cjs` is what makes require()
+// resolve to the CJS loader instead of index.js (ESM, { default }-wrapped).
+for (const f of ['index.cjs', 'index.js', 'index.d.ts', 'package.json', nodeName]) {
   cpSync(join(root, 'crates/tabook-native', f), join(outDir, 'node_modules/@tabook/native', f));
 }
 execFileSync('strip', [join(outDir, 'node_modules/@tabook/native', nodeName)]);

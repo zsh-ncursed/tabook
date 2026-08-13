@@ -90,12 +90,22 @@ jobs:
           DIR=$(ls -d build/tabook-*-linux-${{ matrix.arch }})
           # The launcher lives inside the PKGBUILD; here run the bundle directly.
           node "$DIR/tabook.bundle.mjs" --version
-          # The bundled native module must actually load (not silently fall
-          # back to the pure-TS implementations).
-          node -e "
-            const n = require('./crates/tabook-native/index.cjs');
-            if (typeof n.BookLayout !== 'function') throw new Error('native module broken');
-            console.log('native OK');
+          # The packaged @tabook/native must expose the full API through the
+          # bundle's resolution path (createRequire → index.cjs). A regression
+          # here (e.g. resolving index.js's ESM { default } wrapper instead)
+          # silently disables every native feature — check the key exports and
+          # exercise one real call.
+          node --input-type=module -e "
+            import { createRequire } from 'node:module';
+            import { readFileSync } from 'node:fs';
+            const require = createRequire(import.meta.url);
+            const n = require('@tabook/native');
+            for (const fn of ['parseOpdsAtom', 'BookLayout', 'parseBookFile', 'imageToPng']) {
+              if (typeof n[fn] !== 'function') throw new Error('missing native export: ' + fn);
+            }
+            const feed = n.parseOpdsAtom('<?xml version=\"1.0\"?><feed xmlns=\"http://www.w3.org/2005/Atom\"><title>T</title></feed>');
+            if (!feed || feed.title !== 'T') throw new Error('parseOpdsAtom broken');
+            console.log('native exports + OPDS parse OK');
           "
 
       - name: Upload artifact

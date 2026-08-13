@@ -7,15 +7,27 @@ const require = createRequire(import.meta.url);
 
 let native: typeof NativeTypes | null = null;
 
+// The package id goes through a function so esbuild can't statically fold it
+// into the require call: in the single-file ESM release bundle a literal
+// require('@tabook/native') is converted to import('@tabook/native'), which
+// resolves the CJS index.cjs as an ESM namespace ({ default: ... }), losing
+// the named exports (parseOpdsAtom, BookLayout, …). A runtime require instead
+// hits the banner's createRequire and loads index.cjs directly.
+function nativePackageId(): string {
+  return '@tabook/native';
+}
+
 // Try CJS require first (works in vitest), then dynamic import (works in ESM)
 try {
-  native = require('@tabook/native') as typeof NativeTypes;
+  native = require(nativePackageId()) as typeof NativeTypes;
 } catch {
   // CJS failed (ESM-only env); try dynamic import
   // This is async, so native stays null until it resolves
-  import('@tabook/native')
+  import(nativePackageId())
     .then((mod) => {
-      native = (mod as unknown as typeof NativeTypes) ?? null;
+      // ESM-importing a CJS module yields { default: exports }; unwrap it.
+      const modNative = (mod as { default?: unknown }).default ?? mod;
+      native = (modNative as typeof NativeTypes) ?? null;
     })
     .catch(() => {
       // native not available, use TS fallbacks
