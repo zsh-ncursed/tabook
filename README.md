@@ -261,7 +261,8 @@ unformatted code never reaches CI — it is wired up automatically by the
 or `npm ci`.
 
 See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for an overview of the
-module layout, data flow and rendering pipeline.
+module layout, data flow and rendering pipeline, and
+**[ROADMAP.md](ROADMAP.md)** for the development roadmap.
 
 ## Project layout
 
