@@ -116,6 +116,48 @@ simplified_mode = true
     expect(warnings.some((w) => w.includes('typograhy'))).toBe(true);
   });
 
+  it('parses [statusbar] sections and show_progress_bar', () => {
+    const warnings: string[] = [];
+    const config = parseTomlConfig(
+      `[statusbar]
+left = ["title", "percent"]
+right = ["hint"]
+show_progress_bar = false
+`,
+      defaultConfig(),
+      warnings,
+    );
+    expect(config.statusbar.left).toEqual(['title', 'percent']);
+    expect(config.statusbar.right).toEqual(['hint']);
+    expect(config.statusbar.showProgressBar).toBe(false);
+    expect(warnings).toEqual([]);
+  });
+
+  it('ignores unknown statusbar sections with a warning', () => {
+    const warnings: string[] = [];
+    const config = parseTomlConfig(
+      '[statusbar]\nleft = ["title", "bogus"]\nright = [42]\n',
+      defaultConfig(),
+      warnings,
+    );
+    expect(config.statusbar.left).toEqual(['title']);
+    expect(config.statusbar.right).toEqual([]);
+    expect(warnings.length).toBe(2);
+    expect(warnings[0]).toContain('bogus');
+    expect(warnings[1]).toContain('42');
+  });
+
+  it('accepts legacy display.show_progress_bar as an alias', () => {
+    const warnings: string[] = [];
+    const config = parseTomlConfig(
+      '[display]\nshow_progress_bar = false',
+      defaultConfig(),
+      warnings,
+    );
+    expect(config.statusbar.showProgressBar).toBe(false);
+    expect(warnings).toEqual([]);
+  });
+
   it('parses the justify option from [typography]', () => {
     const warnings: string[] = [];
     const config = parseTomlConfig('[typography]\njustify = true', defaultConfig(), warnings);
@@ -142,6 +184,20 @@ simplified_mode = true
     expect(warnings.length).toBe(1);
     expect(warnings[0]).toContain('neon-rainbow');
   });
+
+  it('parses auto_theme and mouse booleans', () => {
+    const warnings: string[] = [];
+    const config = parseTomlConfig('auto_theme = true\nmouse = false', defaultConfig(), warnings);
+    expect(config.autoTheme).toBe(true);
+    expect(config.mouse).toBe(false);
+    expect(warnings).toEqual([]);
+  });
+
+  it('defaults auto_theme to false and mouse to true', () => {
+    const config = defaultConfig();
+    expect(config.autoTheme).toBe(false);
+    expect(config.mouse).toBe(true);
+  });
 });
 
 describe('serializeConfig', () => {
@@ -153,6 +209,32 @@ describe('serializeConfig', () => {
     const warnings: string[] = [];
     const reparsed = parseTomlConfig(text, defaultConfig(), warnings);
     expect(reparsed.keybindings['z']).toBe('toggle_simplified');
+  });
+
+  it('round-trips statusbar sections and progress toggle through TOML', () => {
+    const config = defaultConfig();
+    config.statusbar.left = ['title', 'percent'];
+    config.statusbar.right = ['hint'];
+    config.statusbar.showProgressBar = false;
+    const text = serializeConfig(config);
+    expect(text).toContain('title');
+    expect(text).toContain('show_progress_bar = false');
+    const warnings: string[] = [];
+    const reparsed = parseTomlConfig(text, defaultConfig(), warnings);
+    expect(reparsed.statusbar).toEqual(config.statusbar);
+    expect(warnings).toEqual([]);
+  });
+
+  it('round-trips auto_theme and mouse through TOML', () => {
+    const config = defaultConfig();
+    config.autoTheme = true;
+    config.mouse = false;
+    const text = serializeConfig(config);
+    expect(text).toContain('auto_theme = true');
+    expect(text).toContain('mouse = false');
+    const reparsed = parseTomlConfig(text, defaultConfig(), []);
+    expect(reparsed.autoTheme).toBe(true);
+    expect(reparsed.mouse).toBe(false);
   });
 });
 

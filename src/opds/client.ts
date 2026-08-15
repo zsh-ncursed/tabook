@@ -54,6 +54,12 @@ interface FetchOptions {
   accept?: string;
 }
 
+/** Bytes received so far (and total when the server sends Content-Length). */
+export interface DownloadProgress {
+  received: number;
+  total?: number;
+}
+
 interface FetchedResult {
   response: Response;
   finalUrl: string;
@@ -164,9 +170,55 @@ export async function fetchOpenSearch(
   return response.text();
 }
 
+function contentLength(headers: Headers | Map<string, string>): number | undefined {
+  const raw = headers.get('content-length');
+  if (raw === null || raw === undefined) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+// Reads the response body while reporting byte progress. Uses the streaming
+// body when available (progress is live); falls back to arrayBuffer() for
+// mocked/legacy responses without a body (single progress report at the end).
+async function readBodyWithProgress(
+  response: Response,
+  onProgress?: (p: DownloadProgress) => void,
+): Promise<Uint8Array> {
+  const total = contentLength(response.headers);
+  if (!response.body) {
+    const buf = await response.arrayBuffer();
+    onProgress?.({ received: buf.byteLength, total: total ?? buf.byteLength });
+    return new Uint8Array(buf);
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      received += value.byteLength;
+      onProgress?.({ received, total });
+    }
+  }
+  const out = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
 export async function downloadBook(
   href: string,
-  opts?: { auth?: OpdsAuth; signal?: AbortSignal; base?: string },
+  opts?: {
+    auth?: OpdsAuth;
+    signal?: AbortSignal;
+    base?: string;
+    onProgress?: (p: DownloadProgress) => void;
+  },
 ): Promise<{ data: Uint8Array; finalUrl: string }> {
   const url = resolveUrl(href, opts?.base);
   const { response, finalUrl } = await fetchWithTimeout(url, {
@@ -178,8 +230,8 @@ export async function downloadBook(
       statusCode: response.status,
     });
   }
-  const buf = await response.arrayBuffer();
-  return { data: new Uint8Array(buf), finalUrl };
+  const data = await readBodyWithProgress(response, opts?.onProgress);
+  return { data, finalUrl };
 }
 
 export function catalogAuth(catalog: {

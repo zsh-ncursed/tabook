@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { join } from 'node:path';
 import { mkdirSync, rmSync } from 'node:fs';
-import { downloadBook, catalogAuth } from './client.js';
+import { downloadBook, catalogAuth, type DownloadProgress } from './client.js';
 import { downloadAndSave } from './download.js';
 import { setFetchMock, mockResponse } from './client.test-utils.js';
 import { FB2_SAMPLE } from '../formats/test-utils.js';
@@ -71,6 +71,24 @@ describe('downloadBook', () => {
     );
     const result = await downloadBook('https://x/book.epub');
     expect(result.finalUrl).toBe('https://cdn.x/book.epub');
+  });
+
+  it('reports streaming progress with Content-Length', async () => {
+    const data = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    setFetchMock(vi.fn(async () => mockResponse(data, { headers: { 'content-length': '10' } })));
+    const progress: DownloadProgress[] = [];
+    await downloadBook('https://x/book.epub', { onProgress: (p) => progress.push(p) });
+    expect(progress.length).toBeGreaterThan(0);
+    expect(progress[progress.length - 1]).toEqual({ received: 10, total: 10 });
+  });
+
+  it('reports progress without total when Content-Length is absent', async () => {
+    const data = new Uint8Array([1, 2, 3]);
+    setFetchMock(vi.fn(async () => mockResponse(data)));
+    const progress: DownloadProgress[] = [];
+    await downloadBook('https://x/book.epub', { onProgress: (p) => progress.push(p) });
+    expect(progress[progress.length - 1]!.received).toBe(3);
+    expect(progress[progress.length - 1]!.total).toBeUndefined();
   });
 });
 

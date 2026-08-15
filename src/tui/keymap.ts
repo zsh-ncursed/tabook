@@ -119,6 +119,7 @@ export function actionLabel(action: KeyAction): string {
     toggle_justify: 'Toggle text justify',
     toggle_wide: 'Toggle wide screen',
     toggle_recent: 'Toggle recent books',
+    toggle_continue: 'Toggle continue reading',
     zoom_image: 'Zoom image',
   };
   return labels[action] ?? action;

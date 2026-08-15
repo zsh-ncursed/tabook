@@ -1,15 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
 import type { Theme } from '../../themes/themes.js';
+import type { Config } from '../../config/defaults.js';
 import type { BookRecord } from '../../db/db.js';
 import { Modal } from '../components/Modal.js';
-import { formatBytes, truncate } from '../../utils/text.js';
+import { createActionResolver, resolveKeyName } from '../keymap.js';
+import { formatBytes, truncate, wrapText } from '../../utils/text.js';
 import { imageLayer } from '../imageLayer.js';
 import { forceRedraw } from '../screenRefresh.js';
 import { parseBookFile } from '../../formats/index.js';
 
 export interface BookDetailProps {
   book: BookRecord;
+  config: Config;
   theme: Theme;
   onRead: () => void;
   onClose: () => void;
@@ -22,33 +25,10 @@ const MODAL_CHROME = 8;
 // Text column: modal 80 - border(2) - paddingX(2) - cover spacer(27) - right padding(1) = 48
 const TEXT_WIDTH = 48;
 
-function wrapText(text: string, maxW: number): string[] {
-  const out: string[] = [];
-  for (const para of text.split('\n')) {
-    if (para === '') {
-      out.push('');
-      continue;
-    }
-    const words = para.split(/\s+/);
-    let line = '';
-    for (const word of words) {
-      if (line === '') {
-        line = word;
-      } else if (line.length + 1 + word.length <= maxW) {
-        line += ' ' + word;
-      } else {
-        out.push(line);
-        line = word;
-      }
-    }
-    if (line) out.push(line);
-  }
-  return out;
-}
-
 export function BookDetail(props: BookDetailProps): React.JSX.Element {
-  const { book, theme, onRead, onClose, onHelp } = props;
+  const { book, config, theme, onRead, onClose, onHelp } = props;
   const { stdout } = useStdout();
+  const resolver = useMemo(() => createActionResolver(config), [config]);
   const termHeight = stdout.rows ?? 24;
   const hasCover = !!book.coverKey;
 
@@ -114,27 +94,39 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
   const clampedScroll = Math.min(scroll, maxScroll);
   const visibleLines = allLines.slice(clampedScroll, clampedScroll + maxVisible);
 
+  // Modal keys resolve through the configurable keymap like every other
+  // view: select/open_file reads, back closes, cursor moves scroll (j/k and
+  // the arrow keys are bound by default), help opens the keybindings help.
   useInput((input, key) => {
-    if (key.return || input === 'o') {
-      onRead();
-      return;
-    }
-    if (key.escape) {
-      onClose();
-      forceRedraw();
-      return;
-    }
-    if (input === 'j') {
-      setScroll((s) => Math.min(s + 3, maxScroll));
-      return;
-    }
-    if (input === 'k') {
-      setScroll((s) => Math.max(0, s - 3));
-      return;
-    }
-    if (input === '?' && onHelp) {
-      onHelp();
-      return;
+    const keyName = resolveKeyName(input, key);
+    if (keyName === null) return;
+    const action = resolver.feed(keyName);
+    switch (action) {
+      case 'select':
+      case 'open_file':
+        onRead();
+        return;
+      case 'back':
+        onClose();
+        forceRedraw();
+        return;
+      case 'move_cursor_down':
+        setScroll((s) => Math.min(s + 3, maxScroll));
+        return;
+      case 'move_cursor_up':
+        setScroll((s) => Math.max(0, s - 3));
+        return;
+      case 'go_to_start':
+        setScroll(0);
+        return;
+      case 'go_to_end':
+        setScroll(maxScroll);
+        return;
+      case 'help':
+        if (onHelp) onHelp();
+        return;
+      default:
+        return;
     }
   });
 
@@ -145,7 +137,7 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
       theme={theme}
       title={truncate(book.title, 76)}
       width={80}
-      footer="Enter — read · ? help · esc — back · j/k scroll"
+      footer="Enter — read · ? help · esc — back · j/k scroll (rebindable)"
     >
       <Box flexDirection="row" height={maxVisible}>
         {showCoverColumn ? <Box width={27} /> : null}

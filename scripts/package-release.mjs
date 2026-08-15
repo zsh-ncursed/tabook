@@ -4,6 +4,8 @@
 //     tabook.bundle.mjs             # single-file JS: app + ink + react (esbuild)
 //     package.json                  # version, resolved by appVersion() at runtime
 //     node_modules/@tabook/native/  # the Rust core (.node), index.cjs loader
+//     man/tabook.1                  # man page (generated from the registries)
+//     completions/                  # bash + zsh completion scripts (generated)
 //     LICENSE
 //
 // (The PKGBUILD writes its own /usr/bin wrapper; the tarball needs no launcher.)
@@ -89,6 +91,24 @@ for (const f of ['index.cjs', 'index.js', 'index.d.ts', 'package.json', nodeName
 execFileSync('strip', [join(outDir, 'node_modules/@tabook/native', nodeName)]);
 
 cpSync(join(root, 'LICENSE'), join(outDir, 'LICENSE'));
+
+// 3.5. Man page + shell completions, generated from the app's own
+// source-of-truth registries (src/cli/man.ts, src/cli/completions.ts) so the
+// shipped assets can never drift from the command surface. Written into the
+// layout as man/tabook.1, completions/tabook.bash and completions/_tabook.
+console.log('[3.5/4] Generating man page + completions...');
+await build({
+  entryPoints: [join(root, 'scripts/assets-writer.ts')],
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  target: 'node18',
+  outfile: join(root, 'dist/assets-writer.mjs'),
+  minify: true,
+  logLevel: 'warning',
+});
+execFileSync('node', [join(root, 'dist/assets-writer.mjs'), outDir]);
+rmSync(join(root, 'dist/assets-writer.mjs'));
 
 // 4. tar.zst (makepkg's default compression).
 console.log('[4/4] Packing...');

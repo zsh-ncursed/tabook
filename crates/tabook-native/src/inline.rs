@@ -74,16 +74,30 @@ pub fn normalize_inlines(inlines: Vec<Inline>) -> Vec<Inline> {
     for inline in inlines {
         match inline.kind.as_str() {
             "text" => {
-                let collapsed: String = inline
-                    .text
-                    .as_deref()
-                    .unwrap_or("")
-                    .chars()
-                    .map(|c| if c.is_whitespace() { ' ' } else { c })
-                    .collect::<String>()
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                // Mirror src/formats/inline.ts normalizeInlines: collapse runs
+                // of whitespace to a single space WITHOUT trimming the node — a
+                // leading/trailing space inside a text node separates it from
+                // the neighboring inline element ("Привет <b>мир</b>" keeps the
+                // space before <b>). The earlier port used
+                // split_whitespace().join(" "), which trimmed every node and
+                // merged words across inline markup ("First paragraph
+                // with<strong>bold</strong>"). Whole-list trimming happens in
+                // trim_inlines below, exactly like the TS original.
+                let mut collapsed =
+                    String::with_capacity(inline.text.as_deref().map_or(0, str::len));
+                let mut prev_space = false;
+                for c in inline.text.as_deref().unwrap_or("").chars() {
+                    if c.is_whitespace() {
+                        if prev_space {
+                            continue;
+                        }
+                        prev_space = true;
+                        collapsed.push(' ');
+                    } else {
+                        prev_space = false;
+                        collapsed.push(c);
+                    }
+                }
                 if !collapsed.is_empty() {
                     result.push(Inline::text_node(collapsed));
                 }
@@ -167,5 +181,28 @@ mod tests {
         let out = normalize_inlines(raw);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].text.as_deref(), Some("hello world"));
+    }
+
+    #[test]
+    fn normalize_keeps_inter_element_spaces() {
+        // Regression: the per-node split_whitespace() trim merged words across
+        // inline markup — "<p>with <strong>bold</strong> and</p>" rendered
+        // "withboldand". A single leading/trailing space inside a text node is
+        // significant (it separates the word from the neighboring element); only
+        // runs of whitespace collapse, and whole-list trimming stays in
+        // trim_inlines (parity: src/parity/fb2.parity.test.ts).
+        let raw = vec![
+            Inline::text_node("with ".to_owned()),
+            Inline::style("bold", vec![Inline::text_node("bold".to_owned())]),
+            Inline::text_node(" and".to_owned()),
+        ];
+        let out = normalize_inlines(raw);
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0].text.as_deref(), Some("with "));
+        assert_eq!(out[2].text.as_deref(), Some(" and"));
+        // A run of spaces still collapses to one.
+        let spaced = vec![Inline::text_node("a   b".to_owned())];
+        let out2 = normalize_inlines(spaced);
+        assert_eq!(out2[0].text.as_deref(), Some("a b"));
     }
 }

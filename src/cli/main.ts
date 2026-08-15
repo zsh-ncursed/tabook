@@ -11,6 +11,9 @@ import { resolveFolderPath } from '../db/scan.js';
 import { defaultDbPath, expandTilde } from '../utils/paths.js';
 import { appVersion } from '../utils/version.js';
 import { App } from '../tui/App.js';
+import { manPage } from './man.js';
+import { bashCompletion, zshCompletion } from './completions.js';
+import { queryTerminalBackground, terminalThemeName } from '../tui/terminalTheme.js';
 
 export function main(): void {
   const program = new Command();
@@ -21,22 +24,46 @@ export function main(): void {
     .option('--library', 'open the library view')
     .option('--theme <name>', 'theme to use (overrides config)')
     .option('--config <path>', 'path to the config file')
+    .option('--man', 'print the man page to stdout and exit')
+    .option('--completion <shell>', 'print a bash or zsh completion script to stdout and exit')
     .argument('[file]', 'path to a book file (.fb2, .fb2.zip or .epub)')
     .action(
       (
         file: string | undefined,
-        options: { theme?: string; config?: string; library?: boolean },
+        options: {
+          theme?: string;
+          config?: string;
+          library?: boolean;
+          man?: boolean;
+          completion?: string;
+        },
       ) => {
-        run(file, options);
+        if (options.man) {
+          process.stdout.write(manPage());
+          return;
+        }
+        if (options.completion !== undefined) {
+          const shell = options.completion;
+          if (shell === 'bash') {
+            process.stdout.write(bashCompletion());
+          } else if (shell === 'zsh') {
+            process.stdout.write(zshCompletion());
+          } else {
+            console.error(`tabook: unknown shell "${shell}" (expected "bash" or "zsh")`);
+            process.exit(1);
+          }
+          return;
+        }
+        void run(file, options);
       },
     );
   program.parse(process.argv);
 }
 
-function run(
+async function run(
   file: string | undefined,
   options: { theme?: string; config?: string; library?: boolean },
-): void {
+): Promise<void> {
   let loaded;
   try {
     loaded = loadConfig(options.config);
@@ -57,6 +84,16 @@ function run(
       console.error(`tabook: unknown theme "${options.theme}"`);
       process.exit(1);
     }
+  }
+
+  // auto_theme: match the configured theme to the terminal background (OSC 11)
+  // — dark terminal keeps the configured theme, a light terminal switches to
+  // its -light variant. An explicit --theme always wins. Only meaningful in a
+  // real terminal (the query needs a TTY on both ends).
+  let themeOverride = options.theme;
+  if (!themeOverride && config.autoTheme && process.stdout.isTTY && process.stdin.isTTY) {
+    const bg = await queryTerminalBackground();
+    themeOverride = terminalThemeName(config.theme, bg);
   }
 
   let db: LibraryDb;
@@ -128,7 +165,7 @@ function run(
       config,
       configPath: loaded.path,
       initialPath,
-      themeOverride: options.theme,
+      themeOverride,
     }),
   );
   // ponytail: Ink's logUpdate suppresses a write when the closing frame is

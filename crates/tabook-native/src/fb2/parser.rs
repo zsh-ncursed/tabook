@@ -6,16 +6,16 @@
 //! epigraphs, lists. Metadata-only fast path for scans.
 
 use crate::encoding::{decode_xml_buffer_inner, is_zip_buffer_inner};
-use crate::inline::{parse_inlines, normalize_inlines};
+use crate::inline::{normalize_inlines, parse_inlines};
 use crate::model::{
     Author, Block, BookMetadata, Inline, ListItem, ParsedBook, ResourceEntry, Stanza, TocEntry,
 };
+use crate::text::normalize_whitespace_inner;
 use crate::xml::{
     attr_of, children_of, find_children, first_child, full_text_of, normalize_tag, parse_xml_inner,
     text_of, XmlNode,
 };
 use crate::zip::ZipArchive;
-use crate::text::normalize_whitespace_inner;
 use std::path::Path;
 
 struct ParseState {
@@ -45,12 +45,24 @@ fn parse_author(node: &XmlNode) -> Vec<Author> {
         let first_name = text_of(first_child(Some(author), "first-name"));
         let last_name = text_of(first_child(Some(author), "last-name"));
         let middle_name = text_of(first_child(Some(author), "middle-name"));
-        if !nickname.is_empty() || !first_name.is_empty() || !last_name.is_empty() || !middle_name.is_empty() {
+        if !nickname.is_empty()
+            || !first_name.is_empty()
+            || !last_name.is_empty()
+            || !middle_name.is_empty()
+        {
             result.push(Author {
                 first_name,
                 last_name,
-                middle_name: if middle_name.is_empty() { None } else { Some(middle_name) },
-                nickname: if nickname.is_empty() { None } else { Some(nickname) },
+                middle_name: if middle_name.is_empty() {
+                    None
+                } else {
+                    Some(middle_name)
+                },
+                nickname: if nickname.is_empty() {
+                    None
+                } else {
+                    Some(nickname)
+                },
             });
         }
     }
@@ -58,7 +70,9 @@ fn parse_author(node: &XmlNode) -> Vec<Author> {
 }
 
 fn parse_annotation(node: Option<&XmlNode>) -> String {
-    let Some(node) = node else { return String::new() };
+    let Some(node) = node else {
+        return String::new();
+    };
     let paragraphs = find_children(node, "p");
     if !paragraphs.is_empty() {
         let parts: Vec<String> = paragraphs
@@ -190,7 +204,10 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
         if b == b'=' {
             break;
         }
-        let v = TABLE.iter().position(|&t| t == b).ok_or_else(|| format!("invalid base64 char: {}", b as char))? as u32;
+        let v = TABLE
+            .iter()
+            .position(|&t| t == b)
+            .ok_or_else(|| format!("invalid base64 char: {}", b as char))? as u32;
         buf = (buf << 6) | v;
         n_bits += 6;
         if n_bits >= 8 {
@@ -303,7 +320,9 @@ fn parse_epigraph(node: &XmlNode) -> Vec<Block> {
     for kid in children_of(node) {
         let tag = normalize_tag(kid.tag());
         if tag == "p" {
-            result.push(Block::epigraph(normalize_inlines(parse_inlines(std::slice::from_ref(kid)))));
+            result.push(Block::epigraph(normalize_inlines(parse_inlines(
+                std::slice::from_ref(kid),
+            ))));
         } else if tag == "poem" {
             result.push(parse_poem(kid));
         } else if tag == "text-author" {
@@ -314,7 +333,9 @@ fn parse_epigraph(node: &XmlNode) -> Vec<Block> {
         }
     }
     if result.is_empty() {
-        result.push(Block::epigraph(normalize_inlines(parse_inlines(std::slice::from_ref(node)))));
+        result.push(Block::epigraph(normalize_inlines(parse_inlines(
+            std::slice::from_ref(node),
+        ))));
     }
     result
 }
@@ -412,7 +433,10 @@ fn parse_container(state: &mut ParseState, nodes: &[XmlNode], depth: i32) {
                     .unwrap_or_default()
                     .trim_start_matches('#')
                     .to_owned();
-                emit_block(state, Block::image(src, attr_of(Some(node), "alt").unwrap_or_default()));
+                emit_block(
+                    state,
+                    Block::image(src, attr_of(Some(node), "alt").unwrap_or_default()),
+                );
             }
             "list" => emit_block(state, parse_list(node)),
             "epigraph" => {
@@ -468,13 +492,21 @@ pub struct ParsedBookResult {
     pub toc: Vec<TocEntry>,
 }
 
-pub fn parse_fb2_text(xml_text: &str, _path: &str, filename: &str) -> Result<ParsedBookResult, String> {
+pub fn parse_fb2_text(
+    xml_text: &str,
+    _path: &str,
+    filename: &str,
+) -> Result<ParsedBookResult, String> {
     let children = parse_xml_inner(xml_text)?;
     let (root, root_children) = find_root(&children)?;
-    let fallback_title = filename.rsplit('.').nth(1).map(|_| {
-        let dot = filename.rfind('.').unwrap_or(filename.len());
-        &filename[..dot]
-    }).unwrap_or(filename);
+    let fallback_title = filename
+        .rsplit('.')
+        .nth(1)
+        .map(|_| {
+            let dot = filename.rfind('.').unwrap_or(filename.len());
+            &filename[..dot]
+        })
+        .unwrap_or(filename);
     let metadata = parse_metadata(root, fallback_title);
     let resources = collect_resources(&root_children);
     let mut state = ParseState {
@@ -493,11 +525,7 @@ pub fn parse_fb2_text(xml_text: &str, _path: &str, filename: &str) -> Result<Par
     })
 }
 
-fn build_book_from_result(
-    result: ParsedBookResult,
-    file_path: &str,
-    size: i64,
-) -> ParsedBook {
+fn build_book_from_result(result: ParsedBookResult, file_path: &str, size: i64) -> ParsedBook {
     let filename = Path::new(file_path)
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -542,7 +570,12 @@ fn parse_fb2_zip(data: &[u8], file_path: &str) -> Result<ParsedBook, String> {
     let entry = &sorted[0];
     let inner = zip.read(&entry.name)?;
     let xml_text = decode_xml_buffer_inner(&inner);
-    let filename = entry.name.rsplit('/').next().unwrap_or(&entry.name).to_owned();
+    let filename = entry
+        .name
+        .rsplit('/')
+        .next()
+        .unwrap_or(&entry.name)
+        .to_owned();
     let result = parse_fb2_text(&xml_text, file_path, &filename)?;
     Ok(build_book_from_result(result, file_path, data.len() as i64))
 }
@@ -564,19 +597,16 @@ pub fn parse_fb2_metadata_inner(data: &[u8], file_path: &str) -> Result<BookMeta
         let inner = zip.read(&entry.name)?;
         let children = parse_xml_inner(&decode_xml_buffer_inner(&inner))?;
         let (root, _) = find_root(&children)?;
-        let fallback = entry
-            .name
-            .rsplit('/')
-            .next()
-            .unwrap_or(&entry.name)
-            .rsplit('.')
-            .nth(1)
-            .map(|_| {
-                let dot = entry.name.rfind('.').unwrap_or(entry.name.len());
-                &entry.name[..dot]
-            })
-            .unwrap_or(&entry.name[..])
-            .to_owned();
+        // Fallback title = entry *basename* without the extension, mirroring
+        // the TS parser ((name.split('/').pop() ?? name).replace(/\.[^.]+$/, ''))
+        // — the previous port stripped the extension off the full archive path,
+        // so a zip with the fb2 in a subdirectory got "subdir/book" as the
+        // title fallback (parity: src/parity/fb2.parity.test.ts).
+        let base = entry.name.rsplit('/').next().unwrap_or(&entry.name);
+        let fallback = match base.rfind('.') {
+            Some(dot) => base[..dot].to_owned(),
+            None => base.to_owned(),
+        };
         return Ok(parse_metadata(root, &fallback));
     }
     let children = parse_xml_inner(&decode_xml_buffer_inner(data))?;

@@ -278,6 +278,7 @@ export declare class LibraryDb {
   recordOpen(bookId: number): void;
   listHistory(limit: number): HistoryRecord[];
   listRecentBooks(limit: number): BookRecord[];
+  listContinueBooks(limit: number): BookRecord[];
   startSession(bookId: number): number;
   endSession(sessionId: number, pagesRead: number): void;
   getStats(bookId: number): SessionStats;

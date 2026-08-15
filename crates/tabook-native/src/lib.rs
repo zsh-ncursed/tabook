@@ -8,7 +8,6 @@
 
 mod db;
 mod encoding;
-mod scan;
 mod epub;
 mod fb2;
 mod formats_index;
@@ -18,6 +17,7 @@ mod inline;
 mod model;
 mod opds_parser;
 mod renderer;
+mod scan;
 mod search;
 mod text;
 mod xml;
@@ -222,7 +222,8 @@ pub fn parse_epub_buffer(data: Buffer, file_path: String) -> NapiResult<ParsedBo
 #[cfg(feature = "napi-runtime")]
 #[napi]
 pub fn parse_epub_metadata(data: Buffer, file_path: String) -> NapiResult<BookMetadata> {
-    crate::epub::parser::parse_epub_metadata_inner(&data, &file_path).map_err(NapiError::from_reason)
+    crate::epub::parser::parse_epub_metadata_inner(&data, &file_path)
+        .map_err(NapiError::from_reason)
 }
 
 // image.rs
@@ -348,45 +349,10 @@ pub fn parse_opds_atom(text: String) -> NapiResult<OpdsFeed> {
             subtitle: feed.subtitle,
             updated: feed.updated,
             kind: feed.kind,
-            links: feed.links.into_iter().map(|l| OpdsLink {
-                rel: l.rel,
-                href: l.href,
-                r#type: l.type_,
-                title: l.title,
-                length: l.length,
-                facet_group: l.facet_group,
-                active_facet: l.active_facet,
-                count: l.count,
-            }).collect(),
-            facets: feed.facets.into_iter().map(|f| OpdsFacet {
-                group: f.group,
-                title: f.title,
-                href: f.href,
-                active: f.active,
-                count: f.count,
-            }).collect(),
-            entries: feed.entries.into_iter().map(|e| OpdsEntry {
-                id: e.id,
-                title: e.title,
-                updated: e.updated,
-                summary: e.summary,
-                content: e.content,
-                authors: e.authors.into_iter().map(|a| OpdsAuthor {
-                    name: a.name,
-                    uri: a.uri,
-                }).collect(),
-                categories: e.categories.into_iter().map(|c| OpdsCategory {
-                    scheme: c.scheme,
-                    term: c.term,
-                    label: c.label,
-                }).collect(),
-                language: e.language,
-                issued: e.issued,
-                publisher: e.publisher,
-                identifier: e.identifier,
-                rights: e.rights,
-                published: e.published,
-                links: e.links.into_iter().map(|l| OpdsLink {
+            links: feed
+                .links
+                .into_iter()
+                .map(|l| OpdsLink {
                     rel: l.rel,
                     href: l.href,
                     r#type: l.type_,
@@ -395,23 +361,86 @@ pub fn parse_opds_atom(text: String) -> NapiResult<OpdsFeed> {
                     facet_group: l.facet_group,
                     active_facet: l.active_facet,
                     count: l.count,
-                }).collect(),
-                acquisition_links: e.acquisition_links.into_iter().map(|l| OpdsLink {
-                    rel: l.rel,
-                    href: l.href,
-                    r#type: l.type_,
-                    title: l.title,
-                    length: l.length,
-                    facet_group: l.facet_group,
-                    active_facet: l.active_facet,
-                    count: l.count,
-                }).collect(),
-                thumbnail_href: e.thumbnail_href,
-                image_href: e.image_href,
-                is_acquisition: e.is_acquisition,
-                is_navigation: e.is_navigation,
-                subsection_href: e.subsection_href,
-            }).collect(),
+                })
+                .collect(),
+            facets: feed
+                .facets
+                .into_iter()
+                .map(|f| OpdsFacet {
+                    group: f.group,
+                    title: f.title,
+                    href: f.href,
+                    active: f.active,
+                    count: f.count,
+                })
+                .collect(),
+            entries: feed
+                .entries
+                .into_iter()
+                .map(|e| OpdsEntry {
+                    id: e.id,
+                    title: e.title,
+                    updated: e.updated,
+                    summary: e.summary,
+                    content: e.content,
+                    authors: e
+                        .authors
+                        .into_iter()
+                        .map(|a| OpdsAuthor {
+                            name: a.name,
+                            uri: a.uri,
+                        })
+                        .collect(),
+                    categories: e
+                        .categories
+                        .into_iter()
+                        .map(|c| OpdsCategory {
+                            scheme: c.scheme,
+                            term: c.term,
+                            label: c.label,
+                        })
+                        .collect(),
+                    language: e.language,
+                    issued: e.issued,
+                    publisher: e.publisher,
+                    identifier: e.identifier,
+                    rights: e.rights,
+                    published: e.published,
+                    links: e
+                        .links
+                        .into_iter()
+                        .map(|l| OpdsLink {
+                            rel: l.rel,
+                            href: l.href,
+                            r#type: l.type_,
+                            title: l.title,
+                            length: l.length,
+                            facet_group: l.facet_group,
+                            active_facet: l.active_facet,
+                            count: l.count,
+                        })
+                        .collect(),
+                    acquisition_links: e
+                        .acquisition_links
+                        .into_iter()
+                        .map(|l| OpdsLink {
+                            rel: l.rel,
+                            href: l.href,
+                            r#type: l.type_,
+                            title: l.title,
+                            length: l.length,
+                            facet_group: l.facet_group,
+                            active_facet: l.active_facet,
+                            count: l.count,
+                        })
+                        .collect(),
+                    thumbnail_href: e.thumbnail_href,
+                    image_href: e.image_href,
+                    is_acquisition: e.is_acquisition,
+                    is_navigation: e.is_navigation,
+                    subsection_href: e.subsection_href,
+                })
+                .collect(),
             self_href: feed.self_href,
             start_href: feed.start_href,
             up_href: feed.up_href,
@@ -468,7 +497,10 @@ impl BookSearchIndex {
         self.0
             .block_highlights(&query, block_index)
             .into_iter()
-            .map(|h| HighlightRange { start: h.start, end: h.end })
+            .map(|h| HighlightRange {
+                start: h.start,
+                end: h.end,
+            })
             .collect()
     }
 
@@ -483,7 +515,10 @@ impl BookSearchIndex {
                 block_index,
                 ranges: ranges
                     .into_iter()
-                    .map(|h| HighlightRange { start: h.start, end: h.end })
+                    .map(|h| HighlightRange {
+                        start: h.start,
+                        end: h.end,
+                    })
                     .collect(),
             })
             .collect()
@@ -567,12 +602,7 @@ pub struct TypographyConfigNapi {
 #[napi]
 impl BookLayout {
     #[napi(constructor)]
-    pub fn new(
-        blocks: Vec<Block>,
-        typo: TypographyConfigNapi,
-        width: i32,
-        justify: bool,
-    ) -> Self {
+    pub fn new(blocks: Vec<Block>, typo: TypographyConfigNapi, width: i32, justify: bool) -> Self {
         let opts = crate::renderer::layout::LayoutOptions {
             typo: crate::renderer::layout::TypographyConfig {
                 measure: typo.measure,
@@ -588,9 +618,7 @@ impl BookLayout {
             get_highlights: None,
         };
         Self {
-            inner: parking_lot::Mutex::new(crate::renderer::layout::BookLayout::new(
-                blocks, opts,
-            )),
+            inner: parking_lot::Mutex::new(crate::renderer::layout::BookLayout::new(blocks, opts)),
         }
     }
 
@@ -621,17 +649,29 @@ impl BookLayout {
 
     #[napi]
     pub fn get_page(&self, page: i32, page_height: i32) -> Vec<TextLine> {
-        self.inner.lock().get_page(page, page_height).into_iter().map(text_line_to_napi).collect()
+        self.inner
+            .lock()
+            .get_page(page, page_height)
+            .into_iter()
+            .map(text_line_to_napi)
+            .collect()
     }
 
     #[napi]
     pub fn get_range(&self, start: i32, count: i32) -> Vec<TextLine> {
-        self.inner.lock().get_range(start, count).into_iter().map(text_line_to_napi).collect()
+        self.inner
+            .lock()
+            .get_range(start, count)
+            .into_iter()
+            .map(text_line_to_napi)
+            .collect()
     }
 
     #[napi]
     pub fn page_for_char_offset(&self, char_offset: i32, page_height: i32) -> i32 {
-        self.inner.lock().page_for_char_offset(char_offset, page_height)
+        self.inner
+            .lock()
+            .page_for_char_offset(char_offset, page_height)
     }
 
     #[napi]
@@ -685,7 +725,10 @@ impl BookLayout {
                     let ranges = h
                         .ranges
                         .into_iter()
-                        .map(|r| crate::renderer::layout::HighlightRange { start: r.start, end: r.end })
+                        .map(|r| crate::renderer::layout::HighlightRange {
+                            start: r.start,
+                            end: r.end,
+                        })
                         .collect();
                     (h.block_index, ranges)
                 })
@@ -698,15 +741,19 @@ impl BookLayout {
 fn text_line_to_napi(tl: crate::renderer::layout::TextLine) -> TextLine {
     TextLine {
         role: tl.role,
-        spans: tl.spans.into_iter().map(|s| StyledSpan {
-            text: s.text,
-            bold: s.bold,
-            italic: s.italic,
-            underline: s.underline,
-            strike: s.strike,
-            link: s.link,
-            highlight: s.highlight,
-        }).collect(),
+        spans: tl
+            .spans
+            .into_iter()
+            .map(|s| StyledSpan {
+                text: s.text,
+                bold: s.bold,
+                italic: s.italic,
+                underline: s.underline,
+                strike: s.strike,
+                link: s.link,
+                highlight: s.highlight,
+            })
+            .collect(),
         indent: tl.indent,
         prefix: tl.prefix,
         block_index: tl.block_index,
@@ -836,19 +883,34 @@ impl LibraryDb {
         library_root: Option<String>,
     ) -> NapiResult<f64> {
         self.inner
-            .add_book(&path, &filename, &format, size as i64, &metadata, library_root.as_deref())
+            .add_book(
+                &path,
+                &filename,
+                &format,
+                size as i64,
+                &metadata,
+                library_root.as_deref(),
+            )
             .map(|id| id as f64)
             .map_err(NapiError::from_reason)
     }
 
     #[napi]
     pub fn get_book(&self, id: f64) -> Option<BookRecord> {
-        self.inner.get_book(id as i32).ok().flatten().map(book_record_to_napi)
+        self.inner
+            .get_book(id as i32)
+            .ok()
+            .flatten()
+            .map(book_record_to_napi)
     }
 
     #[napi]
     pub fn get_book_by_path(&self, path: String) -> Option<BookRecord> {
-        self.inner.get_book_by_path(&path).ok().flatten().map(book_record_to_napi)
+        self.inner
+            .get_book_by_path(&path)
+            .ok()
+            .flatten()
+            .map(book_record_to_napi)
     }
 
     #[napi]
@@ -875,12 +937,16 @@ impl LibraryDb {
 
     #[napi]
     pub fn get_progress(&self, book_id: f64) -> Option<ProgressRecord> {
-        self.inner.get_progress(book_id as i32).ok().flatten().map(|p| ProgressRecord {
-            book_id: p.book_id,
-            position: p.position as f64,
-            percent: p.percent,
-            updated_at: p.updated_at,
-        })
+        self.inner
+            .get_progress(book_id as i32)
+            .ok()
+            .flatten()
+            .map(|p| ProgressRecord {
+                book_id: p.book_id,
+                position: p.position as f64,
+                percent: p.percent,
+                updated_at: p.updated_at,
+            })
     }
 
     #[napi]
@@ -929,12 +995,16 @@ impl LibraryDb {
 
     #[napi]
     pub fn update_bookmark_label(&self, id: f64, label: String) -> bool {
-        self.inner.update_bookmark_label(id as i32, &label).unwrap_or(false)
+        self.inner
+            .update_bookmark_label(id as i32, &label)
+            .unwrap_or(false)
     }
 
     #[napi]
     pub fn record_open(&self, book_id: f64) -> NapiResult<()> {
-        self.inner.record_open(book_id as i32).map_err(NapiError::from_reason)
+        self.inner
+            .record_open(book_id as i32)
+            .map_err(NapiError::from_reason)
     }
 
     #[napi]
@@ -962,6 +1032,16 @@ impl LibraryDb {
     }
 
     #[napi]
+    pub fn list_continue_books(&self, limit: f64) -> Vec<BookRecord> {
+        self.inner
+            .list_continue_books(limit as i32)
+            .unwrap_or_default()
+            .into_iter()
+            .map(book_record_to_napi)
+            .collect()
+    }
+
+    #[napi]
     pub fn start_session(&self, book_id: f64) -> NapiResult<f64> {
         self.inner
             .start_session(book_id as i32)
@@ -978,12 +1058,15 @@ impl LibraryDb {
 
     #[napi]
     pub fn get_stats(&self, book_id: f64) -> SessionStats {
-        let s = self.inner.get_stats(book_id as i32).unwrap_or(crate::db::SessionStats {
-            total_seconds: 0,
-            total_pages: 0,
-            session_count: 0,
-            last_read_at: None,
-        });
+        let s = self
+            .inner
+            .get_stats(book_id as i32)
+            .unwrap_or(crate::db::SessionStats {
+                total_seconds: 0,
+                total_pages: 0,
+                session_count: 0,
+                last_read_at: None,
+            });
         SessionStats {
             total_seconds: s.total_seconds as f64,
             total_pages: s.total_pages as f64,
@@ -1074,7 +1157,9 @@ impl LibraryDb {
 
     #[napi]
     pub fn remove_catalog(&self, id: f64) -> NapiResult<()> {
-        self.inner.remove_catalog(id as i32).map_err(NapiError::from_reason)
+        self.inner
+            .remove_catalog(id as i32)
+            .map_err(NapiError::from_reason)
     }
 
     #[napi]
@@ -1102,12 +1187,16 @@ impl LibraryDb {
 
     #[napi]
     pub fn get_library_folder_by_path(&self, path: String) -> Option<LibraryFolderRecord> {
-        self.inner.get_library_folder_by_path(&path).ok().flatten().map(|f| LibraryFolderRecord {
-            id: f.id,
-            path: f.path,
-            added_at: f.added_at,
-            last_scanned_at: f.last_scanned_at.map(|v| v as f64),
-        })
+        self.inner
+            .get_library_folder_by_path(&path)
+            .ok()
+            .flatten()
+            .map(|f| LibraryFolderRecord {
+                id: f.id,
+                path: f.path,
+                added_at: f.added_at,
+                last_scanned_at: f.last_scanned_at.map(|v| v as f64),
+            })
     }
 
     #[napi]
@@ -1124,7 +1213,9 @@ impl LibraryDb {
 
     #[napi]
     pub fn list_paths_by_library_root(&self, root: String) -> Vec<String> {
-        self.inner.list_paths_by_library_root(&root).unwrap_or_default()
+        self.inner
+            .list_paths_by_library_root(&root)
+            .unwrap_or_default()
     }
 
     #[napi]

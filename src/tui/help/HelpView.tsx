@@ -1,13 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { Config, KeyAction } from '../../config/defaults.js';
 import { KEY_ACTIONS } from '../../config/defaults.js';
-import { actionLabel } from '../keymap.js';
+import { actionLabel, createActionResolver, resolveKeyName } from '../keymap.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { Modal } from '../components/Modal.js';
-import { resolveKeyName } from '../keymap.js';
 import { forceRedraw } from '../screenRefresh.js';
+import { COMMANDS } from '../commands.js';
 
 export interface HelpViewProps {
   config: Config;
@@ -15,70 +15,6 @@ export interface HelpViewProps {
   screen?: 'library' | 'reader' | 'opds';
   onClose?: () => void;
 }
-
-interface CommandDef {
-  cmd: string;
-  desc: string;
-  screens: Array<'library' | 'reader' | 'opds'>;
-}
-
-const COMMANDS: CommandDef[] = [
-  {
-    cmd: ':open [path]',
-    desc: 'Open a book file (falls back to picker)',
-    screens: ['library', 'reader'],
-  },
-  {
-    cmd: ':theme <name>',
-    desc: 'Switch theme (persisted to config)',
-    screens: ['library', 'reader', 'opds'],
-  },
-  { cmd: ':themes', desc: 'List available themes', screens: ['library', 'reader', 'opds'] },
-  { cmd: ':sort <field>', desc: 'Sort by title, author, added or progress', screens: ['library'] },
-  { cmd: ':group', desc: 'Toggle group-by-series', screens: ['library'] },
-  { cmd: ':goto <page>', desc: 'Jump to a page (:goto 10% also works)', screens: ['reader'] },
-  { cmd: ':simplified', desc: 'Toggle simplified reading mode', screens: ['reader'] },
-  { cmd: ':search <query>', desc: 'Search the current book', screens: ['reader'] },
-  {
-    cmd: ':config init',
-    desc: 'Write a default config file',
-    screens: ['library', 'reader', 'opds'],
-  },
-  {
-    cmd: ':config edit',
-    desc: 'Open config in $EDITOR, reload live',
-    screens: ['library', 'reader', 'opds'],
-  },
-  { cmd: ':opds', desc: 'Open the OPDS catalog browser', screens: ['library', 'reader'] },
-  {
-    cmd: ':opds add <name> <url> [user] [pass]',
-    desc: 'Add an OPDS catalog',
-    screens: ['library', 'reader', 'opds'],
-  },
-  {
-    cmd: ':opds remove <name>',
-    desc: 'Remove an OPDS catalog',
-    screens: ['library', 'reader', 'opds'],
-  },
-  {
-    cmd: ':opds list',
-    desc: 'List configured OPDS catalogs',
-    screens: ['library', 'reader', 'opds'],
-  },
-  {
-    cmd: ':library add <path>',
-    desc: 'Attach a folder as a library',
-    screens: ['library', 'reader'],
-  },
-  { cmd: ':library list', desc: 'List attached folders', screens: ['library', 'reader'] },
-  { cmd: ':library scan', desc: 'Rescan all attached folders', screens: ['library', 'reader'] },
-  {
-    cmd: ':library remove <path>',
-    desc: 'Detach a folder and remove its books',
-    screens: ['library', 'reader'],
-  },
-  { cmd: ':q / :quit', desc: 'Quit', screens: ['library', 'reader', 'opds'] },
-];
 
 // Presentational-only. Esc to close is handled by the parent (App.tsx) to
 // avoid Ink's setRawMode reference-count race (see ReaderView for rationale).
@@ -89,6 +25,11 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
   const [scroll, setScroll] = useState(0);
   const scrollRef = useRef(scroll);
   scrollRef.current = scroll;
+
+  // Scroll keys go through the configurable keymap (move_cursor_up/down,
+  // go_to_start/end, page_up/down) like every other list; users who rebind
+  // j/k get their keys here too.
+  const resolver = useMemo(() => createActionResolver(config), [config]);
 
   const keysForAction = (action: KeyAction): string[] => {
     const keys: string[] = [];
@@ -142,10 +83,10 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
     cmdRows.push(
       <Box key={`cmd-${i}`} flexDirection="row">
         <Box flexDirection="column" width={cmdColW}>
-          {lc ? <CmdRow theme={theme} cmd={lc.cmd} desc={lc.desc} /> : null}
+          {lc ? <CmdRow theme={theme} cmd={lc.usage} desc={lc.desc} /> : null}
         </Box>
         <Box flexDirection="column" width={cmdColW}>
-          {rc ? <CmdRow theme={theme} cmd={rc.cmd} desc={rc.desc} /> : null}
+          {rc ? <CmdRow theme={theme} cmd={rc.usage} desc={rc.desc} /> : null}
         </Box>
       </Box>,
     );
@@ -170,8 +111,9 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
       </Text>
     </Box>,
     <Text key="opds-text" color={theme.colors.dim} dimColor>
-      j/k — navigate · enter/l — open entry/download · d — download · / — search · u/h — up · n —
-      next page · c — switch catalog · esc — back · q — quit
+      j/k — navigate · enter/l — open entry/download · d — queue download (sequential, background) ·
+      x — downloads queue · / — search · u/h — up · n/p — next/prev page · c — switch catalog · esc
+      — back · q — quit
     </Text>,
   ];
 
@@ -186,23 +128,33 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
 
   useInput((input, key) => {
     const keyName = resolveKeyName(input, key);
-    if (keyName === 'escape') {
-      onClose?.();
-      forceRedraw();
-      return;
-    }
-    if (keyName === 'j' || keyName === 'down') {
-      setScroll((s) => Math.min(maxScroll, s + 1));
-    } else if (keyName === 'k' || keyName === 'up') {
-      setScroll((s) => Math.max(0, s - 1));
-    } else if (keyName === 'g') {
-      setScroll(0);
-    } else if (keyName === 'G') {
-      setScroll(maxScroll);
-    } else if (keyName === 'pagedown' || keyName === 'space') {
-      setScroll((s) => Math.min(maxScroll, s + Math.max(1, viewport - 2)));
-    } else if (keyName === 'pageup') {
-      setScroll((s) => Math.max(0, s - Math.max(1, viewport - 2)));
+    if (keyName === null) return;
+    const action = resolver.feed(keyName);
+    switch (action) {
+      case 'back':
+        onClose?.();
+        forceRedraw();
+        return;
+      case 'move_cursor_down':
+        setScroll((s) => Math.min(maxScroll, s + 1));
+        return;
+      case 'move_cursor_up':
+        setScroll((s) => Math.max(0, s - 1));
+        return;
+      case 'go_to_start':
+        setScroll(0);
+        return;
+      case 'go_to_end':
+        setScroll(maxScroll);
+        return;
+      case 'page_down':
+        setScroll((s) => Math.min(maxScroll, s + Math.max(1, viewport - 2)));
+        return;
+      case 'page_up':
+        setScroll((s) => Math.max(0, s - Math.max(1, viewport - 2)));
+        return;
+      default:
+        return;
     }
   });
 

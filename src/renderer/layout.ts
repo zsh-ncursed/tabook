@@ -975,7 +975,9 @@ export class BookLayout implements BookLayoutImpl {
   }
 }
 
-class TsBookLayout implements BookLayoutImpl {
+// Exported so parity tests can compare the pure-TS fallback engine against
+// native.BookLayout directly (see src/parity/layout.parity.test.ts).
+export class TsBookLayout implements BookLayoutImpl {
   readonly blockCount: number;
   private readonly blocks: Block[];
   private readonly opts: LayoutOptions;

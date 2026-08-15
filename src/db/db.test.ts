@@ -120,6 +120,46 @@ describe('LibraryDb', () => {
     expect(db.getBook(id)!.progressPosition).toBe(900);
   });
 
+  it('lists continue-reading books (0 < percent < 100) newest first', () => {
+    const a = db.addBook({
+      path: '/tmp/a.fb2',
+      filename: 'a.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+    });
+    const b = db.addBook({
+      path: '/tmp/b.fb2',
+      filename: 'b.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+    });
+    const c = db.addBook({
+      path: '/tmp/c.fb2',
+      filename: 'c.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+    });
+    const d = db.addBook({
+      path: '/tmp/d.fb2',
+      filename: 'd.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata,
+    });
+    // a: untouched (no progress row), c: finished (100%), d: opened but 0%.
+    db.setProgress(a, 100, 10);
+    db.setProgress(b, 200, 50);
+    db.setProgress(c, 999, 100);
+    db.setProgress(d, 0, 0);
+    db.setProgress(a, 150, 20); // bump a above b in updated_at
+    const ids = db.listContinueBooks().map((r) => r.id);
+    expect(ids).toEqual([a, b]);
+    expect(db.listContinueBooks()[0]!.progressPercent).toBeCloseTo(20);
+  });
+
   it('adds and lists bookmarks in position order', () => {
     const id = db.addBook({
       path: '/tmp/bm.fb2',
@@ -220,6 +260,49 @@ describe('LibraryDb OPDS catalogs', () => {
     const cat = db.getCatalog(id)!;
     expect(cat.username).toBe('user@example.com');
     expect(cat.password).toBe('secret');
+  });
+
+  it('encrypts catalog passwords at rest', () => {
+    const id = db.addCatalog({
+      name: 'Secret',
+      url: 'https://x/opds',
+      username: 'user',
+      password: 'hunter2',
+    });
+    // API returns the plaintext…
+    expect(db.getCatalog(id)!.password).toBe('hunter2');
+    // …but the database stores an encrypted value, not the password itself.
+    const raw = new (require('better-sqlite3'))(db.filePath) as import('better-sqlite3').Database;
+    const stored = raw.prepare('SELECT password FROM opds_catalogs WHERE id = ?').get(id) as {
+      password: string;
+    };
+    raw.close();
+    expect(stored.password).not.toBe('hunter2');
+    expect(stored.password).toMatch(/^enc:v1:/);
+    // The key file lives next to the DB, separate from it.
+    expect(fs.existsSync(`${db.filePath}.key`)).toBe(true);
+  });
+
+  it('migrates legacy plaintext passwords on open', () => {
+    const filePath = path.join(dir, 'legacy.sqlite');
+    const d1 = new LibraryDb(filePath);
+    const id = d1.addCatalog({ name: 'Legacy', url: 'https://x/opds', password: 'oldpass' });
+    d1.close();
+    // Simulate a pre-encryption DB: overwrite the stored password in plaintext.
+    const raw = new (require('better-sqlite3'))(filePath) as import('better-sqlite3').Database;
+    raw.prepare('UPDATE opds_catalogs SET password = ? WHERE id = ?').run('oldpass', id);
+    raw.close();
+
+    const d2 = new LibraryDb(filePath);
+    expect(d2.getCatalog(id)!.password).toBe('oldpass');
+    // After migration the value on disk is encrypted again.
+    const raw2 = new (require('better-sqlite3'))(filePath) as import('better-sqlite3').Database;
+    const stored = raw2.prepare('SELECT password FROM opds_catalogs WHERE id = ?').get(id) as {
+      password: string;
+    };
+    raw2.close();
+    expect(stored.password).toMatch(/^enc:v1:/);
+    d2.close();
   });
 
   it('adds catalog without credentials', () => {

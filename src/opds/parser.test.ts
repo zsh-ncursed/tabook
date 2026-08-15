@@ -46,6 +46,24 @@ describe('parseOpdsAtom', () => {
       expect(feed.nextHref).toBeUndefined();
       expect(feed.prevHref).toBeUndefined();
     });
+
+    it('parses previous pagination link', () => {
+      const xml = `<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+          <id>x</id><title>T</title><updated>2026-01-01T00:00:00Z</updated>
+          <link rel="previous" href="https://x/page/1" type="application/atom+xml;profile=opds-catalog"/>
+          <link rel="next" href="https://x/page/3" type="application/atom+xml;profile=opds-catalog"/>
+          <opensearch:startIndex>26</opensearch:startIndex>
+          <opensearch:itemsPerPage>25</opensearch:itemsPerPage>
+          <opensearch:totalResults>543</opensearch:totalResults>
+        </feed>`;
+      const f = parseOpdsAtom(xml);
+      expect(f.prevHref).toBe('https://x/page/1');
+      expect(f.nextHref).toBe('https://x/page/3');
+      expect(f.startIndex).toBe(26);
+      expect(f.itemsPerPage).toBe(25);
+      expect(f.totalResults).toBe(543);
+    });
   });
 
   describe('Gutenberg search results (acquisition-ish navigation)', () => {
@@ -58,6 +76,11 @@ describe('parseOpdsAtom', () => {
 
     it('has next pagination link', () => {
       expect(feed.nextHref).toContain('start_index=26');
+    });
+
+    it('parses OpenSearch pagination metadata', () => {
+      expect(feed.itemsPerPage).toBe(25);
+      expect(feed.startIndex).toBe(1);
     });
 
     it('has search link', () => {

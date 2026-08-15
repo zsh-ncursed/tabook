@@ -8,6 +8,7 @@ import { LibraryDb } from '../../db/db.js';
 import { defaultConfig } from '../../config/defaults.js';
 import { THEMES } from '../../themes/themes.js';
 import type { Theme } from '../../themes/themes.js';
+import { emitMouseClick } from '../mouse.js';
 
 const theme: Theme = THEMES[defaultConfig().theme] ?? THEMES['dracula']!;
 const config = defaultConfig();
@@ -60,8 +61,8 @@ function makeProps(overrides: Partial<Parameters<typeof LibraryView>[0]> = {}) {
   };
 }
 
-async function settle(): Promise<void> {
-  await new Promise((r) => setTimeout(r, 50));
+async function settle(ms = 50): Promise<void> {
+  await new Promise((r) => setTimeout(r, ms));
 }
 
 describe('LibraryView grouping and cursor', () => {
@@ -114,6 +115,69 @@ describe('LibraryView grouping and cursor', () => {
     expect(selLine).toContain('Beta');
   });
 
+  it('toggles the continue-reading view with C', async () => {
+    const done = addBook(db, '/tmp/done.fb2', 'Finished');
+    const reading = addBook(db, '/tmp/reading.fb2', 'In Progress');
+    db.setProgress(reading, 100, 42);
+    db.setProgress(done, 999, 100);
+    const props = makeProps();
+    const { stdin, lastFrame } = render(<LibraryView {...props} />);
+    await settle();
+    stdin.write('C');
+    await settle();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Continue reading');
+    expect(frame).toContain('In Progress');
+    expect(frame).toContain('42%');
+    expect(frame).not.toContain('Finished');
+  });
+
+  it('live-filters the list as you type (debounced, no Enter needed)', async () => {
+    addBook(db, '/tmp/alpha.fb2', 'Alpha Book');
+    addBook(db, '/tmp/beta.fb2', 'Beta Book');
+    const props = makeProps();
+    const { stdin, lastFrame } = render(<LibraryView {...props} />);
+    await settle();
+    expect(lastFrame() ?? '').toContain('Beta Book');
+    // Open the filter prompt and type "alpha": the list narrows without Enter.
+    stdin.write('/');
+    await settle(30);
+    for (const ch of 'alpha') {
+      stdin.write(ch);
+      await settle(10);
+    }
+    // Wait out the 120ms debounce.
+    await settle(250);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Alpha Book');
+    expect(frame).not.toContain('Beta Book');
+    // Escape restores the previous (empty) filter.
+    stdin.write('\u001b');
+    await settle(50);
+    expect(lastFrame() ?? '').toContain('Beta Book');
+  });
+
+  it('shows an annotation preview for the selected book', async () => {
+    db.addBook({
+      path: '/tmp/ann.fb2',
+      filename: 'ann.fb2',
+      format: 'fb2',
+      size: 100,
+      metadata: {
+        title: 'Annotated',
+        authors: [{ firstName: 'A', lastName: 'B' }],
+        genres: [],
+        annotation: 'A short but meaningful annotation about this book.',
+      },
+    });
+    const props = makeProps();
+    const { lastFrame } = render(<LibraryView {...props} />);
+    await settle();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Annotation');
+    expect(frame).toContain('A short but meaningful annotation');
+  });
+
   it('clamps the cursor after deleting a book', async () => {
     addBook(db, '/tmp/a.fb2', 'Alpha');
     addBook(db, '/tmp/b.fb2', 'Beta');
@@ -134,5 +198,34 @@ describe('LibraryView grouping and cursor', () => {
     const selLine = frame.split('\n').find((l) => l.includes('▶'));
     expect(selLine).toBeDefined();
     expect(selLine).toContain('Alpha');
+  });
+});
+
+describe('LibraryView mouse clicks', () => {
+  it('a click moves the cursor to the row under it', async () => {
+    addBook(db, '/tmp/a.fb2', 'Alpha Book');
+    addBook(db, '/tmp/b.fb2', 'Beta Book');
+    const { lastFrame } = render(<LibraryView {...makeProps()} />);
+    await settle();
+    // Rows start below the 1-line header: y=2 → row 0, y=3 → row 1.
+    emitMouseClick({ x: 5, y: 3, button: 'left', press: true });
+    await settle();
+    const frame = lastFrame() ?? '';
+    const selLine = frame.split('\n').find((l) => l.includes('▶'));
+    expect(selLine).toBeDefined();
+    expect(selLine).toContain('Beta Book');
+  });
+
+  it('a second click on the same row opens the book detail', async () => {
+    addBook(db, '/tmp/a.fb2', 'Alpha Book');
+    const { lastFrame } = render(<LibraryView {...makeProps()} />);
+    await settle();
+    emitMouseClick({ x: 5, y: 2, button: 'left', press: true }); // row 0
+    await settle();
+    emitMouseClick({ x: 5, y: 2, button: 'left', press: true }); // double-click
+    await settle();
+    const frame = lastFrame() ?? '';
+    // BookDetail modal opened: metadata line is visible.
+    expect(frame).toContain('Authors:');
   });
 });

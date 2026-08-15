@@ -1,7 +1,14 @@
 import fs from 'node:fs';
 import { parse as parseTomlLib, stringify as stringifyTomlLib } from 'smol-toml';
-import type { Config, DisplayConfig, KeyAction, TypographyConfig } from './defaults.js';
-import { defaultConfig, KEY_ACTIONS } from './defaults.js';
+import type {
+  Config,
+  DisplayConfig,
+  KeyAction,
+  StatusBarConfig,
+  StatusBarSection,
+  TypographyConfig,
+} from './defaults.js';
+import { defaultConfig, KEY_ACTIONS, STATUSBAR_SECTIONS } from './defaults.js';
 import { defaultConfigPath } from '../utils/paths.js';
 import { ConfigError } from '../utils/errors.js';
 import { themeNames } from '../themes/themes.js';
@@ -78,7 +85,16 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
   // Warn on unknown top-level keys so a typo like [typograhy] is surfaced
   // instead of silently ignored. Catches the common "I set it but nothing
   // changed" confusion at config-load time.
-  const knownTop = new Set(['theme', 'db_path', 'keybindings', 'typography', 'display']);
+  const knownTop = new Set([
+    'theme',
+    'db_path',
+    'auto_theme',
+    'mouse',
+    'keybindings',
+    'typography',
+    'display',
+    'statusbar',
+  ]);
   for (const key of Object.keys(parsed)) {
     if (!knownTop.has(key)) {
       warnings.push(`Unknown config key "${key}" — ignored`);
@@ -97,6 +113,9 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
   if (typeof parsed.db_path === 'string' && parsed.db_path.trim() !== '') {
     config.dbPath = parsed.db_path;
   }
+
+  if (typeof parsed.auto_theme === 'boolean') config.autoTheme = parsed.auto_theme;
+  if (typeof parsed.mouse === 'boolean') config.mouse = parsed.mouse;
 
   if (parsed.keybindings && typeof parsed.keybindings === 'object') {
     config.keybindings = normalizeKeybindings(
@@ -128,11 +147,39 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
     if (typeof d.simplified_mode === 'boolean') display.simplifiedMode = d.simplified_mode;
     if (typeof d.respect_publisher_css === 'boolean')
       display.respectPublisherCss = d.respect_publisher_css;
-    if (typeof d.show_progress_bar === 'boolean') display.showProgressBar = d.show_progress_bar;
+    if (typeof d.show_progress_bar === 'boolean') {
+      // Legacy alias: show_progress_bar moved from [display] to [statusbar].
+      config.statusbar.showProgressBar = d.show_progress_bar;
+    }
     config.display = display;
   }
 
+  if (parsed.statusbar && typeof parsed.statusbar === 'object') {
+    const s = parsed.statusbar as Record<string, unknown>;
+    const sb: StatusBarConfig = { ...config.statusbar };
+    if (Array.isArray(s.left)) sb.left = parseStatusbarSections(s.left, 'left', warnings);
+    if (Array.isArray(s.right)) sb.right = parseStatusbarSections(s.right, 'right', warnings);
+    if (typeof s.show_progress_bar === 'boolean') sb.showProgressBar = s.show_progress_bar;
+    config.statusbar = sb;
+  }
+
   return config;
+}
+
+function parseStatusbarSections(
+  value: unknown[],
+  field: string,
+  warnings: string[],
+): StatusBarSection[] {
+  const out: StatusBarSection[] = [];
+  for (const item of value) {
+    if (typeof item === 'string' && (STATUSBAR_SECTIONS as readonly string[]).includes(item)) {
+      out.push(item as StatusBarSection);
+    } else {
+      warnings.push(`Ignoring statusbar.${field} section "${String(item)}": unknown`);
+    }
+  }
+  return out;
 }
 
 function clampInt(
@@ -175,10 +222,17 @@ export function serializeConfig(config: Config): string {
     keybindings[key] = action;
   }
   const out: {
-    [key: string]: boolean | number | string | { [key: string]: boolean | number | string };
+    [key: string]:
+      | boolean
+      | number
+      | string
+      | Array<string>
+      | { [key: string]: boolean | number | string | Array<string> };
   } = {
     theme: config.theme,
     db_path: config.dbPath,
+    auto_theme: config.autoTheme,
+    mouse: config.mouse,
     keybindings,
     typography: {
       measure: config.typography.measure,
@@ -191,7 +245,11 @@ export function serializeConfig(config: Config): string {
     display: {
       simplified_mode: config.display.simplifiedMode,
       respect_publisher_css: config.display.respectPublisherCss,
-      show_progress_bar: config.display.showProgressBar,
+    },
+    statusbar: {
+      left: config.statusbar.left,
+      right: config.statusbar.right,
+      show_progress_bar: config.statusbar.showProgressBar,
     },
   };
   return stringifyTomlLib(out);

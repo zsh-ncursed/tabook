@@ -7,6 +7,7 @@ import {
   type XmlNode,
 } from '../formats/xml.js';
 import { ParseError } from '../utils/errors.js';
+import { decodeEntities } from '../utils/text.js';
 
 export interface OpenSearchDescription {
   shortName: string;
@@ -62,7 +63,11 @@ export function buildSearchUrl(desc: OpenSearchDescription, query: string): stri
 }
 
 export function expandTemplate(template: string, params: Record<string, string>): string {
-  return template.replace(/\{(\w+)\??\}/g, (match, name: string) => {
+  // The template comes from an XML attribute, where & in URLs is escaped as
+  // &amp; (real catalogs — e.g. Flibusta — do this). Decode before expansion
+  // so the built URL has proper query separators.
+  const decoded = decodeEntities(template);
+  return decoded.replace(/\{(\w+)\??\}/g, (match, name: string) => {
     const value = params[name];
     if (value !== undefined) return encodeURIComponent(value);
     const optional = match.endsWith('?}');

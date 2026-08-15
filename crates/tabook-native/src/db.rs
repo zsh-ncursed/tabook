@@ -5,7 +5,7 @@
 //! re-querying by path (race condition with UNIQUE constraint).
 
 use crate::model::{Author, BookMetadata, SeriesInfo};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use std::sync::Mutex;
 
 const SCHEMA_VERSION: i32 = 5;
@@ -104,12 +104,15 @@ impl LibraryDb {
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default();
         if !parent.is_empty() {
-            std::fs::create_dir_all(&parent).map_err(|e| format!("Cannot create dir {parent}: {e}"))?;
+            std::fs::create_dir_all(&parent)
+                .map_err(|e| format!("Cannot create dir {parent}: {e}"))?;
         }
         let conn = Connection::open(file_path)
             .map_err(|e| format!("Cannot open database at {file_path}: {e}"))?;
-        conn.pragma_update(None, "journal_mode", "WAL").map_err(|e| e.to_string())?;
-        conn.pragma_update(None, "foreign_keys", "ON").map_err(|e| e.to_string())?;
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(|e| e.to_string())?;
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .map_err(|e| e.to_string())?;
         let db = Self {
             conn: Mutex::new(conn),
             file_path: file_path.to_owned(),
@@ -178,7 +181,8 @@ impl LibraryDb {
                     book_id INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
                     opened_at TEXT NOT NULL DEFAULT (datetime('now'))
                 );",
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
         }
         if version < 2 {
             conn.execute_batch(
@@ -190,7 +194,8 @@ impl LibraryDb {
                     password TEXT,
                     created_at TEXT NOT NULL DEFAULT (datetime('now'))
                 );",
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
         }
         if version < 3 {
             conn.execute_batch(
@@ -199,7 +204,8 @@ impl LibraryDb {
                     path TEXT NOT NULL UNIQUE,
                     added_at TEXT NOT NULL DEFAULT (datetime('now'))
                 );",
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
             // ALTER TABLE has no IF NOT EXISTS; guard against a partially
             // applied migration or a rollback of user_version on a DB that
             // already has the column (mirrors the TS fallback's PRAGMA check).
@@ -214,8 +220,10 @@ impl LibraryDb {
                 conn.execute("ALTER TABLE books ADD COLUMN library_root TEXT", [])
                     .map_err(|e| e.to_string())?;
             }
-            conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_books_library_root ON books(library_root);")
-                .map_err(|e| e.to_string())?;
+            conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_books_library_root ON books(library_root);",
+            )
+            .map_err(|e| e.to_string())?;
         }
         if version < 4 {
             // ALTER TABLE library_folders ADD COLUMN last_scanned_at INTEGER
@@ -227,8 +235,11 @@ impl LibraryDb {
                 .filter_map(Result::ok)
                 .collect();
             if !cols.iter().any(|c| c == "last_scanned_at") {
-                conn.execute("ALTER TABLE library_folders ADD COLUMN last_scanned_at INTEGER", [])
-                    .map_err(|e| e.to_string())?;
+                conn.execute(
+                    "ALTER TABLE library_folders ADD COLUMN last_scanned_at INTEGER",
+                    [],
+                )
+                .map_err(|e| e.to_string())?;
             }
         }
         if version < 5 {
@@ -332,7 +343,12 @@ impl LibraryDb {
         Ok(row)
     }
 
-    pub fn list_books(&self, limit: Option<i32>, offset: i32, order_by: &str) -> Result<Vec<BookRecord>, String> {
+    pub fn list_books(
+        &self,
+        limit: Option<i32>,
+        offset: i32,
+        order_by: &str,
+    ) -> Result<Vec<BookRecord>, String> {
         let conn = self.conn.lock().unwrap();
         let order = match order_by {
             "opened" => "ORDER BY b.last_opened_at DESC NULLS LAST, b.title",
@@ -360,7 +376,9 @@ impl LibraryDb {
 
     pub fn remove_book(&self, id: i32) -> Result<bool, String> {
         let conn = self.conn.lock().unwrap();
-        let n = conn.execute("DELETE FROM books WHERE id = ?", params![id]).map_err(|e| e.to_string())?;
+        let n = conn
+            .execute("DELETE FROM books WHERE id = ?", params![id])
+            .map_err(|e| e.to_string())?;
         Ok(n > 0)
     }
 
@@ -449,13 +467,20 @@ impl LibraryDb {
 
     pub fn delete_bookmark(&self, id: i32) -> Result<bool, String> {
         let conn = self.conn.lock().unwrap();
-        let n = conn.execute("DELETE FROM bookmarks WHERE id = ?", params![id]).map_err(|e| e.to_string())?;
+        let n = conn
+            .execute("DELETE FROM bookmarks WHERE id = ?", params![id])
+            .map_err(|e| e.to_string())?;
         Ok(n > 0)
     }
 
     pub fn update_bookmark_label(&self, id: i32, label: &str) -> Result<bool, String> {
         let conn = self.conn.lock().unwrap();
-        let n = conn.execute("UPDATE bookmarks SET label = ? WHERE id = ?", params![label, id]).map_err(|e| e.to_string())?;
+        let n = conn
+            .execute(
+                "UPDATE bookmarks SET label = ? WHERE id = ?",
+                params![label, id],
+            )
+            .map_err(|e| e.to_string())?;
         Ok(n > 0)
     }
 
@@ -467,9 +492,13 @@ impl LibraryDb {
             "INSERT INTO history (book_id, opened_at) VALUES (?, datetime('now'))
              ON CONFLICT(book_id) DO UPDATE SET opened_at=excluded.opened_at",
             params![book_id],
-        ).map_err(|e| e.to_string())?;
-        conn.execute("UPDATE books SET last_opened_at = datetime('now') WHERE id = ?", params![book_id])
-            .map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE books SET last_opened_at = datetime('now') WHERE id = ?",
+            params![book_id],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -505,6 +534,21 @@ impl LibraryDb {
         Ok(rows)
     }
 
+    // Books currently being read (progress started but not finished), most
+    // recently touched first — the "continue reading" list.
+    pub fn list_continue_books(&self, limit: i32) -> Result<Vec<BookRecord>, String> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT b.*, p.position, p.percent FROM books b JOIN reading_progress p ON p.book_id = b.id WHERE p.percent > 0 AND p.percent < 100 ORDER BY p.updated_at DESC LIMIT ?")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![limit], row_to_book)
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        Ok(rows)
+    }
+
     // ---- Sessions ----
 
     pub fn start_session(&self, book_id: i32) -> Result<i32, String> {
@@ -512,7 +556,8 @@ impl LibraryDb {
         conn.execute(
             "INSERT INTO reading_sessions (book_id, started_at) VALUES (?, datetime('now'))",
             params![book_id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(conn.last_insert_rowid() as i32)
     }
 
@@ -521,7 +566,8 @@ impl LibraryDb {
         conn.execute(
             "UPDATE reading_sessions SET ended_at = datetime('now'), pages_read = ? WHERE id = ?",
             params![pages_read, session_id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -556,12 +602,19 @@ impl LibraryDb {
 
     // ---- OPDS Catalogs ----
 
-    pub fn add_catalog(&self, name: &str, url: &str, username: Option<&str>, password: Option<&str>) -> Result<i32, String> {
+    pub fn add_catalog(
+        &self,
+        name: &str,
+        url: &str,
+        username: Option<&str>,
+        password: Option<&str>,
+    ) -> Result<i32, String> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO opds_catalogs (name, url, username, password) VALUES (?, ?, ?, ?)",
             params![name, url, username, password],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(conn.last_insert_rowid() as i32)
     }
 
@@ -667,7 +720,8 @@ impl LibraryDb {
 
     pub fn remove_catalog(&self, id: i32) -> Result<(), String> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM opds_catalogs WHERE id = ?", params![id]).map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM opds_catalogs WHERE id = ?", params![id])
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -678,15 +732,24 @@ impl LibraryDb {
         conn.execute(
             "INSERT INTO library_folders (path) VALUES (?) ON CONFLICT(path) DO NOTHING",
             params![path],
-        ).map_err(|e| e.to_string())?;
-        let id: i32 = conn.query_row("SELECT id FROM library_folders WHERE path = ?", params![path], |r| r.get(0)).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
+        let id: i32 = conn
+            .query_row(
+                "SELECT id FROM library_folders WHERE path = ?",
+                params![path],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         Ok(id)
     }
 
     pub fn list_library_folders(&self) -> Result<Vec<LibraryFolderRecord>, String> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
-            .prepare("SELECT id, path, added_at, last_scanned_at FROM library_folders ORDER BY path")
+            .prepare(
+                "SELECT id, path, added_at, last_scanned_at FROM library_folders ORDER BY path",
+            )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
@@ -703,7 +766,10 @@ impl LibraryDb {
         Ok(rows)
     }
 
-    pub fn get_library_folder_by_path(&self, path: &str) -> Result<Option<LibraryFolderRecord>, String> {
+    pub fn get_library_folder_by_path(
+        &self,
+        path: &str,
+    ) -> Result<Option<LibraryFolderRecord>, String> {
         let conn = self.conn.lock().unwrap();
         let row = conn
             .query_row(
@@ -727,13 +793,16 @@ impl LibraryDb {
         conn.execute(
             "UPDATE library_folders SET last_scanned_at = ? WHERE id = ?",
             params![scanned_at_ms, id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub fn remove_library_folder(&self, id: i32) -> Result<bool, String> {
         let conn = self.conn.lock().unwrap();
-        let n = conn.execute("DELETE FROM library_folders WHERE id = ?", params![id]).map_err(|e| e.to_string())?;
+        let n = conn
+            .execute("DELETE FROM library_folders WHERE id = ?", params![id])
+            .map_err(|e| e.to_string())?;
         Ok(n > 0)
     }
 
@@ -757,14 +826,18 @@ impl LibraryDb {
         let conn = self.conn.lock().unwrap();
         let mut removed = 0i32;
         for p in paths {
-            removed += conn.execute("DELETE FROM books WHERE path = ?", params![p]).map_err(|e| e.to_string())? as i32;
+            removed += conn
+                .execute("DELETE FROM books WHERE path = ?", params![p])
+                .map_err(|e| e.to_string())? as i32;
         }
         Ok(removed)
     }
 
     pub fn remove_books_by_library_root(&self, root: &str) -> Result<i32, String> {
         let conn = self.conn.lock().unwrap();
-        let n = conn.execute("DELETE FROM books WHERE library_root = ?", params![root]).map_err(|e| e.to_string())?;
+        let n = conn
+            .execute("DELETE FROM books WHERE library_root = ?", params![root])
+            .map_err(|e| e.to_string())?;
         Ok(n as i32)
     }
 }
@@ -804,15 +877,23 @@ fn row_to_book(r: &rusqlite::Row) -> rusqlite::Result<BookRecord> {
             Author {
                 first_name: parts.first().map(|s| s.to_string()).unwrap_or_default(),
                 last_name: parts.get(1).map(|s| s.to_string()).unwrap_or_default(),
-                middle_name: parts.get(2).filter(|s| !s.is_empty()).map(|s| s.to_string()),
-                nickname: parts.get(3).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                middle_name: parts
+                    .get(2)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
+                nickname: parts
+                    .get(3)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
             }
         })
         .collect();
-    let series = series_name.filter(|n| !n.is_empty()).map(|name| SeriesInfo {
-        name,
-        number: series_number,
-    });
+    let series = series_name
+        .filter(|n| !n.is_empty())
+        .map(|name| SeriesInfo {
+            name,
+            number: series_number,
+        });
 
     Ok(BookRecord {
         id,
@@ -878,7 +959,16 @@ mod tests {
     #[test]
     fn add_and_get_book() {
         let db = test_db();
-        let id = db.add_book("/path/book.fb2", "book.fb2", "fb2", 1024, &sample_metadata(), None).unwrap();
+        let id = db
+            .add_book(
+                "/path/book.fb2",
+                "book.fb2",
+                "fb2",
+                1024,
+                &sample_metadata(),
+                None,
+            )
+            .unwrap();
         assert!(id > 0);
         let book = db.get_book(id).unwrap().unwrap();
         assert_eq!(book.title, "Test Book");
@@ -890,8 +980,26 @@ mod tests {
     #[test]
     fn add_book_upsert() {
         let db = test_db();
-        let id1 = db.add_book("/path/book.fb2", "book.fb2", "fb2", 1024, &sample_metadata(), None).unwrap();
-        let id2 = db.add_book("/path/book.fb2", "book.fb2", "fb2", 2048, &sample_metadata(), None).unwrap();
+        let id1 = db
+            .add_book(
+                "/path/book.fb2",
+                "book.fb2",
+                "fb2",
+                1024,
+                &sample_metadata(),
+                None,
+            )
+            .unwrap();
+        let id2 = db
+            .add_book(
+                "/path/book.fb2",
+                "book.fb2",
+                "fb2",
+                2048,
+                &sample_metadata(),
+                None,
+            )
+            .unwrap();
         // Upsert: same path → same id, size updated
         assert_eq!(id1, id2);
         let book = db.get_book(id1).unwrap().unwrap();
@@ -901,8 +1009,10 @@ mod tests {
     #[test]
     fn list_books() {
         let db = test_db();
-        db.add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None).unwrap();
-        db.add_book("/b.epub", "b.epub", "epub", 200, &sample_metadata(), None).unwrap();
+        db.add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None)
+            .unwrap();
+        db.add_book("/b.epub", "b.epub", "epub", 200, &sample_metadata(), None)
+            .unwrap();
         let books = db.list_books(None, 0, "title").unwrap();
         assert_eq!(books.len(), 2);
     }
@@ -910,7 +1020,9 @@ mod tests {
     #[test]
     fn remove_book() {
         let db = test_db();
-        let id = db.add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None).unwrap();
+        let id = db
+            .add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None)
+            .unwrap();
         assert!(db.remove_book(id).unwrap());
         assert!(db.get_book(id).unwrap().is_none());
     }
@@ -918,7 +1030,9 @@ mod tests {
     #[test]
     fn progress() {
         let db = test_db();
-        let id = db.add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None).unwrap();
+        let id = db
+            .add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None)
+            .unwrap();
         db.set_progress(id, 500, 50.0).unwrap();
         let p = db.get_progress(id).unwrap().unwrap();
         assert_eq!(p.position, 500);
@@ -928,7 +1042,9 @@ mod tests {
     #[test]
     fn bookmarks() {
         let db = test_db();
-        let id = db.add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None).unwrap();
+        let id = db
+            .add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None)
+            .unwrap();
         let bm_id = db.add_bookmark(id, 100, "label").unwrap();
         let bms = db.list_bookmarks(id).unwrap();
         assert_eq!(bms.len(), 1);
@@ -941,7 +1057,9 @@ mod tests {
     fn get_bookmark() {
         let db = test_db();
         assert!(db.get_bookmark(1).unwrap().is_none());
-        let id = db.add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None).unwrap();
+        let id = db
+            .add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None)
+            .unwrap();
         let bm_id = db.add_bookmark(id, 100, "label").unwrap();
         let bm = db.get_bookmark(bm_id).unwrap().unwrap();
         assert_eq!(bm.label, "label");
@@ -951,7 +1069,9 @@ mod tests {
     #[test]
     fn history() {
         let db = test_db();
-        let id = db.add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None).unwrap();
+        let id = db
+            .add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None)
+            .unwrap();
         db.record_open(id).unwrap();
         let h = db.list_history(10).unwrap();
         assert_eq!(h.len(), 1);
@@ -961,7 +1081,9 @@ mod tests {
     #[test]
     fn recent_books() {
         let db = test_db();
-        let id = db.add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None).unwrap();
+        let id = db
+            .add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None)
+            .unwrap();
         db.record_open(id).unwrap();
         let recent = db.list_recent_books(10).unwrap();
         assert_eq!(recent.len(), 1);
@@ -969,9 +1091,40 @@ mod tests {
     }
 
     #[test]
+    fn continue_books_excludes_untouched_and_finished() {
+        let db = test_db();
+        let a = db
+            .add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None)
+            .unwrap();
+        let b = db
+            .add_book("/b.fb2", "b.fb2", "fb2", 100, &sample_metadata(), None)
+            .unwrap();
+        let c = db
+            .add_book("/c.fb2", "c.fb2", "fb2", 100, &sample_metadata(), None)
+            .unwrap();
+        let d = db
+            .add_book("/d.fb2", "d.fb2", "fb2", 100, &sample_metadata(), None)
+            .unwrap();
+        db.set_progress(a, 100, 10.0).unwrap();
+        db.set_progress(b, 200, 50.0).unwrap();
+        db.set_progress(c, 999, 100.0).unwrap();
+        db.set_progress(d, 0, 0.0).unwrap();
+        db.set_progress(a, 150, 20.0).unwrap(); // bump a above b
+        let ids: Vec<i32> = db
+            .list_continue_books(10)
+            .unwrap()
+            .iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(ids, vec![a, b]);
+    }
+
+    #[test]
     fn sessions() {
         let db = test_db();
-        let id = db.add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None).unwrap();
+        let id = db
+            .add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None)
+            .unwrap();
         let sid = db.start_session(id).unwrap();
         db.end_session(sid, 5).unwrap();
         let stats = db.get_stats(id).unwrap();
@@ -982,8 +1135,15 @@ mod tests {
     #[test]
     fn catalogs() {
         let db = test_db();
-        db.add_catalog("Gutenberg", "https://m.gutenberg.org/ebooks.opds/", None, None).unwrap();
-        db.add_catalog("Flibusta", "https://flibusta.is/opds", None, None).unwrap();
+        db.add_catalog(
+            "Gutenberg",
+            "https://m.gutenberg.org/ebooks.opds/",
+            None,
+            None,
+        )
+        .unwrap();
+        db.add_catalog("Flibusta", "https://flibusta.is/opds", None, None)
+            .unwrap();
         let cats = db.list_catalogs().unwrap();
         assert_eq!(cats.len(), 2);
     }
@@ -992,7 +1152,14 @@ mod tests {
     fn get_catalog_and_by_name() {
         let db = test_db();
         assert!(db.get_catalog(1).unwrap().is_none());
-        let id = db.add_catalog("Gutenberg", "https://m.gutenberg.org/ebooks.opds/", None, None).unwrap();
+        let id = db
+            .add_catalog(
+                "Gutenberg",
+                "https://m.gutenberg.org/ebooks.opds/",
+                None,
+                None,
+            )
+            .unwrap();
         let by_id = db.get_catalog(id).unwrap().unwrap();
         assert_eq!(by_id.name, "Gutenberg");
         let by_name = db.get_catalog_by_name("Gutenberg").unwrap().unwrap();
@@ -1003,16 +1170,20 @@ mod tests {
     #[test]
     fn update_catalog_partial() {
         let db = test_db();
-        let id = db.add_catalog("Old", "https://old/opds", Some("u"), Some("p")).unwrap();
+        let id = db
+            .add_catalog("Old", "https://old/opds", Some("u"), Some("p"))
+            .unwrap();
         // Partial update: only name changes, credentials stay.
-        db.update_catalog(id, Some("New"), None, None, None).unwrap();
+        db.update_catalog(id, Some("New"), None, None, None)
+            .unwrap();
         let cat = db.get_catalog(id).unwrap().unwrap();
         assert_eq!(cat.name, "New");
         assert_eq!(cat.url, "https://old/opds");
         assert_eq!(cat.username.as_deref(), Some("u"));
         assert_eq!(cat.password.as_deref(), Some("p"));
         // Credentials update only.
-        db.update_catalog(id, None, None, Some("u2"), Some("p2")).unwrap();
+        db.update_catalog(id, None, None, Some("u2"), Some("p2"))
+            .unwrap();
         let cat = db.get_catalog(id).unwrap().unwrap();
         assert_eq!(cat.username.as_deref(), Some("u2"));
         assert_eq!(cat.password.as_deref(), Some("p2"));
@@ -1031,15 +1202,34 @@ mod tests {
         assert_eq!(folders.len(), 1);
         assert_eq!(folders[0].id, id);
         db.set_folder_scanned_at(id, 1234567890).unwrap();
-        let folder = db.get_library_folder_by_path("/home/user/books").unwrap().unwrap();
+        let folder = db
+            .get_library_folder_by_path("/home/user/books")
+            .unwrap()
+            .unwrap();
         assert_eq!(folder.last_scanned_at, Some(1234567890));
     }
 
     #[test]
     fn remove_books_by_root() {
         let db = test_db();
-        db.add_book("/books/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), Some("/books")).unwrap();
-        db.add_book("/books/b.fb2", "b.fb2", "fb2", 100, &sample_metadata(), Some("/books")).unwrap();
+        db.add_book(
+            "/books/a.fb2",
+            "a.fb2",
+            "fb2",
+            100,
+            &sample_metadata(),
+            Some("/books"),
+        )
+        .unwrap();
+        db.add_book(
+            "/books/b.fb2",
+            "b.fb2",
+            "fb2",
+            100,
+            &sample_metadata(),
+            Some("/books"),
+        )
+        .unwrap();
         let n = db.remove_books_by_library_root("/books").unwrap();
         assert_eq!(n, 2);
     }
@@ -1047,9 +1237,27 @@ mod tests {
     #[test]
     fn remove_books_by_paths() {
         let db = test_db();
-        db.add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), Some("/books")).unwrap();
-        db.add_book("/b.fb2", "b.fb2", "fb2", 100, &sample_metadata(), Some("/books")).unwrap();
-        let n = db.remove_books_by_paths(&["/a.fb2".to_owned(), "/b.fb2".to_owned()]).unwrap();
+        db.add_book(
+            "/a.fb2",
+            "a.fb2",
+            "fb2",
+            100,
+            &sample_metadata(),
+            Some("/books"),
+        )
+        .unwrap();
+        db.add_book(
+            "/b.fb2",
+            "b.fb2",
+            "fb2",
+            100,
+            &sample_metadata(),
+            Some("/books"),
+        )
+        .unwrap();
+        let n = db
+            .remove_books_by_paths(&["/a.fb2".to_owned(), "/b.fb2".to_owned()])
+            .unwrap();
         assert_eq!(n, 2);
     }
 }

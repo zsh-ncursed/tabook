@@ -86,7 +86,10 @@ fn parses_body_blocks() {
     // Chapter One heading
     let ch1 = result.blocks.iter().find(|b| {
         b.r#type == "heading"
-            && b.children.as_deref().map(|c| c.iter().any(|i| i.text.as_deref() == Some("Chapter One"))).unwrap_or(false)
+            && b.children
+                .as_deref()
+                .map(|c| c.iter().any(|i| i.text.as_deref() == Some("Chapter One")))
+                .unwrap_or(false)
     });
     assert!(ch1.is_some());
 }
@@ -184,4 +187,33 @@ fn parse_fb2_zip() {
 fn rejects_non_fb2() {
     let result = parse_fb2_buffer_inner(b"<html>not fb2</html>", "/test.xml");
     assert!(result.is_err());
+}
+
+#[test]
+fn zip_metadata_fallback_uses_basename() {
+    // Regression: the metadata-only zip path used to strip the extension off
+    // the FULL archive path, so a zip with the fb2 in a subdirectory got
+    // "subdir/book" as the fallback title for books without <book-title>.
+    // The full-parse path already used the entry basename (parity:
+    // src/parity/fb2.parity.test.ts).
+    use std::io::Write;
+    let minimal = r##"<?xml version="1.0" encoding="UTF-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0">
+  <description><title-info>
+    <author><first-name>Ann</first-name><last-name>Lee</last-name></author>
+  </title-info></description>
+  <body><section><title><p>Chapter</p></title><p>Body text.</p></section></body>
+</FictionBook>"##;
+    let mut buf = Vec::new();
+    {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+        let opts = zip::write::SimpleFileOptions::default();
+        zip.start_file("subdir/book.fb2", opts).unwrap();
+        zip.write_all(minimal.as_bytes()).unwrap();
+        zip.finish().unwrap();
+    }
+    let metadata = parse_fb2_metadata_inner(&buf, "/test.fb2.zip").unwrap();
+    assert_eq!(metadata.title, "book");
+    let book = parse_fb2_buffer_inner(&buf, "/test.fb2.zip").unwrap();
+    assert_eq!(book.metadata.title, "book");
 }

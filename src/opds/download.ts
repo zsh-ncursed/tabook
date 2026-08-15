@@ -1,7 +1,7 @@
 import { join, basename as pathBasename } from 'node:path';
 import { writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { ensureDir, downloadsDir } from '../utils/paths.js';
-import { downloadBook, type OpdsAuth } from './client.js';
+import { downloadBook, type OpdsAuth, type DownloadProgress } from './client.js';
 import { parseBookFile } from '../formats/index.js';
 import type { LibraryDb } from '../db/db.js';
 import type { OpdsEntry } from './model.js';
@@ -59,7 +59,13 @@ function uniqueFilePath(dir: string, basename: string): string {
 
 export async function downloadAndSave(
   entry: OpdsEntry,
-  opts: { auth?: OpdsAuth; db: LibraryDb; base?: string },
+  opts: {
+    auth?: OpdsAuth;
+    db: LibraryDb;
+    base?: string;
+    signal?: AbortSignal;
+    onProgress?: (p: DownloadProgress) => void;
+  },
 ): Promise<DownloadResult> {
   const link = pickAcquisitionLink(entry.acquisitionLinks);
   if (!link) {
@@ -69,7 +75,12 @@ export async function downloadAndSave(
     throw new Error(`Acquisition link has no MIME type for "${entry.title}"`);
   }
 
-  const { data } = await downloadBook(link.href, { auth: opts.auth, base: opts.base });
+  const { data } = await downloadBook(link.href, {
+    auth: opts.auth,
+    base: opts.base,
+    signal: opts.signal,
+    onProgress: opts.onProgress,
+  });
   const ext = mimeToExtension(link.type);
   const basename = sanitizeFilename(entry.title, ext) + ext;
   const dir = downloadsDir();

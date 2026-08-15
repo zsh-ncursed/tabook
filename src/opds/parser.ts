@@ -35,6 +35,13 @@ export function parseOpdsAtom(xml: string): OpdsFeed {
     }
   }
 
+  return parseOpdsAtomTs(xml);
+}
+
+// Pure-TS OPDS parser, used when the native module is unavailable. Exported
+// so parity tests can compare it against native.parseOpdsAtom directly — the
+// two must produce identical feeds (see src/parity/opds.parity.test.ts).
+export function parseOpdsAtomTs(xml: string): OpdsFeed {
   let root: XmlNode[];
   try {
     root = parseXml(xml);

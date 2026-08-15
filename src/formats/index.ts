@@ -22,7 +22,13 @@ export function detectFormat(data: Uint8Array, name: string): 'fb2' | 'epub' {
     }
     return result as 'fb2' | 'epub';
   }
-  // Fallback: TS implementation
+  return detectFormatTs(data, name);
+}
+
+// Pure-TS format detection, used when the native module is unavailable.
+// Exported so parity tests can compare it against native.detectFormat
+// directly (see src/parity/detect.parity.test.ts).
+export function detectFormatTs(data: Uint8Array, name: string): 'fb2' | 'epub' {
   const ext = fileExtension(name);
   const lowerName = name.toLowerCase();
   if (ext === 'fb2' || lowerName.endsWith('.fb2.zip')) return 'fb2';

@@ -407,6 +407,10 @@ export function parseFb2Buffer(data: Uint8Array, filePath: string): ParsedBook {
   return buildBookFromResult(
     parseFb2Text(decodeXmlBuffer(data), filePath, path.basename(filePath)),
     filePath,
+    // The zip path passes data.length too; the Rust core always reports the
+    // buffer length as size. Keeping the plain path at the default 0 made the
+    // two implementations diverge (parity: src/parity/fb2.parity.test.ts).
+    data.length,
   );
 }
 

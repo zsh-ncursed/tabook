@@ -24,6 +24,14 @@ theme = "dracula"
 # Empty means the default ($XDG_CONFIG_HOME/tabook/library.db).
 db_path = ""
 
+# Match the theme to the terminal background at startup: a light background
+# switches to the theme's `-light` variant (OSC 11 query). Default: false.
+auto_theme = false
+
+# SGR mouse reporting (click a row to select it, click again to open).
+# Default: true. Disable if you prefer plain text selection in the terminal.
+mouse = true
+
 [keybindings]
 # Map key names to actions. See "Keybindings" below.
 j = "move_cursor_down"
@@ -39,7 +47,11 @@ justify = false         # justify text to the full measure
 [display]
 simplified_mode = false      # flatten lists/poems/tables into paragraphs
 respect_publisher_css = true # honor publisher CSS from EPUBs
-show_progress_bar = true     # show the progress bar in the status bar
+
+[statusbar]
+left = ["title"]                 # status bar sections on the left
+right = ["percent", "page", "search", "hint", "downloads"]  # status bar sections on the right
+show_progress_bar = true     # show the progress bar (else percent shows as text)
 ```
 
 ### `theme`
@@ -53,6 +65,23 @@ the "unknown theme" warning, so a future custom-theme mechanism can hook in.
 Path to the SQLite database that stores the library (books, progress,
 bookmarks, reading sessions, history). A leading `~` is expanded. When empty,
 `$XDG_CONFIG_HOME/tabook/library.db` is used.
+
+### `auto_theme`
+
+When `true`, tabook queries the terminal background color over **OSC 11** at
+startup. A dark background keeps the configured `theme`; a light background
+switches to its `-light` variant (e.g. `github` → `github-light`, `gruvbox` →
+`gruvbox-light`) or to `github-light` when no variant exists. An explicit
+`--theme <name>` on the command line always wins. Terminals that don't answer
+the query are left on the configured theme.
+
+### `mouse`
+
+When `true` (default), tabook enables **SGR mouse reporting** (the same
+protocol vim/less/htop use): a left click on a list row moves the cursor
+there, and a second click on the same row activates it (open the book,
+catalog, subsection or queue entry). Set to `false` to restore plain text
+selection in the terminal.
 
 ### `[keybindings]`
 
@@ -125,7 +154,33 @@ are ignored with a warning.
 | ----------------------- | ------- | ------------------------------------------------ |
 | `simplified_mode`       | `false` | Flatten lists/poems/tables into plain paragraphs |
 | `respect_publisher_css` | `true`  | Honor publisher CSS from EPUB documents          |
-| `show_progress_bar`     | `true`  | Show the reading progress bar in the status bar  |
+
+### `[statusbar]`
+
+Controls what the status bar shows and on which side. Each section renders
+only when the current view has data for it (e.g. `page` appears only while
+reading), so one config works for every view.
+
+| Key                 | Default                                              | Meaning                                                            |
+| ------------------- | ---------------------------------------------------- | ------------------------------------------------------------------ |
+| `left`              | `["title"]`                                          | Sections rendered on the left side                                 |
+| `right`             | `["percent", "page", "search", "hint", "downloads"]` | Sections rendered on the right side                                |
+| `show_progress_bar` | `true`                                               | Show the reading progress bar; when off, `percent` renders as text |
+
+Available sections:
+
+| Section     | Meaning                                           |
+| ----------- | ------------------------------------------------- |
+| `title`     | Current book title / catalog name                 |
+| `page`      | Current page and total pages (reader only)        |
+| `percent`   | Reading progress percentage (reader only)         |
+| `search`    | Active in-book search query                       |
+| `hint`      | Context-aware key hints for the current view      |
+| `downloads` | Active OPDS download progress (e.g. `↓ 45% Book`) |
+
+Unknown section names are ignored with a warning. The legacy
+`display.show_progress_bar` key is still accepted as an alias for
+`statusbar.show_progress_bar`.
 
 ## CLI overrides
 

@@ -33,6 +33,7 @@ export type KeyAction =
   | 'toggle_justify'
   | 'toggle_wide'
   | 'toggle_recent'
+  | 'toggle_continue'
   | 'zoom_image';
 
 export const KEY_ACTIONS: readonly KeyAction[] = [
@@ -70,6 +71,7 @@ export const KEY_ACTIONS: readonly KeyAction[] = [
   'toggle_justify',
   'toggle_wide',
   'toggle_recent',
+  'toggle_continue',
   'zoom_image',
 ];
 
@@ -78,6 +80,12 @@ export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
   k: 'move_cursor_up',
   h: 'move_cursor_left',
   l: 'move_cursor_right',
+  // Arrow keys are bound by default so they behave identically in every view
+  // and modal (they used to work only in hardcoded modal handlers).
+  up: 'move_cursor_up',
+  down: 'move_cursor_down',
+  left: 'move_cursor_left',
+  right: 'move_cursor_right',
   gg: 'go_to_start',
   G: 'go_to_end',
   '/': 'search',
@@ -90,6 +98,7 @@ export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
   b: 'add_bookmark',
   B: 'list_bookmarks',
   R: 'toggle_recent',
+  C: 'toggle_continue',
   J: 'toggle_justify',
   W: 'toggle_wide',
   d: 'delete_from_library',
@@ -122,21 +131,47 @@ export interface TypographyConfig {
 export interface DisplayConfig {
   simplifiedMode: boolean;
   respectPublisherCss: boolean;
+}
+
+// Sections that can appear in the status bar. Each view provides its own data
+// (title, page, percent, ...); the config decides which sections are rendered
+// and on which side.
+export type StatusBarSection = 'title' | 'page' | 'percent' | 'search' | 'hint' | 'downloads';
+
+export const STATUSBAR_SECTIONS: readonly StatusBarSection[] = [
+  'title',
+  'page',
+  'percent',
+  'search',
+  'hint',
+  'downloads',
+];
+
+export interface StatusBarConfig {
+  left: StatusBarSection[];
+  right: StatusBarSection[];
   showProgressBar: boolean;
 }
 
 export interface Config {
   theme: string;
   dbPath: string;
+  /** Pick a light/dark theme from the terminal background color (OSC 11) at startup. */
+  autoTheme: boolean;
+  /** Enable SGR mouse reporting (click selects rows in lists). */
+  mouse: boolean;
   keybindings: Record<string, KeyAction>;
   typography: TypographyConfig;
   display: DisplayConfig;
+  statusbar: StatusBarConfig;
 }
 
 export function defaultConfig(): Config {
   return {
     theme: 'dracula',
     dbPath: '',
+    autoTheme: false,
+    mouse: true,
     keybindings: { ...DEFAULT_KEYBINDINGS },
     typography: {
       measure: 80,
@@ -149,6 +184,10 @@ export function defaultConfig(): Config {
     display: {
       simplifiedMode: false,
       respectPublisherCss: true,
+    },
+    statusbar: {
+      left: ['title'],
+      right: ['percent', 'page', 'search', 'hint', 'downloads'],
       showProgressBar: true,
     },
   };

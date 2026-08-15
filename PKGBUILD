@@ -2,7 +2,7 @@
 # vim: ft=sh:
 
 pkgname=tabook
-pkgver=0.3.3
+pkgver=0.3.4
 pkgrel=1
 pkgdesc='Terminal-based e-book reader for FB2 and EPUB formats'
 arch=('x86_64' 'aarch64')
@@ -37,6 +37,11 @@ package() {
 exec node /usr/lib/${pkgname}/tabook.bundle.mjs "\$@"
 EOF
   chmod 755 "${pkgdir}/usr/bin/tabook"
+
+  # Man page + shell completions (generated into the tarball at release time)
+  install -Dm644 "${srcdir}/man/tabook.1" "${pkgdir}/usr/share/man/man1/tabook.1"
+  install -Dm644 "${srcdir}/completions/tabook.bash" "${pkgdir}/usr/share/bash-completion/completions/tabook"
+  install -Dm644 "${srcdir}/completions/_tabook" "${pkgdir}/usr/share/zsh/site-functions/_tabook"
 
   # License
   install -Dm644 "${pkgdir}/usr/lib/${pkgname}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE" 2>/dev/null || true

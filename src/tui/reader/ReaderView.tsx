@@ -329,20 +329,20 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       return;
     }
 
-    // Info modal: Esc closes, ? opens help.
+    // Info modal: back closes, help opens — via the configurable keymap.
     if (currentMode === 'info') {
-      if (keyName === 'escape') closeModal('reading');
-      else if (keyName === '?') onHelp();
+      const action = resolver.feed(keyName);
+      if (action === 'back') closeModal('reading');
+      else if (action === 'help') onHelp();
       return;
     }
 
-    // Zoomed image: Esc (or the zoom key again) returns to reading; the
+    // Zoomed image: back (or the zoom key again) returns to reading; the
     // overlay re-renders the normal page placements in the reading-mode
-    // effect. The toggle works under any binding, not just the default 'z'.
+    // effect. The toggle works under any binding.
     if (currentMode === 'zoom') {
-      if (keyName === 'escape' || resolver.resolve(keyName) === 'zoom_image') {
-        closeModal('reading');
-      }
+      const action = resolver.feed(keyName);
+      if (action === 'back' || action === 'zoom_image') closeModal('reading');
       return;
     }
 
@@ -379,30 +379,47 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         setListCursor(0);
         setMode('reading');
       };
-      switch (keyName) {
-        case 'escape':
-          setListCursor(0);
-          if (currentMode === 'toc') setTocFilter('');
-          closeModal('reading');
+      const closeToc = (): void => {
+        setListCursor(0);
+        if (currentMode === 'toc') setTocFilter('');
+        closeModal('reading');
+      };
+      // Modal verbs without a KeyAction (shown in the modal footer / Help):
+      // d/x delete a bookmark, e edits its label. Everything else — cursor
+      // moves, go_to_start/end, select, back, search, help — resolves through
+      // the configurable keymap, so rebinds apply inside modals too.
+      if (currentMode === 'bookmarks' && (keyName === 'd' || keyName === 'x') && count > 0) {
+        db.deleteBookmark(Number(items[listCursor]!.id));
+        setBookmarks(loadBookmarks());
+        notify('Bookmark deleted');
+        return;
+      }
+      if (currentMode === 'bookmarks' && keyName === 'e' && count > 0) {
+        setEditBookmarkId(Number(items[listCursor]!.id));
+        setMode('bookmark-edit');
+        return;
+      }
+      const action = resolver.feed(keyName);
+      switch (action) {
+        case 'back':
+          closeToc();
           return;
-        case 'j':
-        case 'down':
+        case 'move_cursor_down':
           setListCursor((c) => Math.min(count - 1, c + 1));
           return;
-        case 'k':
-        case 'up':
+        case 'move_cursor_up':
           setListCursor((c) => Math.max(0, c - 1));
           return;
-        case 'gg':
+        case 'go_to_start':
           setListCursor(0);
           return;
-        case 'G':
+        case 'go_to_end':
           setListCursor(count - 1);
           return;
-        case 'space':
-          // Space on a chapter that contains subheadings expands/collapses its
-          // subheading list; on any other row (or in the bookmarks modal) it
-          // falls through to the same jump as Enter.
+        case 'page_down':
+          // space (the default page_down binding) on a chapter that contains
+          // subheadings expands/collapses its subheading list; on any other
+          // row (or in the bookmarks modal) it falls through to the jump.
           if (currentMode === 'toc' && count > 0) {
             const item = tocItems[listCursor];
             if (item && item.indent === 0 && item.underline) {
@@ -415,34 +432,20 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
               return;
             }
           }
-          if (count > 0) {
-            jumpToItem(items[listCursor]!);
-          }
+          if (count > 0) jumpToItem(items[listCursor]!);
           return;
-        case 'enter':
-          if (count > 0) {
-            jumpToItem(items[listCursor]!);
-          }
+        case 'select':
+          if (count > 0) jumpToItem(items[listCursor]!);
           return;
-        case 'd':
-        case 'x':
-          if (currentMode === 'bookmarks' && count > 0) {
-            db.deleteBookmark(Number(items[listCursor]!.id));
-            setBookmarks(loadBookmarks());
-            notify('Bookmark deleted');
-          }
-          return;
-        case 'e':
-          if (currentMode === 'bookmarks' && count > 0) {
-            setEditBookmarkId(Number(items[listCursor]!.id));
-            setMode('bookmark-edit');
-          }
-          return;
-        case '/':
+        case 'search':
           if (currentMode === 'toc') setMode('toc-filter');
           return;
-        case '?':
+        case 'help':
           onHelp();
+          return;
+        case 'quit':
+          // Vim-like: q closes the modal instead of quitting the app.
+          closeToc();
           return;
         default:
           return;
@@ -582,15 +585,14 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     .filter(Boolean)
     .join(' · ');
 
-  const statusLeft = truncate(metadata.title, 30);
-  const statusRight = [
-    config.display.showProgressBar ? '' : `${session.percent()}%`,
-    `p.${session.pageNumber + 1}/${session.totalPages()}`,
-    searchState.query ? `search "${truncate(searchState.query, 20)}"` : '',
-    readerHint(mode),
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const statusData = {
+    title: truncate(metadata.title, 30),
+    page: session.pageNumber + 1,
+    totalPages: session.totalPages(),
+    percent: session.percent(),
+    search: searchState.query ? `search "${truncate(searchState.query, 20)}"` : undefined,
+    hint: readerHint(mode),
+  };
 
   return (
     <Box flexDirection="column" width="100%">
@@ -751,12 +753,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
 
       {mode === 'info' ? <InfoModal session={session} db={db} theme={theme} /> : null}
 
-      <StatusBar
-        theme={theme}
-        left={statusLeft}
-        right={statusRight}
-        progress={config.display.showProgressBar ? session.percent() : undefined}
-      />
+      <StatusBar theme={theme} statusbar={config.statusbar} data={statusData} />
     </Box>
   );
 }

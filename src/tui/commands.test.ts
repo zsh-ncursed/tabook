@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validCommandPrefixLength, COMMANDS } from './commands.js';
+import { validCommandPrefixLength, COMMANDS, COMMAND_NAMES, completeCommand } from './commands.js';
 
 describe('validCommandPrefixLength', () => {
   it('returns 0 for empty input', () => {
@@ -53,11 +53,46 @@ describe('validCommandPrefixLength', () => {
   });
 });
 
-describe('COMMANDS', () => {
+describe('COMMANDS registry', () => {
   it('contains the expected core commands', () => {
-    expect(COMMANDS).toContain('opds');
-    expect(COMMANDS).toContain('theme');
-    expect(COMMANDS).toContain('q');
-    expect(COMMANDS).toContain('library');
+    expect(COMMAND_NAMES).toContain('opds');
+    expect(COMMAND_NAMES).toContain('theme');
+    expect(COMMAND_NAMES).toContain('q');
+    expect(COMMAND_NAMES).toContain('library');
+  });
+
+  it('exposes usage + desc for every command for :help', () => {
+    for (const def of COMMANDS) {
+      expect(def.usage).toMatch(/^:/);
+      expect(def.desc.length).toBeGreaterThan(0);
+      expect(def.screens.length).toBeGreaterThan(0);
+      expect(def.names.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('completeCommand', () => {
+  const themeNames = () => ['dracula', 'solarized'];
+
+  it('completes a unique command name', () => {
+    expect(completeCommand(':ope', themeNames)).toBe(':open ');
+  });
+
+  it('returns null when several commands match', () => {
+    expect(completeCommand(':s', themeNames)).toBeNull();
+  });
+
+  it('completes opds/library subcommands', () => {
+    expect(completeCommand(':opds re', themeNames)).toBe(':opds remove ');
+    expect(completeCommand(':library sc', themeNames)).toBe(':library scan ');
+  });
+
+  it('completes theme names', () => {
+    expect(completeCommand(':theme dra', themeNames)).toBe(':theme dracula');
+  });
+
+  it('returns null for empty or unknown input', () => {
+    expect(completeCommand('', themeNames)).toBeNull();
+    expect(completeCommand(':zzz', themeNames)).toBeNull();
   });
 });

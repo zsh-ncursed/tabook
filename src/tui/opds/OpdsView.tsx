@@ -3,19 +3,20 @@ import { Box, Text, type Key } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { Config } from '../../config/defaults.js';
 import type { LibraryDb, CatalogRecord } from '../../db/db.js';
-import { resolveKeyName } from '../keymap.js';
+import { createActionResolver, resolveKeyName } from '../keymap.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TextPrompt } from '../components/TextPrompt.js';
 import { Spinner } from '../components/Spinner.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { useInputDispatch } from '../useInputDispatch.js';
+import { useMouseClicks } from '../mouse.js';
 import { forceRedraw } from '../screenRefresh.js';
 import { truncateW } from '../../utils/text.js';
 import { fetchFeed, fetchOpenSearch, catalogAuth, OpdsError } from '../../opds/client.js';
-import { downloadAndSave } from '../../opds/download.js';
 import { parseOpenSearch, buildSearchUrl } from '../../opds/opensearch.js';
 import type { OpdsFeed, OpdsEntry, OpdsFacet } from '../../opds/model.js';
 import { pickAcquisitionLink } from '../../opds/model.js';
+import { opdsDownloadQueue, type DownloadJob } from '../../opds/downloadQueue.js';
 
 export interface OpdsViewProps {
   db: LibraryDb;
@@ -35,6 +36,7 @@ type Mode =
   | 'loading'
   | 'error'
   | 'entry-detail'
+  | 'downloads'
   | 'auth-username'
   | 'auth-password';
 
@@ -45,8 +47,21 @@ interface FeedHistoryEntry {
 }
 
 export function OpdsView(props: OpdsViewProps): React.JSX.Element {
-  const { db, theme, notify, onExit, onHelp, onOpenDownloaded, inputDisabled = false } = props;
+  const {
+    db,
+    config,
+    theme,
+    notify,
+    onExit,
+    onHelp,
+    onOpenDownloaded,
+    inputDisabled = false,
+  } = props;
   const [width, height] = useTerminalSize();
+  // Navigation keys resolve through the configurable keymap like every other
+  // view; only feed-specific verbs (d download, n next page, c catalogs, u
+  // back) stay on fixed keys — they have no KeyAction.
+  const resolver = useMemo(() => createActionResolver(config), [config]);
   const [mode, setMode] = useState<Mode>('catalog-list');
   const [catalogs, setCatalogs] = useState<CatalogRecord[]>([]);
   const [catalogCursor, setCatalogCursor] = useState(0);
@@ -56,8 +71,17 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   const [scrollOffset, setScrollOffset] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
   const [selectedEntry, setSelectedEntry] = useState<OpdsEntry | null>(null);
-  const [downloading, setDownloading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  // Re-render whenever the shared download queue changes (progress/status).
+  const [, setQueueTick] = useState(0);
+  const [downloadsCursor, setDownloadsCursor] = useState(0);
+  const [downloadsReturn, setDownloadsReturn] = useState<Mode>('browsing');
+  // OpenSearch discovery: sub-feeds often omit the rel="search" link while
+  // the catalog root carries it. Captured from the first (root) feed of the
+  // session so `/` keeps working deep inside a catalog.
+  const [rootSearch, setRootSearch] = useState<{ href: string; base?: string } | undefined>(
+    undefined,
+  );
   const [authCatalog, setAuthCatalog] = useState<CatalogRecord | null>(null);
   const [authUsername, setAuthUsername] = useState('');
   const [authUrl, setAuthUrl] = useState('');
@@ -70,8 +94,29 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
     loadCatalogs();
   }, [loadCatalogs, refreshTrigger]);
 
+  useEffect(() => {
+    return opdsDownloadQueue.subscribe(() => setQueueTick((t) => t + 1));
+  }, []);
+
   const currentFeedEntry = feedStack.length > 0 ? feedStack[feedStack.length - 1] : null;
   const currentFeed = currentFeedEntry?.feed ?? null;
+
+  // Live view of the shared background download queue.
+  const queueJobs = opdsDownloadQueue.snapshot();
+  const queueActive = opdsDownloadQueue.active;
+  const currentJob = opdsDownloadQueue.current;
+  const pendingCount = opdsDownloadQueue.pendingCount;
+
+  const downloadsLabel = (() => {
+    const cur = currentJob;
+    if (cur) {
+      const pct =
+        cur.total && cur.total > 0 ? `${Math.floor((cur.received / cur.total) * 100)}% ` : '';
+      const suffix = pendingCount > 0 ? ` (+${pendingCount})` : '';
+      return `↓ ${pct}${truncateW(cur.title, 22)}${suffix}`;
+    }
+    return pendingCount > 0 ? `↓ ${pendingCount} queued` : undefined;
+  })();
 
   // Flatten facets + entries into displayable rows
   const rows = useMemo(() => {
@@ -109,6 +154,14 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
     }
   }, [rows.length, cursor]);
 
+  useEffect(() => {
+    if (downloadsCursor >= queueJobs.length && queueJobs.length > 0) {
+      setDownloadsCursor(queueJobs.length - 1);
+    } else if (queueJobs.length === 0) {
+      setDownloadsCursor(0);
+    }
+  }, [queueJobs.length, downloadsCursor]);
+
   const loadFeed = useCallback(
     async (href: string, base?: string, catalog?: CatalogRecord | null) => {
       const cat = catalog ?? activeCatalog;
@@ -116,6 +169,12 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       setMode('loading');
       try {
         const feed = await fetchFeed(href, { auth: catalogAuth(cat), base });
+        // The first feed loaded for a catalog is its root — remember its
+        // OpenSearch link so searches work from sub-feeds that omit it.
+        setRootSearch(
+          (prev) =>
+            prev ?? (feed.searchHref ? { href: feed.searchHref, base: feed.url } : undefined),
+        );
         setFeedStack((s) => [...s, { feed, cursor: 0, scrollOffset: 0 }]);
         setCursor(0);
         setScrollOffset(0);
@@ -149,6 +208,10 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       setMode('loading');
       try {
         const feed = await fetchFeed(authUrl, { auth: { username, password } });
+        setRootSearch(
+          (prev) =>
+            prev ?? (feed.searchHref ? { href: feed.searchHref, base: feed.url } : undefined),
+        );
         setFeedStack((s) => [...s, { feed, cursor: 0, scrollOffset: 0 }]);
         setCursor(0);
         setScrollOffset(0);
@@ -168,6 +231,8 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
     (catalog: CatalogRecord) => {
       setActiveCatalog(catalog);
       setFeedStack([]);
+      // New catalog, new root: drop the previous catalog's search discovery.
+      setRootSearch(undefined);
       void loadFeed(catalog.url, undefined, catalog);
     },
     [loadFeed],
@@ -216,16 +281,23 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   const doSearch = useCallback(
     async (query: string) => {
       if (!activeCatalog || !currentFeed) return;
-      const searchHref = currentFeed.searchHref;
-      if (!searchHref) {
-        notify('This feed has no search capability');
+      // Prefer the current feed's own OpenSearch link; fall back to the one
+      // discovered on the catalog root (many catalogs only advertise search
+      // there). Relative hrefs/templates resolve against the feed that
+      // advertised them.
+      const search =
+        currentFeed.searchHref !== undefined
+          ? { href: currentFeed.searchHref, base: currentFeed?.url }
+          : rootSearch;
+      if (!search) {
+        notify('This catalog has no search capability');
         return;
       }
       setMode('loading');
       try {
-        const osdXml = await fetchOpenSearch(searchHref, {
+        const osdXml = await fetchOpenSearch(search.href, {
           auth: catalogAuth(activeCatalog),
-          base: currentFeed?.url,
+          base: search.base,
         });
         const osd = parseOpenSearch(osdXml);
         const url = buildSearchUrl(osd, query);
@@ -236,7 +308,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         }
         const feed = await fetchFeed(url, {
           auth: catalogAuth(activeCatalog),
-          base: currentFeed?.url,
+          base: search.base,
         });
         setFeedStack((s) => [...s, { feed, cursor: 0, scrollOffset: 0 }]);
         setCursor(0);
@@ -247,69 +319,79 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         setMode('error');
       }
     },
-    [activeCatalog, currentFeed, notify],
+    [activeCatalog, currentFeed, rootSearch, notify],
   );
 
-  const downloadEntry = useCallback(
-    async (entry: OpdsEntry) => {
+  // Adds a book to the shared background download queue. Never blocks input:
+  // several entries can be queued and they download sequentially while the
+  // user keeps browsing. Completion/failure surfaces via notify() (called from
+  // the queue's onDone callback).
+  const enqueueDownload = useCallback(
+    (entry: OpdsEntry) => {
       if (!activeCatalog) return;
       const link = pickAcquisitionLink(entry.acquisitionLinks);
       if (!link) {
         notify('No downloadable format (EPUB/FB2) for this entry');
         return;
       }
-      setDownloading(true);
-      try {
-        const result = await downloadAndSave(entry, {
-          auth: catalogAuth(activeCatalog),
-          db,
-          base: currentFeed?.url,
-        });
-        notify(`Downloaded: ${result.title}`);
-        onOpenDownloaded(result.bookId, result.filePath);
-      } catch (err) {
-        notify(`Download failed: ${err instanceof Error ? err.message : String(err)}`);
-      } finally {
-        setDownloading(false);
-      }
+      opdsDownloadQueue.enqueue({
+        entry,
+        auth: catalogAuth(activeCatalog),
+        db,
+        base: currentFeed?.url,
+        onDone: (job) => {
+          if (job.status === 'done') {
+            notify(`Downloaded: ${job.result?.title ?? entry.title}`);
+          } else if (job.status === 'failed') {
+            notify(`Download failed: ${job.error ?? 'unknown error'}`);
+          }
+        },
+      });
     },
-    [activeCatalog, currentFeed, db, notify, onOpenDownloaded],
+    [activeCatalog, currentFeed, db, notify],
   );
 
-  const handleSelect = useCallback(() => {
-    if (mode === 'catalog-list') {
-      const cat = catalogs[catalogCursor];
-      if (cat) void openCatalog(cat);
-      return;
-    }
-    if (mode === 'browsing' && currentFeed) {
-      const row = rows[cursor];
-      if (!row) return;
-      if (row.kind === 'facet') {
-        void loadFeed(row.facet.href, currentFeed?.url, activeCatalog);
+  // `index` lets mouse double-clicks target a specific row directly (the
+  // cursor state would be stale inside the synchronous click handler); callers
+  // without an index use the current cursor.
+  const handleSelect = useCallback(
+    (index?: number) => {
+      const idx = index ?? cursor;
+      if (mode === 'catalog-list') {
+        const cat = catalogs[idx];
+        if (cat) void openCatalog(cat);
         return;
       }
-      if (row.kind === 'entry') {
-        const entry = row.entry;
-        if (entry.isAcquisition) {
-          setSelectedEntry(entry);
-          setMode('entry-detail');
-        } else if (entry.subsectionHref) {
-          void loadFeed(entry.subsectionHref, currentFeed?.url, activeCatalog);
+      if (mode === 'browsing' && currentFeed) {
+        const row = rows[idx];
+        if (!row) return;
+        if (row.kind === 'facet') {
+          void loadFeed(row.facet.href, currentFeed?.url, activeCatalog);
+          return;
+        }
+        if (row.kind === 'entry') {
+          const entry = row.entry;
+          if (entry.isAcquisition) {
+            setSelectedEntry(entry);
+            setMode('entry-detail');
+          } else if (entry.subsectionHref) {
+            void loadFeed(entry.subsectionHref, currentFeed?.url, activeCatalog);
+          }
         }
       }
-    }
-  }, [
-    mode,
-    catalogs,
-    catalogCursor,
-    openCatalog,
-    rows,
-    cursor,
-    currentFeed,
-    activeCatalog,
-    loadFeed,
-  ]);
+    },
+    [
+      mode,
+      catalogs,
+      catalogCursor,
+      openCatalog,
+      rows,
+      cursor,
+      currentFeed,
+      activeCatalog,
+      loadFeed,
+    ],
+  );
 
   const saveCurrentPosition = useCallback(() => {
     if (feedStack.length > 0) {
@@ -323,35 +405,55 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
 
   const handleInput = useCallback(
     (input: string, key: Key) => {
-      if (inputDisabled || downloading) return;
+      if (inputDisabled) return;
       const keyName = resolveKeyName(input, key);
       if (keyName === null) return;
 
-      if (keyName === 'escape') {
-        goBack();
-        return;
-      }
-      if (keyName === '?' || (keyName === 'shift+/' && input === '/')) {
-        onHelp();
-        return;
-      }
-
-      if (mode === 'catalog-list') {
-        switch (keyName) {
-          case 'j':
-          case 'down':
-            setCatalogCursor((c) =>
-              catalogs.length === 0 ? 0 : Math.min(catalogs.length - 1, c + 1),
-            );
+      if (mode === 'downloads') {
+        // d cancels the selected queued/in-flight job; x/esc closes the panel.
+        if (keyName === 'd') {
+          const job = queueJobs[downloadsCursor];
+          if (job && (job.status === 'queued' || job.status === 'downloading')) {
+            opdsDownloadQueue.cancel(job.id);
+          }
+          return;
+        }
+        if (keyName === 'x') {
+          setMode(downloadsReturn);
+          forceRedraw();
+          return;
+        }
+        const action = resolver.feed(keyName);
+        switch (action) {
+          case 'move_cursor_down':
+            setDownloadsCursor((c) => Math.min(queueJobs.length - 1, c + 1));
             break;
-          case 'k':
-          case 'up':
-            setCatalogCursor((c) => Math.max(0, c - 1));
+          case 'move_cursor_up':
+            setDownloadsCursor((c) => Math.max(0, c - 1));
             break;
-          case 'enter':
-            handleSelect();
+          case 'go_to_start':
+            setDownloadsCursor(0);
             break;
-          case 'q':
+          case 'go_to_end':
+            setDownloadsCursor(queueJobs.length - 1);
+            break;
+          case 'select':
+          case 'move_cursor_right': {
+            const job = queueJobs[downloadsCursor];
+            if (job?.status === 'done' && job.result) {
+              onOpenDownloaded(job.result.bookId, job.result.filePath);
+            }
+            break;
+          }
+          case 'move_cursor_left':
+          case 'back':
+            setMode(downloadsReturn);
+            forceRedraw();
+            break;
+          case 'help':
+            onHelp();
+            break;
+          case 'quit':
             onExit();
             break;
           default:
@@ -360,72 +462,123 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         return;
       }
 
+      if (mode === 'catalog-list') {
+        const action = resolver.feed(keyName);
+        switch (action) {
+          case 'move_cursor_down':
+            setCatalogCursor((c) =>
+              catalogs.length === 0 ? 0 : Math.min(catalogs.length - 1, c + 1),
+            );
+            break;
+          case 'move_cursor_up':
+            setCatalogCursor((c) => Math.max(0, c - 1));
+            break;
+          case 'select':
+            handleSelect();
+            break;
+          case 'back':
+          case 'quit':
+            onExit();
+            break;
+          case 'help':
+            onHelp();
+            break;
+          default:
+            break;
+        }
+        return;
+      }
+
       if (mode === 'browsing') {
-        switch (keyName) {
-          case 'j':
-          case 'down':
+        // Feed-specific verbs without a KeyAction (shown in the status bar /
+        // Help): d queue download, x downloads panel, n/p next/prev feed page,
+        // c catalog list, u back alias.
+        if (keyName === 'd' && rows[cursor]?.kind === 'entry') {
+          const entry = rows[cursor]!.entry;
+          if (entry.isAcquisition) {
+            enqueueDownload(entry);
+          }
+          return;
+        }
+        if (keyName === 'x') {
+          setDownloadsReturn('browsing');
+          setDownloadsCursor(0);
+          setMode('downloads');
+          forceRedraw();
+          return;
+        }
+        if (keyName === 'n') {
+          if (currentFeed?.nextHref) {
+            void loadFeed(currentFeed.nextHref, currentFeed?.url, activeCatalog);
+          }
+          return;
+        }
+        if (keyName === 'p') {
+          if (currentFeed?.prevHref) {
+            void loadFeed(currentFeed.prevHref, currentFeed?.url, activeCatalog);
+          }
+          return;
+        }
+        if (keyName === 'c') {
+          saveCurrentPosition();
+          setFeedStack([]);
+          setActiveCatalog(null);
+          setMode('catalog-list');
+          setRefreshTrigger((r) => r + 1);
+          forceRedraw();
+          return;
+        }
+        if (keyName === 'u') {
+          goBack();
+          return;
+        }
+        const action = resolver.feed(keyName);
+        switch (action) {
+          case 'move_cursor_down':
             saveCurrentPosition();
             setCursor((c) => Math.min(rows.length - 1, c + 1));
             break;
-          case 'k':
-          case 'up':
+          case 'move_cursor_up':
             saveCurrentPosition();
             setCursor((c) => Math.max(0, c - 1));
             break;
-          case 'g':
+          case 'go_to_start':
             saveCurrentPosition();
             setCursor(0);
             break;
-          case 'G':
+          case 'go_to_end':
             saveCurrentPosition();
             setCursor(rows.length - 1);
             break;
-          case 'pagedown':
-          case 'space':
+          case 'page_down':
             saveCurrentPosition();
             setCursor((c) => Math.min(rows.length - 1, c + Math.max(1, height - 6)));
             break;
-          case 'pageup':
+          case 'page_up':
             saveCurrentPosition();
             setCursor((c) => Math.max(0, c - Math.max(1, height - 6)));
             break;
-          case 'enter':
-          case 'l':
+          case 'select':
+          case 'move_cursor_right':
             handleSelect();
             break;
-          case '/':
-            if (currentFeed?.searchHref) {
-              setMode('search');
-            } else {
-              notify('No search available in this feed');
-            }
-            break;
-          case 'd':
-            if (rows[cursor]?.kind === 'entry') {
-              const entry = rows[cursor]!.entry;
-              if (entry.isAcquisition) {
-                void downloadEntry(entry);
-              }
-            }
-            break;
-          case 'u':
-          case 'h':
+          case 'move_cursor_left':
+          case 'back':
             goBack();
             break;
-          case 'c':
-            saveCurrentPosition();
-            setFeedStack([]);
-            setActiveCatalog(null);
-            setMode('catalog-list');
-            setRefreshTrigger((r) => r + 1);
-            forceRedraw();
-            break;
-          case 'n':
-            if (currentFeed?.nextHref) {
-              void loadFeed(currentFeed.nextHref, currentFeed?.url, activeCatalog);
+          case 'search':
+            // Allow the prompt even when only the root feed advertises search;
+            // doSearch falls back to the root's OpenSearch link.
+            if (currentFeed?.searchHref || rootSearch) {
+              setMode('search');
+            } else {
+              notify('No search available in this catalog');
             }
             break;
-          case 'q':
+          case 'help':
+            onHelp();
+            break;
+          case 'quit':
             onExit();
             break;
           default:
@@ -435,27 +588,53 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       }
 
       if (mode === 'entry-detail') {
-        switch (keyName) {
-          case 'enter':
-          case 'd':
-          case 'l':
+        // d stays a fixed download verb (no KeyAction).
+        if (keyName === 'd') {
+          if (selectedEntry) {
+            enqueueDownload(selectedEntry);
+          }
+          return;
+        }
+        if (keyName === 'x') {
+          setDownloadsReturn('entry-detail');
+          setDownloadsCursor(0);
+          setMode('downloads');
+          forceRedraw();
+          return;
+        }
+        const action = resolver.feed(keyName);
+        switch (action) {
+          case 'select':
+          case 'move_cursor_right':
             if (selectedEntry) {
-              void downloadEntry(selectedEntry);
+              enqueueDownload(selectedEntry);
             }
             break;
-          case 'h':
+          case 'move_cursor_left':
+          case 'back':
             goBack();
+            break;
+          case 'help':
+            onHelp();
             break;
           default:
             break;
         }
         return;
       }
+
+      // 'error' mode: back returns to the previous view, help opens help.
+      if (mode === 'error') {
+        const action = resolver.feed(keyName);
+        if (action === 'back') goBack();
+        else if (action === 'help') onHelp();
+        return;
+      }
     },
     [
       inputDisabled,
-      downloading,
       mode,
+      resolver,
       catalogs.length,
       rows,
       cursor,
@@ -463,12 +642,16 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       currentFeed,
       activeCatalog,
       selectedEntry,
+      queueJobs,
+      downloadsCursor,
+      downloadsReturn,
+      rootSearch,
       goBack,
       onHelp,
       onExit,
       handleSelect,
       saveCurrentPosition,
-      downloadEntry,
+      enqueueDownload,
       loadFeed,
       notify,
     ],
@@ -496,9 +679,72 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   );
   const visibleRows = rows.slice(start, start + visibleCount);
 
+  // Mouse: single click moves the cursor; a second click on the same row
+  // within 350 ms activates it (open subsection / book / facet). Catalog list
+  // and browsing rows both start one row below the 1-line header.
+  const clickStateRef = useRef({ row: -1, time: 0 });
+  const mouseStateRef = useRef({
+    mode,
+    start,
+    rows,
+    catalogs,
+    inputDisabled,
+    handleSelect,
+    openCatalog,
+  });
+  mouseStateRef.current = {
+    mode,
+    start,
+    rows,
+    catalogs,
+    inputDisabled,
+    handleSelect,
+    openCatalog,
+  };
+  useMouseClicks((click) => {
+    if (click.button !== 'left' || !click.press) return;
+    const s = mouseStateRef.current;
+    if (s.inputDisabled) return;
+    // Terminal Y is 1-based; the list starts one row below the header.
+    const absolute = s.mode === 'catalog-list' ? click.y - 2 : s.start + (click.y - 2);
+    const limit = s.mode === 'catalog-list' ? s.catalogs.length : s.rows.length;
+    if (absolute < 0 || absolute >= limit) return;
+    if (s.mode === 'browsing' && s.rows[absolute]?.kind === 'facet-group') return;
+    const now = Date.now();
+    const prev = clickStateRef.current;
+    if (prev.row === absolute && now - prev.time < 350) {
+      clickStateRef.current = { row: -1, time: 0 };
+      if (s.mode === 'catalog-list') {
+        s.openCatalog(s.catalogs[absolute]!);
+      } else {
+        setCursor(absolute);
+        s.handleSelect(absolute);
+      }
+    } else {
+      clickStateRef.current = { row: absolute, time: now };
+      if (s.mode === 'catalog-list') setCatalogCursor(absolute);
+      else setCursor(absolute);
+    }
+  });
+
   const header = activeCatalog ? activeCatalog.name : 'OPDS Catalogs';
   const subHeader = currentFeed?.title;
   const statusLeft = mode === 'catalog-list' ? 'OPDS' : (activeCatalog?.name ?? 'OPDS');
+
+  // "page 2/5" indicator derived from the OpenSearch pagination metadata the
+  // feed carries (startIndex is 1-based; itemsPerPage/totalResults optional).
+  const pageIndicator = (() => {
+    const feed = currentFeed;
+    if (!feed || feed.startIndex === undefined || !feed.itemsPerPage || feed.itemsPerPage <= 0) {
+      return null;
+    }
+    const page = Math.floor((feed.startIndex - 1) / feed.itemsPerPage) + 1;
+    if (feed.totalResults !== undefined && feed.totalResults >= 0) {
+      const total = Math.max(1, Math.ceil(feed.totalResults / feed.itemsPerPage));
+      return `page ${page}/${total}`;
+    }
+    return feed.nextHref || feed.prevHref ? `page ${page}…` : `page ${page}`;
+  })();
 
   return (
     <Box flexDirection="column" width="100%" height="100%">
@@ -511,11 +757,20 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
           {currentFeed?.entries.length ? (
             <Text color={theme.colors.dim}> · {currentFeed.entries.length} entries</Text>
           ) : null}
-          {downloading ? <Text color={theme.colors.accent}> · downloading…</Text> : null}
+          {pageIndicator ? <Text color={theme.colors.dim}> · {pageIndicator}</Text> : null}
+          {queueActive ? <Text color={theme.colors.accent}> · downloading…</Text> : null}
         </Box>
       </Box>
 
-      {mode === 'catalog-list' ? (
+      {mode === 'downloads' ? (
+        <DownloadsList
+          theme={theme}
+          width={width}
+          height={height}
+          jobs={queueJobs}
+          cursor={downloadsCursor}
+        />
+      ) : mode === 'catalog-list' ? (
         <CatalogList catalogs={catalogs} cursor={catalogCursor} theme={theme} width={width} />
       ) : mode === 'loading' ? (
         <Box paddingX={2} paddingY={1}>
@@ -529,7 +784,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       ) : mode === 'entry-detail' && selectedEntry ? (
         <Box flexDirection="column">
           <EntryDetail entry={selectedEntry} theme={theme} width={width} height={height} />
-          {downloading ? (
+          {currentJob?.title === selectedEntry.title ? (
             <Box paddingX={2}>
               <Spinner label="Downloading" theme={theme} />
             </Box>
@@ -653,18 +908,23 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
 
       <StatusBar
         theme={theme}
-        left={statusLeft}
-        right={
-          mode === 'catalog-list'
-            ? 'j/k navigate · enter open · ? help · q quit'
-            : mode === 'browsing'
-              ? 'j/k · enter/l open · d download · / search · u/h up · n next · c catalogs · ? help'
-              : mode === 'entry-detail'
-                ? 'enter/d/l download · h/esc back · ? help'
-                : mode === 'error'
-                  ? '? help · esc back'
-                  : ''
-        }
+        statusbar={config.statusbar}
+        data={{
+          title: statusLeft,
+          downloads: downloadsLabel,
+          hint:
+            mode === 'catalog-list'
+              ? 'j/k navigate · enter open · ? help · q quit'
+              : mode === 'browsing'
+                ? 'j/k · enter/l open · d download · x downloads · / search · u/h up · n next · p prev · c catalogs · ? help'
+                : mode === 'entry-detail'
+                  ? 'enter/d/l download · x downloads · h/esc back · ? help'
+                  : mode === 'downloads'
+                    ? 'j/k · enter open done · d cancel · x/esc close · ? help'
+                    : mode === 'error'
+                      ? '? help · esc back'
+                      : '',
+        }}
       />
     </Box>
   );
@@ -707,6 +967,77 @@ function CatalogList(props: {
       })}
     </Box>
   );
+}
+
+function DownloadsList(props: {
+  theme: Theme;
+  width: number;
+  height: number;
+  jobs: DownloadJob[];
+  cursor: number;
+}): React.JSX.Element {
+  const { theme, width, height, jobs, cursor } = props;
+  if (jobs.length === 0) {
+    return (
+      <Box paddingX={2} paddingY={1} flexDirection="column">
+        <Text color={theme.colors.text}>No downloads.</Text>
+        <Text color={theme.colors.dim}>Press d on a book to queue it. esc — close</Text>
+      </Box>
+    );
+  }
+  const visibleCount = Math.max(3, height - 6);
+  const start = Math.max(
+    0,
+    Math.min(cursor - Math.floor(visibleCount / 2), Math.max(0, jobs.length - visibleCount)),
+  );
+  const visible = jobs.slice(start, start + visibleCount);
+  const titleW = Math.max(10, width - 40);
+  return (
+    <Box flexDirection="column" paddingX={1}>
+      {visible.map((job, i) => {
+        const absolute = start + i;
+        const selected = absolute === cursor;
+        const color = selected ? theme.colors.accent : theme.colors.text;
+        const status = jobStatusText(job);
+        const statusColor =
+          job.status === 'done'
+            ? theme.colors.link
+            : job.status === 'failed'
+              ? (theme.colors.error ?? theme.colors.dim)
+              : theme.colors.dim;
+        return (
+          <Box key={job.id} flexDirection="row">
+            <Text color={color} bold={selected}>
+              {selected ? '▸ ' : '  '}
+            </Text>
+            <Text color={color} bold={selected}>
+              {truncateW(job.title, titleW)}
+            </Text>
+            <Text color={statusColor}> — {status}</Text>
+            {job.error ? <Text color={theme.colors.dim}> ({truncateW(job.error, 30)})</Text> : null}
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+function jobStatusText(job: DownloadJob): string {
+  switch (job.status) {
+    case 'queued':
+      return 'queued';
+    case 'downloading':
+      if (job.total && job.total > 0) {
+        return `${Math.floor((job.received / job.total) * 100)}%`;
+      }
+      return 'downloading…';
+    case 'done':
+      return '✓ done';
+    case 'failed':
+      return '✗ failed';
+    case 'cancelled':
+      return 'cancelled';
+  }
 }
 
 function EntryDetail(props: {

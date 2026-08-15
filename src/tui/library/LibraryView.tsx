@@ -9,7 +9,8 @@ import { TextPrompt } from '../components/TextPrompt.js';
 import { BookDetail } from './BookDetail.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { forceRedraw } from '../screenRefresh.js';
-import { truncateW } from '../../utils/text.js';
+import { useMouseClicks } from '../mouse.js';
+import { truncateW, wrapText } from '../../utils/text.js';
 import { existsSync, unlinkSync } from 'node:fs';
 
 interface LibraryCommandBus {
@@ -66,13 +67,24 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   const [width, height] = useTerminalSize();
   const [books, setBooks] = useState<BookRecord[]>([]);
   const [recentBooks, setRecentBooks] = useState<BookRecord[]>([]);
+  const [continueBooks, setContinueBooks] = useState<BookRecord[]>([]);
   const [folderCount, setFolderCount] = useState(0);
   const [cursor, setCursor] = useState(0);
   const [sortField, setSortField] = useState<SortField>('title');
   const [filter, setFilter] = useState('');
+  // Live filter: TextPrompt reports every keystroke via onValueChange; we
+  // debounce the application so big libraries don't re-filter+sort on every
+  // keypress, and remember the pre-edit filter so Escape can restore it.
+  const filterBaselineRef = useRef('');
+  const filterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
+    };
+  }, []);
   const [groupBySeries, setGroupBySeries] = useState(false);
   const [mode, setMode] = useState<Mode>('normal');
-  const [view, setView] = useState<'all' | 'recent'>('all');
+  const [view, setView] = useState<'all' | 'recent' | 'continue'>('all');
   const [detailBook, setDetailBook] = useState<BookRecord | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<BookRecord | null>(null);
   const [confirmDeleteFile, setConfirmDeleteFile] = useState(false);
@@ -81,6 +93,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   useEffect(() => {
     setBooks(db.listBooks());
     setRecentBooks(db.listRecentBooks());
+    setContinueBooks(db.listContinueBooks());
     setFolderCount(db.listLibraryFolders().length);
   }, [db, refreshTrigger]);
 
@@ -90,7 +103,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   }, [cmdVersion]);
 
   const bookList = useMemo(() => {
-    const source = view === 'recent' ? recentBooks : books;
+    const source = view === 'recent' ? recentBooks : view === 'continue' ? continueBooks : books;
     const q = filter.trim().toLowerCase();
     const filtered = q
       ? source.filter(
@@ -102,9 +115,11 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
         )
       : source;
     const sorted =
-      view === 'recent' ? filtered : [...filtered].sort((a, b) => compareBooks(a, b, sortField));
+      view === 'recent' || view === 'continue'
+        ? filtered
+        : [...filtered].sort((a, b) => compareBooks(a, b, sortField));
     return sorted;
-  }, [books, recentBooks, view, filter, sortField]);
+  }, [books, recentBooks, continueBooks, view, filter, sortField]);
 
   const rows = useMemo<Row[]>(() => {
     if (!groupBySeries) {
@@ -228,7 +243,13 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
         setCursor(0);
         setFilter('');
         break;
+      case 'toggle_continue':
+        setView((v) => (v === 'continue' ? 'all' : 'continue'));
+        setCursor(0);
+        setFilter('');
+        break;
       case 'search':
+        filterBaselineRef.current = filter;
         setMode('filter');
         break;
       case 'command':
@@ -258,19 +279,54 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   }, []);
   useInput(handleLibInput, { isActive: mode === 'normal' && !inputDisabled });
 
-  const visibleCount = Math.max(3, height - 5);
+  // Reserve space for the annotation preview pane (header + up to 4 lines)
+  // when the selected book has one, so the list doesn't overflow the screen.
+  const annotationLines = selectedBook?.annotation
+    ? Math.min(
+        5,
+        1 + Math.min(4, wrapText(selectedBook.annotation, Math.max(20, width - 4)).length),
+      )
+    : 0;
+  const visibleCount = Math.max(3, height - 5 - annotationLines);
   const start = Math.max(
     0,
     Math.min(cursor - Math.floor(visibleCount / 2), Math.max(0, rows.length - visibleCount)),
   );
   const visibleRows = rows.slice(start, start + visibleCount);
 
+  // Mouse: a click moves the cursor to the row under it; a second click on
+  // the same row within 350 ms opens it (like enter). The list starts one
+  // row below the header, and terminal Y is 1-based.
+  const clickStateRef = useRef({ row: -1, time: 0 });
+  const mouseStateRef = useRef({ start, rows, inputDisabled, mode });
+  mouseStateRef.current = { start, rows, inputDisabled, mode };
+  useMouseClicks((click) => {
+    if (click.button !== 'left' || !click.press) return;
+    const s = mouseStateRef.current;
+    if (s.mode !== 'normal' || s.inputDisabled) return;
+    const absolute = s.start + (click.y - 2);
+    if (absolute < 0 || absolute >= s.rows.length) return;
+    const row = s.rows[absolute];
+    if (row?.kind !== 'book') return; // group headers are not clickable
+    const now = Date.now();
+    const prev = clickStateRef.current;
+    if (prev.row === absolute && now - prev.time < 350) {
+      clickStateRef.current = { row: -1, time: 0 };
+      setCursor(absolute);
+      setDetailBook(row.book!);
+      setMode('detail');
+    } else {
+      clickStateRef.current = { row: absolute, time: now };
+      setCursor(absolute);
+    }
+  });
+
   return (
     <Box flexDirection="column" width="100%">
       <Box flexDirection="column" paddingX={1}>
         <Box flexDirection="row">
           <Text color={theme.colors.heading} bold>
-            {view === 'recent' ? 'Recent' : 'Library'}
+            {view === 'recent' ? 'Recent' : view === 'continue' ? 'Continue reading' : 'Library'}
           </Text>
           <Text color={theme.colors.dim}>
             {' '}
@@ -285,19 +341,25 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           ) : null}
           {groupBySeries ? <Text color={theme.colors.dim}> · grouped by series</Text> : null}
           {filter ? <Text color={theme.colors.accent}> · filter: "{filter}"</Text> : null}
-          <Text color={theme.colors.dim}> · R recent</Text>
+          <Text color={theme.colors.dim}> · R recent · C continue</Text>
         </Box>
       </Box>
 
       {bookList.length === 0 ? (
         <Box flexDirection="column" paddingX={2} paddingY={2}>
           <Text color={theme.colors.text}>
-            {books.length === 0 ? 'Library is empty.' : 'No books match the current filter.'}
+            {books.length === 0
+              ? 'Library is empty.'
+              : view === 'continue'
+                ? 'No books in progress yet — open one and read a bit to see it here.'
+                : 'No books match the current filter.'}
           </Text>
           <Text color={theme.colors.dim} dimColor>
             {books.length === 0
               ? 'Attach a folder with :library add <path>, press o to open a book, or use :open <path>.'
-              : 'Press / to clear the filter.'}
+              : view === 'continue'
+                ? 'Progress updates as you read; books you finished are not listed here.'
+                : 'Press / to clear the filter.'}
           </Text>
         </Box>
       ) : (
@@ -351,12 +413,36 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           prefix="/"
           placeholder="filter by title, author, series or genre…"
           historyKey="filter"
+          initialValue={filter}
+          onValueChange={(value) => {
+            // Debounce: typing "harry" fires onValueChange 5 times; only the
+            // last settles. Live preview means the list narrows as you type;
+            // Enter commits (and closes), Escape restores the old filter.
+            if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
+            filterTimerRef.current = setTimeout(() => {
+              setFilter(value.trim());
+              setCursor(0);
+            }, 120);
+          }}
           onSubmit={(value) => {
+            if (filterTimerRef.current) {
+              clearTimeout(filterTimerRef.current);
+              filterTimerRef.current = null;
+            }
             setFilter(value.trim());
             setCursor(0);
             setMode('normal');
           }}
-          onCancel={() => setMode('normal')}
+          onCancel={() => {
+            if (filterTimerRef.current) {
+              clearTimeout(filterTimerRef.current);
+              filterTimerRef.current = null;
+            }
+            // Restore the filter that was active before the prompt opened.
+            setFilter(filterBaselineRef.current);
+            setCursor(0);
+            setMode('normal');
+          }}
         />
       ) : null}
 
@@ -379,6 +465,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       {mode === 'detail' && detailBook ? (
         <BookDetail
           book={detailBook}
+          config={config}
           theme={theme}
           onRead={() => onOpenBook(detailBook)}
           onHelp={onHelp}
@@ -425,11 +512,17 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
         />
       ) : null}
 
+      {selectedBook?.annotation ? (
+        <AnnotationPreview theme={theme} text={selectedBook.annotation} width={width} />
+      ) : null}
+
       <StatusBar
         theme={theme}
-        left={`tabook · ${selectedBook ? truncateW(selectedBook.title, 30) : 'no selection'}`}
-        right={hintBar(config, 'library')}
-        message={''}
+        statusbar={config.statusbar}
+        data={{
+          title: `tabook · ${selectedBook ? truncateW(selectedBook.title, 30) : 'no selection'}`,
+          hint: hintBar(config, 'library'),
+        }}
       />
     </Box>
   );
@@ -493,6 +586,7 @@ function hintBar(config: Config, view: string): string {
       key('search'),
       key('sort_cycle'),
       key('toggle_recent'),
+      key('toggle_continue'),
       key('delete_from_library'),
       key('delete_file'),
       key('help'),
@@ -514,12 +608,42 @@ const actionsList: KeyAction[] = [
   'search',
   'sort_cycle',
   'toggle_recent',
+  'toggle_continue',
   'delete_from_library',
   'delete_file',
   'help',
   'command',
   'quit',
 ];
+
+// Annotation preview pane under the book list: shows the selected book's
+// annotation, wrapped to the terminal width, capped at 3 lines with an
+// ellipsis. Clicking into BookDetail still shows the full text.
+function AnnotationPreview(props: {
+  theme: Theme;
+  text: string;
+  width: number;
+}): React.JSX.Element {
+  const { theme, text, width } = props;
+  const lines = wrapText(text, Math.max(20, width - 4));
+  return (
+    <Box flexDirection="column" paddingX={2}>
+      <Text color={theme.colors.heading} bold>
+        Annotation
+      </Text>
+      {lines.slice(0, 3).map((line, i) => (
+        <Text key={i} color={theme.colors.dim} dimColor>
+          {line || ' '}
+        </Text>
+      ))}
+      {lines.length > 3 ? (
+        <Text color={theme.colors.dim} dimColor>
+          …
+        </Text>
+      ) : null}
+    </Box>
+  );
+}
 
 function DeleteConfirm(props: {
   book: BookRecord;

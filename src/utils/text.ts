@@ -249,9 +249,14 @@ export function stripHtml(html: string): string {
 }
 
 export function truncate(input: string, maxLength: number, suffix = '...'): string {
-  if (input.length <= maxLength) return input;
-  if (maxLength <= suffix.length) return suffix.slice(0, maxLength);
-  return input.slice(0, maxLength - suffix.length) + suffix;
+  // Work in code points, not UTF-16 units: slice() through a surrogate pair
+  // (emoji, rare CJK) produced a lone high surrogate ('emoji \uFFFD...')
+  // instead of 'emoji 🎉...' — parity with the Rust truncate_inner.
+  const inputChars = Array.from(input);
+  if (inputChars.length <= maxLength) return input;
+  const suffixChars = Array.from(suffix);
+  if (maxLength <= suffixChars.length) return suffixChars.slice(0, maxLength).join('');
+  return inputChars.slice(0, maxLength - suffixChars.length).join('') + suffix;
 }
 
 // East Asian Wide / Fullwidth characters that occupy 2 terminal columns.
@@ -341,6 +346,39 @@ export function shellSplit(input: string): string[] {
   }
   if (current !== '') result.push(current);
   return result;
+}
+
+// Wrap text into lines that fit a display width, breaking on whitespace
+// (display-width aware, like truncateW). Returns at least one line. Used for
+// annotation previews and modal text columns.
+export function wrapText(text: string, maxW: number): string[] {
+  const out: string[] = [];
+  for (const para of text.split('\n')) {
+    if (para === '') {
+      out.push('');
+      continue;
+    }
+    const words = para.split(/\s+/);
+    let line = '';
+    let lineW = 0;
+    for (const word of words) {
+      const wordW = displayWidth(word);
+      if (line === '') {
+        line = word;
+        lineW = wordW;
+      } else if (lineW + 1 + wordW <= maxW) {
+        line += ' ' + word;
+        lineW += 1 + wordW;
+      } else {
+        out.push(line);
+        line = word;
+        lineW = wordW;
+      }
+    }
+    if (line) out.push(line);
+  }
+  if (out.length === 0) out.push('');
+  return out;
 }
 
 // Truncate text to fit a display width, appending an ellipsis when truncated.

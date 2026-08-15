@@ -4,6 +4,11 @@ import { createRequire } from 'node:module';
 import type { BookMetadata } from '../formats/model.js';
 import { joinAuthors, formatSeries } from '../formats/model.js';
 import { native, isNativeErrorResult } from '../native.js';
+import {
+  encryptCatalogPassword,
+  decryptCatalogPassword,
+  isEncryptedCatalogPassword,
+} from './catalogCrypto.js';
 import type * as NativeTypes from '@tabook/native';
 import { DatabaseError, messageOf } from '../utils/errors.js';
 import { ensureDir } from '../utils/paths.js';
@@ -258,6 +263,7 @@ interface DbBackend {
   recordOpen(bookId: number): void;
   listHistory(limit?: number): HistoryRecord[];
   listRecentBooks(limit?: number): BookRecord[];
+  listContinueBooks(limit?: number): BookRecord[];
   startSession(bookId: number): number;
   endSession(sessionId: number, pagesRead: number): void;
   getStats(bookId: number): SessionStats;
@@ -423,6 +429,10 @@ class NativeDbBackend implements DbBackend {
 
   listRecentBooks(limit = 20): BookRecord[] {
     return this.db.listRecentBooks(limit).map(nativeToBookRecord);
+  }
+
+  listContinueBooks(limit = 20): BookRecord[] {
+    return this.db.listContinueBooks(limit).map(nativeToBookRecord);
   }
 
   startSession(bookId: number): number {
@@ -919,6 +929,20 @@ class SqliteDbBackend implements DbBackend {
     return rows.map(rowToBook);
   }
 
+  // Books currently being read (progress started but not finished), most
+  // recently touched first — the "continue reading" list.
+  listContinueBooks(limit = 20): BookRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT b.*, p.position AS progress_position, p.percent AS progress_percent
+         FROM books b JOIN reading_progress p ON p.book_id = b.id
+         WHERE p.percent > 0 AND p.percent < 100
+         ORDER BY p.updated_at DESC LIMIT ?`,
+      )
+      .all(limit) as BookRow[];
+    return rows.map(rowToBook);
+  }
+
   // ---- Reading sessions / stats ----
 
   startSession(bookId: number): number {
@@ -1120,6 +1144,34 @@ export class LibraryDb implements DbBackend {
   constructor(filePath: string) {
     this.filePath = filePath;
     this.impl = native ? new NativeDbBackend(filePath) : new SqliteDbBackend(filePath);
+    this.migrateLegacyPasswords();
+  }
+
+  // One-time migration: databases created before password encryption stored
+  // OPDS passwords in plaintext. Rewrite them encrypted so the plaintext never
+  // sits on disk after an upgrade. (Best-effort — a failure only means the
+  // legacy value stays until the next write, and reads still work via the
+  // decryptCatalog fallback.)
+  private migrateLegacyPasswords(): void {
+    try {
+      for (const c of this.impl.listCatalogs()) {
+        if (c.password !== null && c.password !== '' && !isEncryptedCatalogPassword(c.password)) {
+          this.impl.updateCatalog(c.id, {
+            password: encryptCatalogPassword(this.filePath, c.password),
+          });
+        }
+      }
+    } catch {
+      // Non-fatal: leave legacy passwords as-is for now.
+    }
+  }
+
+  // Decrypt a catalog record's password (encrypted at rest by add/update).
+  // Undecryptable values (DB copied without its key file) become null so
+  // callers re-prompt for credentials rather than crash.
+  private decryptCatalog(c: CatalogRecord): CatalogRecord {
+    if (c.password === null) return c;
+    return { ...c, password: decryptCatalogPassword(this.filePath, c.password) };
   }
 
   close(): void {
@@ -1201,6 +1253,10 @@ export class LibraryDb implements DbBackend {
     return this.impl.listRecentBooks(limit);
   }
 
+  listContinueBooks(limit?: number): BookRecord[] {
+    return this.impl.listContinueBooks(limit);
+  }
+
   startSession(bookId: number): number {
     return this.impl.startSession(bookId);
   }
@@ -1214,26 +1270,38 @@ export class LibraryDb implements DbBackend {
   }
 
   addCatalog(catalog: { name: string; url: string; username?: string; password?: string }): number {
-    return this.impl.addCatalog(catalog);
+    const { password, ...rest } = catalog;
+    return this.impl.addCatalog({
+      ...rest,
+      password:
+        password !== undefined ? encryptCatalogPassword(this.filePath, password) : undefined,
+    });
   }
 
   listCatalogs(): CatalogRecord[] {
-    return this.impl.listCatalogs();
+    return this.impl.listCatalogs().map((c) => this.decryptCatalog(c));
   }
 
   getCatalog(id: number): CatalogRecord | undefined {
-    return this.impl.getCatalog(id);
+    const c = this.impl.getCatalog(id);
+    return c ? this.decryptCatalog(c) : undefined;
   }
 
   getCatalogByName(name: string): CatalogRecord | undefined {
-    return this.impl.getCatalogByName(name);
+    const c = this.impl.getCatalogByName(name);
+    return c ? this.decryptCatalog(c) : undefined;
   }
 
   updateCatalog(
     id: number,
     fields: { name?: string; url?: string; username?: string; password?: string },
   ): void {
-    this.impl.updateCatalog(id, fields);
+    const { password, ...rest } = fields;
+    this.impl.updateCatalog(id, {
+      ...rest,
+      password:
+        password !== undefined ? encryptCatalogPassword(this.filePath, password) : undefined,
+    });
   }
 
   removeCatalog(id: number): void {

@@ -25,15 +25,16 @@ vim-like controls. Built with TypeScript, React + Ink and a native Rust core
   inspect it, then press `Esc` to restore it in place.
 - A local library backed by SQLite (stored in the native core via bundled rusqlite): metadata, reading progress, bookmarks, reading sessions and history.
 - Attach local folders as libraries (`:library add ~/books`) — recursive scans import metadata in bulk, and attached folders are auto-rescanned (mtime-based, async) when you enter the library if their files changed.
-- Browse online book catalogs over **OPDS** (`:opds add <name> <url>`) — search, navigate and download books straight to the library. Project Gutenberg and Flibusta are pre-seeded on first run.
+- Browse online book catalogs over **OPDS** (`:opds add <name> <url>`) — search, navigate and download books straight to the library. Search (`/`) works from any feed: the OpenSearch link is discovered on the catalog root when a sub-feed omits it. Downloads run in a **background queue**: press `d` on several books and they download one after another while you keep browsing, with per-file progress in the status bar and a queue panel (`x`). Project Gutenberg and Flibusta are pre-seeded on first run.
 - Full-text search inside the current book with highlighted matches (`/`, `n`, `N`).
 - Bookmarks (`b`) with text previews and a bookmark list (`B`).
 - Table of contents navigation (`t`), book info (`i`) and a help screen (`?`).
 - Simplified reading mode that flattens lists, poems and tables into paragraphs (`:simplified`).
 - Typography control: line measure, paragraph spacing/indent, hyphenation and text justification (`J`).
-- 41 built-in color themes (36 dark, 5 light) switchable at runtime (`:theme`, `:themes`, `W` toggles wide screen).
+- 41 built-in color themes (36 dark, 5 light) switchable at runtime (`:theme`, `:themes`, `W` toggles wide screen). Optionally **auto-matches the terminal background** (`auto_theme = true`): a light terminal background switches to the theme's `-light` variant at startup (OSC 11).
 - Reading progress restored on reopen; progress bar in the status bar.
 - Vim-like multi-key bindings (e.g. `gg` / `G`) with a fully remappable keymap and a command line (`:`).
+- **Mouse support** (SGR, on by default, `mouse = false` to disable): click a row in a list to select it, click again to open it — library, OPDS catalog and downloads queue.
 - Clipboard paste (`Ctrl+V`) and a config editor (`:config edit`) — opens `config.toml` in `$EDITOR` and reloads it live.
 
 ## Requirements
@@ -115,7 +116,15 @@ Additional options:
 ```bash
 tabook --theme monokai book.epub     # override the theme
 tabook --config ~/.config/tabook/config.toml  # use a specific config file
+tabook --man                         # print the man page (tabook.1)
+tabook --completion bash             # print a bash completion script
+tabook --completion zsh              # print a zsh completion script
 ```
+
+The AUR package also installs the man page (`man tabook`) and the completion
+scripts into `/usr/share/bash-completion/completions/` and
+`/usr/share/zsh/site-functions/` automatically; from a source checkout, pipe
+the output of `--completion` into your shell's completion directory.
 
 ## Keybindings
 
@@ -146,17 +155,18 @@ tabook --config ~/.config/tabook/config.toml  # use a specific config file
 
 ### OPDS view keys
 
-| Key       | Action                             |
-| --------- | ---------------------------------- |
-| `j` / `k` | Navigate catalog entries           |
-| `enter`   | Open entry / download book         |
-| `d`       | Download selected book             |
-| `/`       | Search in catalog                  |
-| `u`       | Go up one level                    |
-| `c`       | Switch between configured catalogs |
-| `n`       | Next page                          |
-| `g` / `G` | Jump to start / end of list        |
-| `q`       | Quit OPDS view                     |
+| Key       | Action                                                     |
+| --------- | ---------------------------------------------------------- |
+| `j` / `k` | Navigate catalog entries                                   |
+| `enter`   | Open entry / download book                                 |
+| `d`       | Queue selected book for download                           |
+| `x`       | Downloads queue (enter opens a finished book, `d` cancels) |
+| `/`       | Search in catalog                                          |
+| `u`       | Go up one level                                            |
+| `c`       | Switch between configured catalogs                         |
+| `n` / `p` | Next / previous page                                       |
+| `g` / `G` | Jump to start / end of list                                |
+| `q`       | Quit OPDS view                                             |
 
 ### Command line
 
@@ -212,7 +222,16 @@ hyphenation = false     # hyphenate long words at line breaks
 [display]
 simplified_mode = false
 respect_publisher_css = true
-show_progress_bar = true
+
+[statusbar]
+left = ["title"]                 # sections on the left: title
+right = ["percent", "page", "search", "hint", "downloads"]  # sections on the right
+show_progress_bar = true        # or false to show percent as text instead
+
+# Optional: match the theme to the terminal background at startup (OSC 11)
+auto_theme = false
+# Optional: disable mouse click support (SGR)
+mouse = true
 ```
 
 The sample TOML above is the complete set of supported options. Drop it into
