@@ -28,14 +28,18 @@ vim-like controls. Built with TypeScript, React + Ink and a native Rust core
 - Attach local folders as libraries (`:library add ~/books`) — recursive scans import metadata in bulk, and attached folders are auto-rescanned (mtime-based, async) when you enter the library if their files changed.
 - Browse online book catalogs over **OPDS** (`:opds add <name> <url>`) — search, navigate and download books straight to the library. Search (`/`) works from any feed: the OpenSearch link is discovered on the catalog root when a sub-feed omits it. Downloads run in a **background queue**: press `d` on several books and they download one after another while you keep browsing, with per-file progress in the status bar and a queue panel (`x`). Project Gutenberg and Flibusta are pre-seeded on first run.
 - Full-text search inside the current book with highlighted matches (`/`, `n`, `N`).
-- Bookmarks (`b`) with text previews and a bookmark list (`B`).
+- Bookmarks (`b`) with text previews and a bookmark list (`B`). A bookmark can
+  also be created from a mouse selection — the selected text becomes its label.
+- **Command palette** (`Ctrl+P`): fuzzy search over every command and binding —
+  type a fragment to filter, `enter` runs it. Available in the library, reader
+  and OPDS views.
 - Table of contents navigation (`t`), book info (`i`) and a help screen (`?`).
 - Simplified reading mode that flattens lists, poems and tables into paragraphs (`:simplified`).
 - Typography control: line measure, paragraph spacing/indent, hyphenation and text justification (`J`).
 - 41 built-in color themes (36 dark, 5 light) switchable at runtime (`:theme`, `:themes`, `W` toggles wide screen). Optionally **auto-matches the terminal background** (`auto_theme = true`): a light terminal background switches to the theme's `-light` variant at startup (OSC 11).
 - Reading progress restored on reopen; progress bar in the status bar.
 - Vim-like multi-key bindings (e.g. `gg` / `G`) with a fully remappable keymap and a command line (`:`).
-- **Mouse support** (SGR, on by default, `mouse = false` to disable): click a row in a list to select it, click again to open it — library, OPDS catalog and downloads queue.
+- **Mouse support** (SGR, on by default, `mouse = false` to disable): click a row in a list to select it, click again to open it — library, OPDS catalog and downloads queue. In the reader, **drag to select a text range**: `b` turns it into a bookmark (with the selected text as the label), `y` copies it to the clipboard via OSC 52 (no external tools needed).
 - Clipboard paste (`Ctrl+V`) and a config editor (`:config edit`) — opens `config.toml` in `$EDITOR` and reloads it live.
 
 ## Requirements
