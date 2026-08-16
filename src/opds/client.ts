@@ -1,6 +1,7 @@
 import { parseOpdsAtom } from './parser.js';
 import { appVersion } from '../utils/version.js';
 import type { OpdsFeed } from './model.js';
+import { decodeDataUri } from '../formats/cover.js';
 
 export interface OpdsAuth {
   username?: string;
@@ -209,6 +210,30 @@ async function readBodyWithProgress(
     offset += chunk.byteLength;
   }
   return out;
+}
+
+export async function fetchImage(
+  href: string,
+  opts?: { auth?: OpdsAuth; signal?: AbortSignal; base?: string },
+): Promise<Uint8Array> {
+  // Some feeds inline covers as data: URIs (base64) — no network round trip.
+  if (href.startsWith('data:')) {
+    const decoded = decodeDataUri(href);
+    if (decoded === undefined) throw new OpdsError('Cannot decode data: cover URI');
+    return decoded;
+  }
+  const url = resolveUrl(href, opts?.base);
+  const { response } = await fetchWithTimeout(url, {
+    ...opts,
+    accept: 'image/*,*/*',
+  });
+  if (!response.ok) {
+    throw new OpdsError(`HTTP ${response.status} fetching image ${url}`, {
+      statusCode: response.status,
+    });
+  }
+  const data = await readBodyWithProgress(response);
+  return data;
 }
 
 export async function downloadBook(

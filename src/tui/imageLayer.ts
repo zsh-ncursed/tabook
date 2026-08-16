@@ -27,6 +27,30 @@ export interface ImagePlacement {
   src: string;
 }
 
+// Sniff the payload's magic bytes so the temp file gets a real image
+// extension instead of a generic one. ueberzugpp's OpenCV backend picks the
+// encoder for its scaled-image cache from the file extension: with ".img"
+// cv::imwrite throws on every add, the cache is never written and each cover
+// is re-decoded on every frame. Falls back to the src-derived extension and
+// finally to ".img" (OpenCV still decodes by content, so display works).
+export function guessExt(src: string, data: Uint8Array | undefined): string {
+  if (data && data.length >= 4) {
+    if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
+      return '.png';
+    }
+    if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return '.jpg';
+    if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return '.gif';
+    if (data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46) {
+      return '.webp';
+    }
+  }
+  if (src.endsWith('.png')) return '.png';
+  if (src.endsWith('.jpg') || src.endsWith('.jpeg')) return '.jpg';
+  if (src.endsWith('.gif')) return '.gif';
+  if (src.endsWith('.webp')) return '.webp';
+  return '.img';
+}
+
 // How many terminal rows an image overlay occupies. Layout reserves this
 // many blank lines under the placeholder so the overlay doesn't cover text,
 // and ReaderView caps the overlay height to the same value. Kept here so
@@ -71,6 +95,15 @@ class UeberzugImageLayer {
   private pidFile = '';
   private exitHandler: (() => void) | null = null;
 
+  requiresRestartOnResize = true;
+
+  get alive(): boolean {
+    // Also treat a pipe that can no longer accept commands as dead: sends
+    // would silently no-op and whatever was last drawn would stay frozen on
+    // screen, misaligned with the text that keeps scrolling.
+    return this.proc !== null && this.proc.stdin.writable;
+  }
+
   start(): boolean {
     if (this.proc) return true;
     const output = detectOutput();
@@ -95,7 +128,13 @@ class UeberzugImageLayer {
       this.shown.clear();
     });
     // Ensure ueberzugpp dies with us even on abrupt process.exit (React's
-    // unmount cleanup doesn't fire on process.kill/exit).
+    // unmount cleanup doesn't fire on process.kill/exit). Note this alone is
+    // not enough: Ink's exit() only unmounts the tree (no process.exit), so
+    // the process terminates when the event loop drains — and a live child
+    // keeps the loop alive (child.unref() does NOT release piped stdio
+    // handles). The App component therefore also stops the layer in its
+    // unmount cleanup, which SIGKILLs the child so the loop drains and the
+    // overlay windows disappear with us.
     this.exitHandler = () => this.stop();
     process.once('exit', this.exitHandler);
     return true;
@@ -112,7 +151,7 @@ class UeberzugImageLayer {
     if (cached && existsSync(cached)) return cached;
     const data = resources.get(src);
     if (!data || data.length === 0) return '';
-    const ext = guessExt(src);
+    const ext = guessExt(src, data);
     const path = join(this.tmpDir, `${sanitize(src)}${ext}`);
     writeFileSync(path, data);
     this.cache.set(src, path);
@@ -199,16 +238,23 @@ export function detectOutput(): string | null {
   return null;
 }
 
-function guessExt(src: string): string {
-  if (src.endsWith('.png')) return '.png';
-  if (src.endsWith('.jpg') || src.endsWith('.jpeg')) return '.jpg';
-  if (src.endsWith('.gif')) return '.gif';
-  if (src.endsWith('.webp')) return '.webp';
-  return '.img';
-}
-
 function sanitize(s: string): string {
   return s.replace(/[^a-zA-Z0-9_.-]/g, '_');
+}
+
+// Minimal contract both backends implement, so the facade can treat them
+// uniformly (and tests can inject fakes).
+interface ImageBackend {
+  alive: boolean;
+  start(): boolean;
+  update(placements: ImagePlacement[], resources: Map<string, Uint8Array>): void;
+  clear(): void;
+  stop(): void;
+  // True when pixel positions depend on terminal metrics the backend measured
+  // once at process start and caches for the session. Such a backend must be
+  // restarted after the terminal is resized so it re-measures; the kitty
+  // backend draws through the app's own escape stream and needs no restart.
+  requiresRestartOnResize: boolean;
 }
 
 // Facade over the two image backends. Kitty-family terminals get the native
@@ -216,17 +262,36 @@ function sanitize(s: string): string {
 // ueberzugpp (X11/wayland overlay), which is an optional package dependency.
 // The backend is chosen once on the first start() and kept for the process
 // lifetime, so a terminal switch mid-session is not handled (it cannot be).
-class ImageLayer {
-  private backend: UeberzugImageLayer | KittyImageLayer | null = null;
+export class ImageLayer {
+  private backend: ImageBackend | null = null;
+  // Last payload sent to update(); kept so restart() can re-draw the current
+  // placements into a freshly spawned overlay process.
+  private lastPlacements: ImagePlacement[] | null = null;
+  private lastResources: Map<string, Uint8Array> | null = null;
+
+  constructor(
+    private kittyFactory: () => ImageBackend = () => new KittyImageLayer(),
+    private ueberzugFactory: () => ImageBackend = () => new UeberzugImageLayer(),
+  ) {}
 
   start(): boolean {
-    if (this.backend) return true;
-    const kitty = new KittyImageLayer();
+    if (this.backend) {
+      if (this.backend.alive) return true;
+      // The overlay process died (or its command pipe broke) mid-session.
+      // Without this the facade would keep returning true while update()/
+      // clear() silently no-op, leaving whatever was last drawn frozen on
+      // screen — covers that no longer follow the scrolling text after a
+      // delete or a page turn. Tear the dead backend down and re-create it
+      // so the next update() re-draws the current placements.
+      this.backend.stop();
+      this.backend = null;
+    }
+    const kitty = this.kittyFactory();
     if (kitty.start()) {
       this.backend = kitty;
       return true;
     }
-    const uber = new UeberzugImageLayer();
+    const uber = this.ueberzugFactory();
     if (uber.start()) {
       this.backend = uber;
       return true;
@@ -235,16 +300,44 @@ class ImageLayer {
   }
 
   update(placements: ImagePlacement[], resources: Map<string, Uint8Array>): void {
+    this.lastPlacements = placements;
+    this.lastResources = resources;
     this.backend?.update(placements, resources);
   }
 
   clear(): void {
+    this.lastPlacements = null;
+    this.lastResources = null;
     this.backend?.clear();
   }
 
   stop(): void {
+    this.lastPlacements = null;
+    this.lastResources = null;
     this.backend?.stop();
     this.backend = null;
+  }
+
+  // ueberzugpp measures the terminal's font metrics and padding ONCE at
+  // process start and caches them for the session (Terminal::get_terminal_size
+  // + X11 fallback window size). If the overlay spawns while the terminal
+  // window is still being (re)sized — a tiling WM placing the window right
+  // after launch — the cached values come from the mid-resize window and
+  // every image lands offset, typically up over the header. Kill the overlay
+  // and spawn a fresh one so it re-measures at the current, settled
+  // geometry, then re-draw the last placements.
+  restart(): void {
+    if (!this.backend?.requiresRestartOnResize) return;
+    const placements = this.lastPlacements;
+    const resources = this.lastResources;
+    this.backend.stop();
+    this.backend = null;
+    if (!this.start()) return;
+    // TS's control-flow analysis keeps the `null` narrowing from the
+    // `this.backend = null` above across the start() call, so read it back
+    // through a cast.
+    const backend = this.backend as ImageBackend | null;
+    if (backend && placements && resources) backend.update(placements, resources);
   }
 }
 

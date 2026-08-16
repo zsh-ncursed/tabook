@@ -159,6 +159,22 @@ async function run(
     }
   });
 
+  // Full-screen TUI: switch to the alternate screen buffer so the app
+  // always starts at terminal row 0, regardless of what the shell printed
+  // before it (prompt, previous command output). Image overlays (ueberzugpp)
+  // and mouse coordinates are cell-based relative to the terminal top; if
+  // the app rendered inline below a prompt, every overlay would land offset
+  // — the first library cover sitting on top of the header. The matching
+  // leave sequence is written by App on unmount (see App.tsx).
+  //
+  // \x1b[?1049h alone is not enough: terminals differ in where the cursor
+  // lands after switching buffers — alacritty keeps the current position
+  // (the row below the shell prompt), so Ink would still render offset.
+  // Clear + home explicitly to make the start row deterministic.
+  if (process.stdout.isTTY) {
+    process.stdout.write('\x1b[?1049h\x1b[2J\x1b[H');
+  }
+
   const tree = render(
     React.createElement(App, {
       db,

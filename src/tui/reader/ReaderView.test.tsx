@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render } from 'ink-testing-library';
 import { ReaderView } from './ReaderView.js';
 import type { ReaderSession } from './readerModel.js';
@@ -6,6 +6,7 @@ import type { LibraryDb } from '../../db/db.js';
 import type { ParsedBook } from '../../formats/model.js';
 import { defaultConfig } from '../../config/defaults.js';
 import { THEMES } from '../../themes/themes.js';
+import { imageLayer } from '../imageLayer.js';
 
 const theme = THEMES[defaultConfig().theme] ?? THEMES['dracula']!;
 const config = defaultConfig();
@@ -331,6 +332,30 @@ describe('ReaderView TOC chapter expansion', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(session.goToToc).toHaveBeenCalledWith(3);
     expect(lastFrame()).not.toContain('Table of Contents');
+  });
+});
+
+describe('ReaderView image layer vs App-level overlays', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('clears page images while an App-level overlay (inputDisabled) is open', async () => {
+    const clearSpy = vi.spyOn(imageLayer, 'clear');
+    const props = makeProps({ inputDisabled: true });
+    render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    // In reading mode the page images are normally drawn, not cleared — the
+    // palette/help overlay must suppress them so it isn't covered.
+    expect(clearSpy).toHaveBeenCalled();
+  });
+
+  it('does not clear page images in plain reading mode', async () => {
+    const clearSpy = vi.spyOn(imageLayer, 'clear');
+    const props = makeProps();
+    render(<ReaderView {...props} />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(clearSpy).not.toHaveBeenCalled();
   });
 });
 

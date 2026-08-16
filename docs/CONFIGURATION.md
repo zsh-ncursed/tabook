@@ -116,6 +116,7 @@ Actions you can bind to:
 | `zoom_image`          | `z`                   | Zoom image (`Esc` to restore)    |
 | `help`                | `?`                   | Help screen                      |
 | `command`             | `:`                   | Command line                     |
+| `command_palette`     | `ctrl+p`              | Command palette (fuzzy search)   |
 | `search`              | `/`                   | Search in book                   |
 | `search_next`         | `n`                   | Next search result               |
 | `search_prev`         | `N`                   | Previous search result           |
@@ -129,6 +130,11 @@ Actions you can bind to:
 | `toggle_recent`       | `R`                   | Toggle recent books              |
 
 `ctrl+d` / `ctrl+u` are bound to `page_down` / `page_up` by default.
+`ctrl+p` opens the **command palette** — type to fuzzy-filter every command
+for the current screen (usage and description are both searched), `↑`/`↓`
+moves, `enter` runs the highlighted command, `esc` closes. The palette runs
+the same commands as the `:` prompt; commands that need arguments (e.g.
+`:theme <name>`) open their interactive flow (theme picker) or print usage.
 
 **Conflicts:** binding the same key twice to different actions in your config
 is an error (`KeybindingConflictError`) and the app refuses to start with an

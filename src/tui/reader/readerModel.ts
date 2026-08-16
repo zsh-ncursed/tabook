@@ -445,10 +445,46 @@ export class ReaderSession {
   // ---- bookmarks ----
 
   addBookmarkAtCurrent(label: string): number {
+    return this.addBookmarkAt(this.charOffset(), label);
+  }
+
+  addBookmarkAt(offset: number, label: string): number {
     if (this._bookId === null) {
       throw new Error('Cannot add bookmark: book is not in the library');
     }
-    return this.db.addBookmark(this._bookId, this.charOffset(), label);
+    return this.db.addBookmark(this._bookId, offset, label);
+  }
+
+  // ---- mouse selection ----
+
+  // Book-wide character offset of the cell at (viewport line, rendered
+  // column). The rendered column counts the leading indent/prefix spaces
+  // that are not part of the book text, so the position maps onto the actual
+  // content. Columns beyond the line clamp to the line's end.
+  charOffsetAt(viewportLine: number, renderedCol: number): number {
+    const lines = this.layout.getRange(this.line + viewportLine, 1);
+    if (lines.length === 0) return this.layout.totalChars;
+    const line = lines[0]!;
+    const prefix = line.indent + line.prefix.length;
+    return (
+      this.layout.blockCharStart(line.blockIndex) +
+      line.charOffset +
+      Math.max(0, renderedCol - prefix)
+    );
+  }
+
+  // The selected slice of a viewport line's rendered text, in RENDERED
+  // coordinates (indent/prefix included). Empty lines or out-of-range lines
+  // yield ''.
+  selectionText(viewportLine: number, fromCol: number, toCol: number): string {
+    const lines = this.layout.getRange(this.line + viewportLine, 1);
+    if (lines.length === 0) return '';
+    const line = lines[0]!;
+    const prefix = line.indent + line.prefix.length;
+    const text = line.spans.map((s) => s.text).join('');
+    const a = Math.max(0, Math.min(text.length, fromCol - prefix));
+    const b = Math.max(a, Math.min(text.length, toCol - prefix));
+    return text.slice(a, b);
   }
 
   setBookId(id: number): void {

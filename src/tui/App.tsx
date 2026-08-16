@@ -13,6 +13,7 @@ import { HelpView } from './help/HelpView.js';
 import { ThemePicker } from './components/ThemePicker.js';
 import { FolderRemoveConfirm } from './components/FolderRemoveConfirm.js';
 import { OpenPathPrompt } from './components/OpenPathPrompt.js';
+import { CommandPalette } from './components/CommandPalette.js';
 import { useTerminalSize } from './useTerminalSize.js';
 import { pickBookFile } from '../utils/open.js';
 import { completeCommand, validCommandPrefixLength } from './commands.js';
@@ -21,6 +22,7 @@ import { defaultConfig } from '../config/defaults.js';
 import { runCommand, type AppScreen, type CommandContext } from './runCommand.js';
 import { useLibraryScanner } from './useLibraryScanner.js';
 import { enableMouseReporting, disableMouseReporting } from './mouse.js';
+import { imageLayer } from './imageLayer.js';
 import * as fs from 'node:fs';
 
 export interface AppProps {
@@ -56,6 +58,7 @@ export function App(props: AppProps): React.JSX.Element {
   const [cmdVersion, setCmdVersion] = useState(0);
   const [promptOpenPath, setPromptOpenPath] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [folderRemoveConfirm, setFolderRemoveConfirm] = useState<{
     path: string;
     count: number;
@@ -66,14 +69,65 @@ export function App(props: AppProps): React.JSX.Element {
     return t ?? THEMES[defaultConfig().theme]!;
   }, [themeName]);
 
-  // SGR mouse reporting (click selects rows in lists). Enabled while the app
-  // runs unless the user disabled it in the config; terminals without mouse
+  // SGR mouse reporting. Click mode (button events only) in lists lets the
+  // terminal keep its native text selection; the reader switches to drag
+  // mode (adds motion events while a button is held) so text ranges can be
+  // selected with the mouse and bookmarked. Enabled while the app runs
+  // unless the user disabled it in the config; terminals without mouse
   // support just ignore the enable sequence.
   useEffect(() => {
     if (!liveConfig.mouse) return;
-    enableMouseReporting();
+    enableMouseReporting(screen === 'reader' && session ? 'drag' : 'click');
     return () => disableMouseReporting();
-  }, [liveConfig.mouse]);
+  }, [liveConfig.mouse, screen, session]);
+
+  // Kill the overlay process when the app itself unmounts (quit from the
+  // library, Ctrl+C/SIGTERM/SIGHUP via the handlers above). The reader stops
+  // the layer in its own cleanup; the library only clears it, and view
+  // switches must NOT kill it (the next view reuses the process). App
+  // unmount fires exactly once, at exit. Without this, a live ueberzugpp
+  // child keeps the event loop alive after Ink's exit() (which unmounts but
+  // never calls process.exit), so the app hangs with the covers frozen on
+  // screen — the "artifacts after closing" bug.
+  //
+  // Also leave the alternate screen buffer (main.ts entered it on start) so
+  // the terminal restores the shell's original content instead of the app's
+  // last frame. Written after the overlay is torn down so no cover window is
+  // left dangling over the restored screen.
+  useEffect(
+    () => () => {
+      imageLayer.stop();
+      try {
+        // TTY writes are synchronous; a queued write would be dropped when
+        // the event loop drains after Ink's exit() (which never calls
+        // process.exit).
+        if (process.stdout.isTTY) {
+          process.stdout.write('\x1b[?1049l');
+        }
+      } catch {
+        // stdout already closed — nothing to restore into
+      }
+    },
+    [],
+  );
+
+  // ueberzugpp measures the terminal's font metrics and padding once at
+  // process start and caches them for the session. If it spawned while the
+  // window was still being tiled by the WM (alacritty's config size before
+  // i3 places it), the cached values are wrong and every cover lands offset
+  // — typically up over the "Library" header. Once the terminal size has
+  // settled after a change (and never right after mount, when the size is
+  // usually already final), restart the overlay so the fresh process
+  // re-measures at the settled geometry and re-draws the current images.
+  const firstSizeRef = useRef(true);
+  useEffect(() => {
+    if (firstSizeRef.current) {
+      firstSizeRef.current = false;
+      return;
+    }
+    const timer = setTimeout(() => imageLayer.restart(), 300);
+    return () => clearTimeout(timer);
+  }, [width, height]);
 
   const notify = useCallback((text: string): void => {
     setMessage({ text, key: Date.now() });
@@ -283,16 +337,18 @@ export function App(props: AppProps): React.JSX.Element {
   }, [session]);
 
   // On graceful termination signals, flush progress AND end the reading
-  // session so no row is left dangling without ended_at. Ink's exit() path
-  // is not guaranteed to run before the process dies on SIGHUP (e.g. ssh
-  // closed), so the synchronous better-sqlite3 writes happen here. SIGINT is
-  // included too: Ctrl+C is the most common way to quit a TUI.
+  // session so no row is left dangling without ended_at, then exit through
+  // Ink so the unmount cleanups run (image overlays are cleared/killed,
+  // mouse reporting and raw mode are restored) and the process 'exit'
+  // handlers fire. Registered unconditionally — SIGINT/SIGTERM/SIGHUP in the
+  // LIBRARY (no session) previously skipped this and left the ueberzugpp
+  // overlay process orphaned with its windows still on screen (artifacts
+  // after closing the app), and kitty images uncleared.
   //
   // Registering a listener suppresses Node's default termination, so the
   // handler must exit explicitly — otherwise `kill -INT` (or SIGTERM from a
   // script) would flush and then hang forever.
   useEffect(() => {
-    if (!session) return undefined;
     const flushAndExit = (): void => {
       flushSession();
       exit();
@@ -305,7 +361,7 @@ export function App(props: AppProps): React.JSX.Element {
       process.off('SIGHUP', flushAndExit);
       process.off('SIGINT', flushAndExit);
     };
-  }, [session, flushSession, exit]);
+  }, [flushSession, exit]);
 
   const openDownloadedBook = useCallback(
     (bookId: number, filePath: string) => {
@@ -320,7 +376,15 @@ export function App(props: AppProps): React.JSX.Element {
   );
 
   const inputDisabled =
-    promptOpenPath || helpOpen || themePickerOpen || folderRemoveConfirm !== null;
+    promptOpenPath ||
+    helpOpen ||
+    themePickerOpen ||
+    commandPaletteOpen ||
+    folderRemoveConfirm !== null;
+
+  const openCommandPalette = useCallback((): void => {
+    setCommandPaletteOpen(true);
+  }, []);
 
   return (
     <Box flexDirection="column" width="100%" height="100%">
@@ -337,6 +401,7 @@ export function App(props: AppProps): React.JSX.Element {
           onOpenFile={openFileDialog}
           onQuit={() => exit()}
           onHelp={() => setHelpOpen(true)}
+          onOpenPalette={openCommandPalette}
           runCommand={handleCommand}
           completeCommand={completeCommandCb}
           validCommandPrefix={validCommandPrefix}
@@ -354,6 +419,7 @@ export function App(props: AppProps): React.JSX.Element {
           }}
           onHelp={() => setHelpOpen(true)}
           onOpenDownloaded={openDownloadedBook}
+          onOpenPalette={openCommandPalette}
           inputDisabled={inputDisabled}
         />
       ) : session ? (
@@ -367,6 +433,7 @@ export function App(props: AppProps): React.JSX.Element {
           onSave={saveToLibrary}
           onOpenFile={openFileDialog}
           onHelp={() => setHelpOpen(true)}
+          onOpenPalette={openCommandPalette}
           runCommand={handleCommand}
           completeCommand={completeCommandCb}
           validCommandPrefix={validCommandPrefix}
@@ -400,6 +467,14 @@ export function App(props: AppProps): React.JSX.Element {
           theme={theme}
           screen={screen}
           onClose={() => setHelpOpen(false)}
+        />
+      ) : null}
+      {commandPaletteOpen ? (
+        <CommandPalette
+          theme={theme}
+          screen={screen}
+          onRun={handleCommand}
+          onClose={() => setCommandPaletteOpen(false)}
         />
       ) : null}
       {themePickerOpen ? (

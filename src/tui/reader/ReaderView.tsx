@@ -9,9 +9,11 @@ import { StatusBar } from '../components/StatusBar.js';
 import { TextPrompt } from '../components/TextPrompt.js';
 import { ListModal } from '../components/ListModal.js';
 import { Modal } from '../components/Modal.js';
-import { renderLine } from '../renderLines.js';
+import { renderLine, type SelectionRange } from '../renderLines.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { forceRedraw } from '../screenRefresh.js';
+import { useMouseClicks, wasMouseChunkRecent } from '../mouse.js';
+import { copyToClipboard } from '../../utils/clipboard.js';
 import { imageLayer, type ImagePlacement, IMAGE_ROWS, zoomGeometry } from '../imageLayer.js';
 import { formatBytes, truncate, splitChars, formatLocalTimestamp } from '../../utils/text.js';
 import { joinAuthors, formatSeries } from '../../formats/model.js';
@@ -26,6 +28,7 @@ export interface ReaderViewProps {
   onSave: () => number | null;
   onOpenFile: () => void;
   onHelp: () => void;
+  onOpenPalette?: () => void;
   runCommand: (text: string) => void;
   completeCommand?: (value: string) => string | null;
   validCommandPrefix?: (value: string) => number;
@@ -51,6 +54,81 @@ interface BookmarkRow {
   preview: string;
 }
 
+// A cell in the reader viewport: line index (within the visible viewport)
+// and rendered column (indent/prefix spaces count, matching the mouse X).
+interface SelCell {
+  line: number;
+  col: number;
+}
+
+interface TextSelection {
+  start: SelCell;
+  end: SelCell;
+}
+
+// Book-wide character offset of the selection's leading edge (the cell that
+// is earliest in reading order, i.e. the anchor when dragging up/left).
+function selectionStartOffset(session: ReaderSession, sel: TextSelection): number {
+  const minLine = Math.min(sel.start.line, sel.end.line);
+  const atMin =
+    sel.start.line < sel.end.line ||
+    (sel.start.line === sel.end.line && sel.start.col <= sel.end.col)
+      ? sel.start
+      : sel.end;
+  return session.charOffsetAt(minLine, atMin.col);
+}
+
+// Joined, whitespace-collapsed text of the selection (rendered line slices
+// are joined with spaces so a multi-line selection reads as one line).
+function selectionText(session: ReaderSession, sel: TextSelection): string {
+  const minLine = Math.min(sel.start.line, sel.end.line);
+  const maxLine = Math.max(sel.start.line, sel.end.line);
+  const parts: string[] = [];
+  for (let i = minLine; i <= maxLine; i++) {
+    const from = i === minLine ? Math.min(sel.start.col, sel.end.col) : 0;
+    const to = i === maxLine ? Math.max(sel.start.col, sel.end.col) + 1 : Number.MAX_SAFE_INTEGER;
+    parts.push(session.selectionText(i, from, to));
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function selectionCharCount(session: ReaderSession, sel: TextSelection): number {
+  const minLine = Math.min(sel.start.line, sel.end.line);
+  const maxLine = Math.max(sel.start.line, sel.end.line);
+  let n = 0;
+  for (let i = minLine; i <= maxLine; i++) {
+    const from = i === minLine ? Math.min(sel.start.col, sel.end.col) : 0;
+    const to = i === maxLine ? Math.max(sel.start.col, sel.end.col) + 1 : Number.MAX_SAFE_INTEGER;
+    n += session.selectionText(i, from, to).length;
+  }
+  return n;
+}
+
+// Render the selection highlight for viewport line i, or undefined when the
+// line is outside the selection. Columns are rendered coordinates; to is
+// exclusive (a click at column c selects the cell at c, so to = c + 1).
+function selectionRangeForLine(sel: TextSelection | null, i: number): SelectionRange | undefined {
+  if (!sel) return undefined;
+  const minLine = Math.min(sel.start.line, sel.end.line);
+  const maxLine = Math.max(sel.start.line, sel.end.line);
+  if (i < minLine || i > maxLine) return undefined;
+  if (minLine === maxLine) {
+    return {
+      from: Math.min(sel.start.col, sel.end.col),
+      to: Math.max(sel.start.col, sel.end.col) + 1,
+    };
+  }
+  if (i === minLine) {
+    const col = sel.start.line <= sel.end.line ? sel.start.col : sel.end.col;
+    return { from: col, to: Number.MAX_SAFE_INTEGER };
+  }
+  if (i === maxLine) {
+    const col = sel.start.line <= sel.end.line ? sel.end.col : sel.start.col;
+    return { from: 0, to: col + 1 };
+  }
+  return { from: 0, to: Number.MAX_SAFE_INTEGER };
+}
+
 interface TocItem {
   id: string;
   label: string;
@@ -70,6 +148,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     onSave,
     onOpenFile,
     onHelp,
+    onOpenPalette,
     runCommand,
     completeCommand,
     validCommandPrefix,
@@ -92,6 +171,16 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   // Which chapters (by toc id) currently have their subheading list expanded
   // in the TOC modal. Empty set = the default chapters-only view.
   const [tocExpanded, setTocExpanded] = useState<Set<string>>(new Set());
+  // Mouse text selection: a drag spans viewport (line, rendered column)
+  // cells. Mirrored in a ref so the mouse handler and key dispatch read the
+  // latest value synchronously (state updates are async).
+  const [selection, setSelectionState] = useState<TextSelection | null>(null);
+  const selectionRef = useRef<TextSelection | null>(null);
+  const setSelection = useCallback((sel: TextSelection | null) => {
+    selectionRef.current = sel;
+    setSelectionState(sel);
+  }, []);
+  const clearSelection = useCallback(() => setSelection(null), [setSelection]);
   const resolver = useMemo(() => createActionResolver(config), [config]);
 
   // TOC modal rows. Default view: top-level entries (chapters) only, each
@@ -167,34 +256,42 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     switch (action) {
       case 'move_cursor_down':
       case 'scroll_down':
+        clearSelection();
         session.scrollDown(1);
         forceTick();
         break;
       case 'move_cursor_up':
       case 'scroll_up':
+        clearSelection();
         session.scrollUp(1);
         forceTick();
         break;
       case 'page_down':
+        clearSelection();
         session.pageDown();
         forceTick();
         break;
       case 'page_up':
+        clearSelection();
         session.pageUp();
         forceTick();
         break;
       case 'go_to_start':
+        clearSelection();
         session.goToStart();
         forceTick();
         break;
       case 'go_to_end':
+        clearSelection();
         session.goToEnd();
         forceTick();
         break;
       case 'search':
+        clearSelection();
         setMode('search');
         break;
       case 'search_next':
+        clearSelection();
         if (session.nextMatch()) {
           forceTick();
           const st = session.searchState();
@@ -204,6 +301,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         }
         break;
       case 'search_prev':
+        clearSelection();
         if (session.prevMatch()) {
           forceTick();
           const st = session.searchState();
@@ -214,6 +312,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         break;
       case 'next_chapter':
       case 'prev_chapter': {
+        clearSelection();
         const label = action === 'next_chapter' ? session.nextChapter() : session.prevChapter();
         if (label !== null) {
           forceTick();
@@ -231,10 +330,12 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         setMode('bookmark');
         break;
       case 'list_bookmarks':
+        clearSelection();
         setBookmarks(loadBookmarks());
         setMode('bookmarks');
         break;
       case 'toc':
+        clearSelection();
         setTocFilter('');
         setTocExpanded(new Set());
         setMode('toc');
@@ -244,6 +345,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         setMode('info');
         break;
       case 'zoom_image':
+        clearSelection();
         if (session.viewportLines().some((l) => l.role === 'image')) {
           setMode('zoom');
         } else {
@@ -252,6 +354,9 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         break;
       case 'command':
         setMode('command');
+        break;
+      case 'command_palette':
+        onOpenPalette?.();
         break;
       case 'save_to_library':
         onSave();
@@ -267,6 +372,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         onHelp();
         break;
       case 'toggle_simplified':
+        clearSelection();
         session.setSimplified(!session.isSimplified);
         forceTick();
         notify(`Simplified mode: ${session.isSimplified ? 'on' : 'off'}`);
@@ -275,11 +381,13 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
         notify('Publisher CSS is not implemented yet; no setting was changed');
         break;
       case 'toggle_justify':
+        clearSelection();
         session.setJustify(!session.isJustify);
         forceTick();
         notify(`Text justify: ${session.isJustify ? 'on' : 'off'}`);
         break;
       case 'toggle_wide':
+        clearSelection();
         session.setWide(!session.isWide);
         forceTick();
         notify(`Wide screen: ${session.isWide ? 'on' : 'off'}`);
@@ -453,6 +561,18 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     }
 
     // Reading mode: dispatch via keymap resolver.
+    // Vim-like yank: with a mouse selection active, 'y' copies it to the
+    // terminal clipboard (OSC 52) instead of falling through to the keymap.
+    if (keyName === 'y' && selectionRef.current) {
+      const text = selectionText(session, selectionRef.current);
+      if (text) {
+        copyToClipboard(text);
+        notify(`Copied ${text.length} chars to clipboard`);
+      } else {
+        notify('Selection is empty');
+      }
+      return;
+    }
     const action = resolver.feed(keyName);
     handleAction(action);
   };
@@ -494,6 +614,9 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   };
 
   const handleMainInput = useCallback((input: string, key: Key) => {
+    // Skip the bogus '[' keypress Ink produces from an SGR mouse chunk (see
+    // mouse.ts); the mouse event was handled by the mouse module already.
+    if (wasMouseChunkRecent()) return;
     if (input.length > 1 && !key.ctrl && !key.meta) {
       dispatchChunk(input);
       return;
@@ -504,10 +627,55 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
 
   const lines = session.viewportLines();
 
-  // ponytail: ueberzugpp draws book images over the viewport's image
+  // Mouse text selection: press anchors, motion extends, release keeps the
+  // range (with a hint). The reader content box has paddingX=1 and starts one
+  // row below the title, so terminal cell (x, y) maps to viewport line
+  // y - 2 and rendered column x - 2.
+  const mouseStateRef = useRef({ mode, lines, session, inputDisabled });
+  mouseStateRef.current = { mode, lines, session, inputDisabled };
+  useMouseClicks((click) => {
+    const s = mouseStateRef.current;
+    if (click.button !== 'left' || s.mode !== 'reading' || s.inputDisabled) return;
+    const lineIdx = click.y - 2;
+    if (lineIdx < 0 || lineIdx >= s.lines.length) return;
+    const line = s.lines[lineIdx]!;
+    const renderedLen =
+      line.indent + line.prefix.length + line.spans.reduce((n, sp) => n + sp.text.length, 0);
+    if (renderedLen <= 0) return;
+    const col = Math.max(0, Math.min(renderedLen - 1, click.x - 2));
+    const cell: SelCell = { line: lineIdx, col };
+    // SGR motion events arrive as "press" (M) with the motion bit set, so
+    // motion must be checked before press: motion extends, press anchors.
+    if (click.motion) {
+      const prev = selectionRef.current;
+      if (prev) setSelection({ ...prev, end: cell });
+    } else if (click.press) {
+      setSelection({ start: cell, end: cell });
+    } else {
+      const sel = selectionRef.current;
+      if (sel) {
+        const n = selectionCharCount(s.session, sel);
+        notify(
+          `Selection: ${n} char${n === 1 ? '' : 's'} · b — bookmark · y — copy · scroll clears`,
+        );
+      }
+    }
+  });
+
+  // ponytail: ueberzugpp/kitty draws book images over the viewport's image
   // placeholders. Reconciled on every page/scroll change. In info mode the
   // book cover is drawn instead, so the overlay doesn't bleed over a modal.
+  //
+  // App-level overlays (command palette, help, theme picker, folder-remove
+  // confirm, path prompt) are rendered ABOVE the reader while mode stays
+  // 'reading', so the page images would cover the modal. When any of them is
+  // open (inputDisabled), drop the images; when it closes, the effect re-runs
+  // and re-draws them.
   useEffect(() => {
+    if (inputDisabled) {
+      imageLayer.clear();
+      return;
+    }
     if (mode === 'info') {
       if (!imageLayer.start()) return;
       const coverSrc = session.book.metadata.coverKey;
@@ -574,7 +742,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       });
     });
     imageLayer.update(placements, session.book.resources);
-  }, [lines, mode, session]);
+  }, [lines, mode, session, inputDisabled]);
 
   useEffect(() => () => imageLayer.stop(), []);
 
@@ -611,7 +779,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       <Box flexDirection="column" paddingX={1} height={session.pageHeight()}>
         {lines.map((line, i) => (
           <Box key={i} height={1}>
-            {renderLine(line, theme)}
+            {renderLine(line, theme, selectionRangeForLine(selection, i))}
           </Box>
         ))}
       </Box>
@@ -665,6 +833,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           theme={theme}
           prefix="b "
           placeholder="bookmark label (optional)…"
+          initialValue={selection ? truncate(selectionText(session, selection), 60) : ''}
           onSubmit={(value) => {
             let bookId = session.bookId;
             if (bookId === null) {
@@ -673,12 +842,22 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
             if (bookId === null) {
               notify('Cannot save bookmark: book not in library');
             } else {
-              session.addBookmarkAtCurrent(value);
+              const sel = selectionRef.current;
+              if (sel) {
+                // Bookmark a mouse selection at its leading edge.
+                session.addBookmarkAt(selectionStartOffset(session, sel), value);
+              } else {
+                session.addBookmarkAtCurrent(value);
+              }
               notify('Bookmark added');
             }
+            clearSelection();
             closeModal('reading');
           }}
-          onCancel={() => closeModal('reading')}
+          onCancel={() => {
+            clearSelection();
+            closeModal('reading');
+          }}
         />
       ) : null}
 

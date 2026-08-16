@@ -13,7 +13,7 @@
 //
 // Coordinates are terminal rows/cols (0-indexed); the reader's reserved
 // IMAGE_ROWS blank lines keep the overlay clear of the following text.
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getNative, isNativeAvailable, isNativeErrorResult } from '../native.js';
@@ -63,13 +63,33 @@ export function buildTransmit(path: string, id: number): string {
   return `${ESC}_Ga=t,t=f,f=100,i=${id},q=2;${payload}${ST}`;
 }
 
-// Place image `id` in a c x r cell box whose top-left is at cell (x, y),
-// 0-indexed. The placement anchors at the current cursor position, so the
-// cursor is moved to the target cell first. p=1 makes repeated placements of
-// the same image id replace each other (move/resize without flicker).
-export function buildPlace(id: number, x: number, y: number, cols: number, rows: number): string {
+// Place image `id` with its top-left at cell (x, y), 0-indexed. `size` picks
+// the placement box: specify at most ONE of cols/rows so the terminal
+// computes the other from the image's own aspect ratio (no distortion).
+// Sending both would stretch the image to fill the c x r rectangle, which
+// distorts non-square images because terminal cells are not square.
+//
+// Cursor discipline matters: the placement anchors at the current cursor
+// position, so the cursor is moved to the target cell first, and per the
+// protocol the terminal then moves the cursor right by c and down by r
+// after the placement (unless C=1 disables that). These writes interleave
+// with Ink's diff-based frames (log-update tracks the cursor and emits
+// relative moves), so a displaced cursor corrupts the next frame — lines
+// land on wrong rows without clearing and text appears duplicated. Wrap the
+// whole sequence in save/restore cursor (DECSC/DECRC) and set C=1, so the
+// physical cursor ends exactly where log-update expects it. p=1 makes
+// repeated placements of the same image id replace each other (move/resize
+// without flicker).
+export function buildPlace(id: number, x: number, y: number, size: FitSize): string {
   const move = `${ESC}[${y + 1};${x + 1}H`;
-  return `${move}${ESC}_Ga=p,i=${id},p=1,c=${cols},r=${rows},q=2${ST}`;
+  const dims = [
+    size.cols !== undefined ? `c=${size.cols}` : '',
+    size.rows !== undefined ? `r=${size.rows}` : '',
+  ]
+    .filter(Boolean)
+    .join(',');
+  const extra = dims ? `,${dims}` : '';
+  return `\x1b7${move}${ESC}_Ga=p,i=${id},p=1${extra},C=1,q=2${ST}\x1b8`;
 }
 
 // Delete image `id` and all of its placements (d=I).
@@ -82,18 +102,40 @@ export function buildClear(): string {
   return `${ESC}_Ga=d,d=A,q=2${ST}`;
 }
 
-// Number of terminal rows the image needs to fill `boxCols` columns without
-// distortion, clamped to the reserved `boxRows` so the overlay never covers
-// the text the layout reserved space for. Falls back to the full box when the
-// source dimensions are unknown.
-export function placementRows(
+// The placement box for a placement: one of cols/rows, the other computed by
+// the terminal from the image aspect ratio. Both may be specified only when
+// the source dimensions are unknown (kitty then stretches to fill the box,
+// which is the best we can do without aspect info).
+export interface FitSize {
+  cols?: number;
+  rows?: number;
+}
+
+// Pick the placement box so the image fits *inside* the reserved boxCols x
+// boxRows cell box without distortion, mirroring ueberzugpp's fit_contain:
+// a portrait image in a wide short box (e.g. a book cover in a 12x3 card)
+// keeps its proportions instead of being stretched flat. Only ONE of c/r is
+// returned; the terminal computes the other from the image's pixel aspect
+// ratio and its own cell size, so the displayed aspect is always correct.
+// The assumed 1:2 cell aspect (typical terminal fonts) is used only to pick
+// which dimension to fix; an off guess may leave a little extra margin, but
+// never distorts the image.
+export function fitBox(
   boxCols: number,
   boxRows: number,
   imgWidth: number,
   imgHeight: number,
-): number {
-  if (imgWidth <= 0 || imgHeight <= 0) return boxRows;
-  return Math.max(1, Math.min(boxRows, Math.round((boxCols * imgHeight) / imgWidth)));
+): FitSize {
+  if (imgWidth <= 0 || imgHeight <= 0) return { cols: boxCols, rows: boxRows };
+  // rows the image would need at boxCols wide, cols it would need at boxRows
+  // tall (assumed cellW:cellH = 1:2).
+  const rowsIfWide = Math.round((boxCols * imgHeight) / (2 * imgWidth));
+  if (rowsIfWide <= boxRows) return { cols: boxCols };
+  const colsIfTall = Math.round((2 * boxRows * imgWidth) / imgHeight);
+  if (colsIfTall <= boxCols) return { rows: boxRows };
+  // Neither fits exactly (unusual aspect): fix the dimension with the
+  // smaller overflow.
+  return rowsIfWide - boxRows <= boxCols - colsIfTall ? { cols: boxCols } : { rows: boxRows };
 }
 
 function sanitize(s: string): string {
@@ -126,6 +168,10 @@ function pngDimensions(data: Uint8Array): { width: number; height: number } {
 
 export class KittyImageLayer {
   private active = false;
+  // Draws through the app's own escape stream — the terminal maps cells to
+  // pixels itself, so there are no process-cached metrics and no restart is
+  // needed when the terminal is resized.
+  requiresRestartOnResize = false;
   // Detection hook, injectable for tests (the real one reads process.stdout,
   // which cannot be stubbed reliably across Node versions).
   private detect: () => boolean;
@@ -142,13 +188,26 @@ export class KittyImageLayer {
   private shown = new Map<string, ShownGeometry>();
   private exitHandler: (() => void) | null = null;
 
+  get alive(): boolean {
+    return this.active;
+  }
+
   start(): boolean {
     if (this.active) return true;
     if (!this.detect()) return false;
     this.tmpDir = join(tmpdir(), `tabook-kitty-${process.pid}`);
     mkdirSync(this.tmpDir, { recursive: true });
     this.active = true;
-    this.exitHandler = () => this.stop();
+    // The 'exit' event only allows synchronous work: process.stdout.write
+    // may not flush before the process dies (especially on pipes), leaving
+    // the terminal with stale images. Delete all images straight to fd 1.
+    this.exitHandler = () => {
+      try {
+        writeSync(1, buildClear());
+      } catch {
+        // fd 1 already closed — nothing left to clear
+      }
+    };
     process.once('exit', this.exitHandler);
     return true;
   }
@@ -228,10 +287,11 @@ export class KittyImageLayer {
         this.imgIds.set(p.identifier, imgId);
         this.emit(buildTransmit(resolved.path, imgId));
       }
-      // Aspect-preserving height: fit the image into the c x r box without
-      // distortion and without overflowing the rows the layout reserved.
-      const rows = placementRows(p.width, p.height, resolved.width, resolved.height);
-      this.emit(buildPlace(imgId, p.x, p.y, p.width, rows));
+      // Aspect-preserving box: one of c/r is sent and the terminal computes
+      // the other, so the image fits inside the reserved box without
+      // distortion (ueberzugpp's fit_contain equivalent).
+      const size = fitBox(p.width, p.height, resolved.width, resolved.height);
+      this.emit(buildPlace(imgId, p.x, p.y, size));
       this.shown.set(p.identifier, { x: p.x, y: p.y, width: p.width, height: p.height });
     }
   }

@@ -406,3 +406,51 @@ describe('ReaderSession', () => {
     expect(progress!.position).toBe(session.charOffset());
   });
 });
+
+describe('mouse selection helpers', () => {
+  it('maps a rendered cell to a book-wide character offset (content, not indent)', () => {
+    // paragraphIndent pushes content right by a few rendered columns; the
+    // offset must land on the actual text, not the indentation.
+    const session = makeSession([para('hello world')]);
+    const line = session.viewportLines()[0]!;
+    expect(line.role).toBe('paragraph');
+    const indent = line.indent;
+    // First content char (rendered col = indent) is the book char 0.
+    expect(session.charOffsetAt(0, indent)).toBe(0);
+    expect(session.charOffsetAt(0, indent + 5)).toBe(5); // 'hello' -> offset 5
+  });
+
+  it('extracts the selected slice of a line in rendered coordinates', () => {
+    const session = makeSession([para('the quick brown fox')]);
+    const line = session.viewportLines()[0]!;
+    const indent = line.indent;
+    expect(session.selectionText(0, indent + 4, indent + 9)).toBe('quick');
+    // Clamps out-of-range columns.
+    expect(session.selectionText(0, 0, 9999)).toBe('the quick brown fox');
+  });
+
+  it('adds a bookmark at an explicit offset', () => {
+    const id = db.addBook({
+      path: '/tmp/sel.fb2',
+      filename: 'sel.fb2',
+      format: 'fb2',
+      size: 1,
+      metadata: { title: 'Sel', authors: [], genres: [], annotation: '' },
+    });
+    const session = new ReaderSession(makeBook([para('abcdefghij')]), {
+      typo,
+      simplified: false,
+      width: 80,
+      height: 24,
+      db,
+      bookId: id,
+    });
+    const line = session.viewportLines()[0]!;
+    const bookmarkId = session.addBookmarkAt(line.indent + 2, 'cd');
+    const bookmarks = db.listBookmarks(id);
+    expect(bookmarks).toHaveLength(1);
+    expect(bookmarks[0]!.label).toBe('cd');
+    expect(bookmarks[0]!.position).toBe(2);
+    void bookmarkId;
+  });
+});

@@ -92,6 +92,24 @@ describe('App — library entry folder checks', () => {
     await settle();
   });
 
+  it('writes the alternate-screen leave sequence on unmount (TTY)', async () => {
+    const origTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      const { unmount } = render(<App db={db} config={defaultConfig()} />);
+      await settle();
+      unmount();
+      await settle();
+      // main.ts enters the alternate screen on start; the App must leave it
+      // on exit so the shell's original content is restored.
+      expect(writeSpy).toHaveBeenCalledWith('\x1b[?1049l');
+    } finally {
+      writeSpy.mockRestore();
+      if (origTTY) Object.defineProperty(process.stdout, 'isTTY', origTTY);
+    }
+  });
+
   it('cancels pending checks when leaving the library before they finish', async () => {
     db.addLibraryFolder('/books/a');
     let resolveCheck!: (value: boolean) => void;

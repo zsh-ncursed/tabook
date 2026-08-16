@@ -108,6 +108,7 @@ export function actionLabel(action: KeyAction): string {
     book_info: 'Book info',
     help: 'Help',
     command: 'Command line',
+    command_palette: 'Command palette',
     search: 'Search',
     search_next: 'Next result',
     search_prev: 'Previous result',

@@ -22,6 +22,7 @@ export type KeyAction =
   | 'book_info'
   | 'help'
   | 'command'
+  | 'command_palette'
   | 'search'
   | 'search_next'
   | 'search_prev'
@@ -60,6 +61,7 @@ export const KEY_ACTIONS: readonly KeyAction[] = [
   'book_info',
   'help',
   'command',
+  'command_palette',
   'search',
   'search_next',
   'search_prev',
@@ -109,6 +111,7 @@ export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
   '?': 'help',
   q: 'quit',
   ':': 'command',
+  'ctrl+p': 'command_palette',
   enter: 'select',
   escape: 'back',
   space: 'page_down',

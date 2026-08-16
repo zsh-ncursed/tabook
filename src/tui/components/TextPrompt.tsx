@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import { resolveKeyName } from '../keymap.js';
+import { wasMouseChunkRecent } from '../mouse.js';
 import { execSync } from 'node:child_process';
 
 export interface TextPromptProps {
@@ -88,6 +89,9 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
   }, [initialValue, onValueChange]);
 
   useInput((input, key) => {
+    // A mouse click while the prompt is open would otherwise type the bogus
+    // '[' keypress Ink derives from the SGR chunk (see mouse.ts).
+    if (wasMouseChunkRecent()) return;
     const keyName = resolveKeyName(input, key);
     switch (keyName) {
       case 'escape':

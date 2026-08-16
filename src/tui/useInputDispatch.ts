@@ -1,5 +1,6 @@
 import { useCallback, useRef, type MutableRefObject } from 'react';
 import { useInput, type Key } from 'ink';
+import { wasMouseChunkRecent } from './mouse.js';
 
 /**
  * A single stable useInput handler that forwards every keypress through a ref
@@ -18,6 +19,11 @@ export function useInputDispatch(
 ): MutableRefObject<(input: string, key: Key) => void> {
   const dispatchRef = useRef<(input: string, key: Key) => void>(() => {});
   const handleInput = useCallback((input: string, key: Key) => {
+    // Ink mis-parses the leading ESC[ of an SGR mouse sequence as the '['
+    // key — one bogus keypress per mouse chunk. The mouse event itself was
+    // already handled by the mouse module's own stdin listener, so drop the
+    // echo key (in the reader '[' is prev_chapter and would fight a drag).
+    if (wasMouseChunkRecent()) return;
     dispatchRef.current(input, key);
   }, []);
   useInput(handleInput, { isActive });

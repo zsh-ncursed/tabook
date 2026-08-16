@@ -12,11 +12,19 @@ import { useInputDispatch } from '../useInputDispatch.js';
 import { useMouseClicks } from '../mouse.js';
 import { forceRedraw } from '../screenRefresh.js';
 import { truncateW } from '../../utils/text.js';
-import { fetchFeed, fetchOpenSearch, catalogAuth, OpdsError } from '../../opds/client.js';
+import {
+  fetchFeed,
+  fetchOpenSearch,
+  fetchImage,
+  catalogAuth,
+  OpdsError,
+} from '../../opds/client.js';
 import { parseOpenSearch, buildSearchUrl } from '../../opds/opensearch.js';
 import type { OpdsFeed, OpdsEntry, OpdsFacet } from '../../opds/model.js';
 import { pickAcquisitionLink } from '../../opds/model.js';
 import { opdsDownloadQueue, type DownloadJob } from '../../opds/downloadQueue.js';
+import { imageLayer, type ImagePlacement } from '../imageLayer.js';
+import { buildLineIndex, rowAtLine, visibleWindow, CARD_ROWS, COVER_W } from '../listLayout.js';
 
 export interface OpdsViewProps {
   db: LibraryDb;
@@ -25,6 +33,7 @@ export interface OpdsViewProps {
   notify: (message: string) => void;
   onExit: () => void;
   onHelp: () => void;
+  onOpenPalette?: () => void;
   onOpenDownloaded: (bookId: number, filePath: string) => void;
   inputDisabled?: boolean;
 }
@@ -40,6 +49,15 @@ type Mode =
   | 'auth-username'
   | 'auth-password';
 
+type BrowsingRow =
+  | { kind: 'facet-group'; label: string }
+  | { kind: 'facet'; facet: OpdsFacet }
+  | { kind: 'entry'; entry: OpdsEntry };
+
+function rowHeight(row: BrowsingRow): number {
+  return row.kind === 'entry' ? CARD_ROWS : 1;
+}
+
 interface FeedHistoryEntry {
   feed: OpdsFeed;
   cursor: number;
@@ -54,6 +72,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
     notify,
     onExit,
     onHelp,
+    onOpenPalette,
     onOpenDownloaded,
     inputDisabled = false,
   } = props;
@@ -121,11 +140,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   // Flatten facets + entries into displayable rows
   const rows = useMemo(() => {
     if (!currentFeed) return [];
-    const result: Array<
-      | { kind: 'facet-group'; label: string }
-      | { kind: 'facet'; facet: OpdsFacet }
-      | { kind: 'entry'; entry: OpdsEntry }
-    > = [];
+    const result: BrowsingRow[] = [];
 
     const grouped = new Map<string, OpdsFacet[]>();
     for (const facet of currentFeed.facets) {
@@ -409,6 +424,14 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       const keyName = resolveKeyName(input, key);
       if (keyName === null) return;
 
+      // The command palette is a global overlay — available in every mode
+      // (feed verbs d/x/n/p/c/u stay fixed, but the palette comes from the
+      // configurable keymap like in the other views).
+      if (resolver.resolve(keyName) === 'command_palette') {
+        onOpenPalette?.();
+        return;
+      }
+
       if (mode === 'downloads') {
         // d cancels the selected queued/in-flight job; x/esc closes the panel.
         if (keyName === 'd') {
@@ -672,31 +695,108 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   );
   dispatchRef.current = (input: string, key: Key) => opdsInputRef.current(input, key);
 
-  const visibleCount = Math.max(3, height - 6);
-  const start = Math.max(
-    0,
-    Math.min(cursor - Math.floor(visibleCount / 2), Math.max(0, rows.length - visibleCount)),
+  // Browsing rows have non-uniform heights (1-line facet/facet-group rows,
+  // CARD_ROWS-line entry cards with cover thumbnails); the window, cursor
+  // centering and mouse hit-testing go through listLayout. Catalog list rows
+  // are all 1 line, so a plain window is fine there.
+  const maxLines = Math.max(3, height - 6);
+  const listIndex = useMemo(() => buildLineIndex(rows, rowHeight), [rows]);
+  const { start, end } = useMemo(
+    () => visibleWindow(rows, listIndex, cursor, maxLines),
+    [rows, listIndex, cursor, maxLines],
   );
-  const visibleRows = rows.slice(start, start + visibleCount);
+  const visibleRows = rows.slice(start, end);
+
+  // Cover thumbnails: lazily fetch thumbnailHref for visible entries only and
+  // cache by entry id. Covers that fail (404, timeout, auth) are cached as
+  // undefined so they aren't retried on every scroll.
+  const [covers, setCovers] = useState<Map<string, Uint8Array | undefined>>(new Map());
+  const coversRef = useRef(covers);
+  coversRef.current = covers;
+  useEffect(() => {
+    if (mode !== 'browsing' || !activeCatalog) return;
+    const auth = catalogAuth(activeCatalog);
+    const base = currentFeed?.url;
+    let cancelled = false;
+    for (let i = start; i < end && i < rows.length; i++) {
+      const row = rows[i];
+      if (row?.kind !== 'entry') continue;
+      const href = row.entry.thumbnailHref;
+      if (!href || coversRef.current.has(row.entry.id)) continue;
+      coversRef.current = new Map(coversRef.current).set(row.entry.id, undefined);
+      void fetchImage(href, { auth, base })
+        .then((bytes) => {
+          if (cancelled) return;
+          setCovers((prev) => new Map(prev).set(row.entry.id, bytes));
+        })
+        .catch(() => {
+          // cached as undefined above; a failed cover just stays invisible
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [rows, start, end, mode, activeCatalog, currentFeed]);
+
+  // Draw cover thumbnails next to the visible entry cards. Entry rows are
+  // CARD_ROWS tall and the list starts one row below the header; like the
+  // library, images are dropped while an App-level overlay is open so they
+  // can't cover the modal. update() reconciles by identifier.
+  useEffect(() => {
+    if (inputDisabled || mode !== 'browsing') {
+      imageLayer.clear();
+      return;
+    }
+    if (!imageLayer.start()) return;
+    const placements: ImagePlacement[] = [];
+    const resources = new Map<string, Uint8Array>();
+    const listTop = listIndex.prefix[start] ?? 0;
+    for (let i = start; i < end && i < rows.length; i++) {
+      const row = rows[i];
+      if (row?.kind !== 'entry') continue;
+      const bytes = covers.get(row.entry.id);
+      if (!bytes || bytes.length === 0) continue;
+      const id = `opds-cover-${row.entry.id}`;
+      const line = (listIndex.prefix[i] ?? 0) - listTop;
+      placements.push({
+        identifier: id,
+        x: 1, // list container has paddingX=1
+        y: 1 + line,
+        width: COVER_W,
+        height: CARD_ROWS,
+        src: id,
+      });
+      resources.set(id, bytes);
+    }
+    imageLayer.update(placements, resources);
+  }, [rows, start, end, covers, listIndex, inputDisabled, mode]);
+
+  useEffect(() => () => imageLayer.clear(), []);
 
   // Mouse: single click moves the cursor; a second click on the same row
   // within 350 ms activates it (open subsection / book / facet). Catalog list
-  // and browsing rows both start one row below the 1-line header.
+  // and browsing rows both start one row below the 1-line header; browsing
+  // hit-testing maps terminal lines back through the line index because entry
+  // cards are CARD_ROWS tall.
   const clickStateRef = useRef({ row: -1, time: 0 });
   const mouseStateRef = useRef({
     mode,
-    start,
     rows,
     catalogs,
+    listIndex,
+    start,
+    end,
     inputDisabled,
     handleSelect,
     openCatalog,
   });
   mouseStateRef.current = {
     mode,
-    start,
     rows,
     catalogs,
+    listIndex,
+    start,
+    end,
     inputDisabled,
     handleSelect,
     openCatalog,
@@ -705,11 +805,20 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
     if (click.button !== 'left' || !click.press) return;
     const s = mouseStateRef.current;
     if (s.inputDisabled) return;
-    // Terminal Y is 1-based; the list starts one row below the header.
-    const absolute = s.mode === 'catalog-list' ? click.y - 2 : s.start + (click.y - 2);
-    const limit = s.mode === 'catalog-list' ? s.catalogs.length : s.rows.length;
-    if (absolute < 0 || absolute >= limit) return;
-    if (s.mode === 'browsing' && s.rows[absolute]?.kind === 'facet-group') return;
+    let absolute: number;
+    if (s.mode === 'catalog-list') {
+      absolute = click.y - 2;
+      if (absolute < 0 || absolute >= s.catalogs.length) return;
+    } else if (s.mode === 'browsing') {
+      const line = click.y - 2;
+      const windowLines = (s.listIndex.prefix[s.end] ?? 0) - (s.listIndex.prefix[s.start] ?? 0);
+      if (line < 0 || line >= windowLines) return;
+      absolute = rowAtLine(s.rows, s.listIndex, (s.listIndex.prefix[s.start] ?? 0) + line);
+      if (absolute < s.start || absolute >= s.end) return;
+      if (s.rows[absolute]?.kind === 'facet-group') return;
+    } else {
+      return;
+    }
     const now = Date.now();
     const prev = clickStateRef.current;
     if (prev.row === absolute && now - prev.time < 350) {
@@ -822,20 +931,26 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
               );
             }
             const entry = row.entry;
-            const titleW = Math.max(10, width - 30);
-            const title = truncateW(entry.title, titleW);
-            const author = entry.authors.length > 0 ? entry.authors[0]!.name : '';
-            const authorTrunc = truncateW(author, 20);
+            const textW = Math.max(10, width - COVER_W - 40);
+            const title = truncateW(entry.title, textW);
+            const author = truncateW(entry.authors[0]?.name ?? 'Unknown author', textW);
             const marker = entry.isAcquisition ? '📚' : '📁';
+            const sub = [entry.language, entry.issued, entry.publisher].filter(Boolean).join(' · ');
             return (
-              <Box key={`e-${absolute}`} flexDirection="row">
+              // 3-line card: title, author, language · year · publisher. The
+              // text is indented past the cover thumbnail column so the image
+              // drawn by imageLayer doesn't overlap it.
+              <Box key={`e-${absolute}`} flexDirection="column" paddingLeft={COVER_W + 2}>
                 <Text color={selected ? theme.colors.accent : theme.colors.text} bold={selected}>
                   {selected ? '▸ ' : '  '}
-                </Text>
-                <Text color={selected ? theme.colors.accent : theme.colors.text} bold={selected}>
                   {marker} {title}
                 </Text>
-                {authorTrunc ? <Text color={theme.colors.dim}> — {authorTrunc}</Text> : null}
+                <Text color={theme.colors.dim} dimColor>
+                  {author}
+                </Text>
+                <Text color={theme.colors.dim} dimColor>
+                  {sub ? truncateW(sub, textW) : ' '}
+                </Text>
               </Box>
             );
           })}

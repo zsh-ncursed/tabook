@@ -12,6 +12,7 @@ import { opdsDownloadQueue } from '../../opds/downloadQueue.js';
 import { mockResponse } from '../../opds/client.test-utils.js';
 import { FB2_SAMPLE } from '../../formats/test-utils.js';
 import { emitMouseClick } from '../mouse.js';
+import { imageLayer } from '../imageLayer.js';
 
 const theme: Theme = THEMES[defaultConfig().theme] ?? THEMES['dracula']!;
 const config = defaultConfig();
@@ -609,6 +610,88 @@ describe('OpdsView — search discovery from the root feed', () => {
   });
 });
 
+describe('OpdsView — cover thumbnails', () => {
+  it('fetches thumbnailHref covers and draws them for visible entries', async () => {
+    db.addCatalog({ name: 'Test', url: 'https://example.com/opds' });
+    const feedXml = `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>https://example.com/opds</id>
+  <title>Cover Feed</title>
+  <updated>2026-01-01T00:00:00Z</updated>
+  <link rel="self" href="https://example.com/opds" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+  <entry>
+    <id>https://example.com/books/1</id>
+    <title>Covered Book</title>
+    <updated>2026-01-01T00:00:00Z</updated>
+    <link rel="http://opds-spec.org/image/thumbnail" type="image/jpeg" href="https://example.com/covers/1.jpg"/>
+    <link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="https://example.com/books/1.epub"/>
+  </entry>
+</feed>`;
+    const fetchMock = vi.fn(async (url: unknown) => {
+      const u = String(url);
+      if (u === 'https://example.com/opds') return feedResponse(feedXml);
+      if (u === 'https://example.com/covers/1.jpg') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Map([['content-length', '4']]),
+          text: async () => '',
+          arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
+        } as unknown as Response;
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    }) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = fetchMock;
+    vi.spyOn(imageLayer, 'start').mockReturnValue(true);
+    const updateSpy = vi.spyOn(imageLayer, 'update');
+
+    const { stdin } = render(<OpdsView {...makeProps()} />);
+    await settle();
+    stdin.write('\r'); // open catalog
+    await new Promise((r) => setTimeout(r, 250));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('covers/1.jpg'),
+      expect.anything(),
+    );
+    expect(updateSpy).toHaveBeenCalled();
+    const [placements] = updateSpy.mock.calls.at(-1)! as [
+      Array<{ identifier: string; width: number; height: number }>,
+      Map<string, Uint8Array>,
+    ];
+    expect(placements.length).toBe(1);
+    expect(placements[0]!.identifier).toMatch(/^opds-cover-/);
+    expect(placements[0]!.height).toBe(3);
+  });
+
+  it('does not fetch or draw covers when inputDisabled', async () => {
+    db.addCatalog({ name: 'Test', url: 'https://example.com/opds' });
+    const feedXml = `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>x</id><title>F</title><updated>2026-01-01T00:00:00Z</updated>
+  <link rel="self" href="https://x" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+  <entry>
+    <id>e1</id><title>B</title><updated>2026-01-01T00:00:00Z</updated>
+    <link rel="http://opds-spec.org/image/thumbnail" type="image/jpeg" href="https://example.com/c.jpg"/>
+    <link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="https://example.com/b.epub"/>
+  </entry>
+</feed>`;
+    globalThis.fetch = vi.fn(async () =>
+      feedResponse(feedXml),
+    ) as unknown as typeof globalThis.fetch;
+    vi.spyOn(imageLayer, 'start').mockReturnValue(true);
+    const updateSpy = vi.spyOn(imageLayer, 'update');
+    const clearSpy = vi.spyOn(imageLayer, 'clear');
+
+    const { stdin } = render(<OpdsView {...makeProps({ inputDisabled: true })} />);
+    await settle();
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 200));
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(clearSpy).toHaveBeenCalled();
+  });
+});
+
 describe('OpdsView — mouse clicks', () => {
   it('single click moves the cursor; double-click opens the catalog', async () => {
     db.addCatalog({ name: 'Alpha', url: 'https://a/' });
@@ -621,11 +704,11 @@ describe('OpdsView — mouse clicks', () => {
     const { lastFrame } = render(<OpdsView {...makeProps()} />);
     await settle();
     // Click row 1 (y=3) → cursor moves to Beta.
-    emitMouseClick({ x: 5, y: 3, button: 'left', press: true });
+    emitMouseClick({ x: 5, y: 3, button: 'left', press: true, motion: false });
     await settle();
     expect(lastFrame() ?? '').toContain('▸ Beta');
     // Double-click the same row → opens the catalog (fetches its feed).
-    emitMouseClick({ x: 5, y: 3, button: 'left', press: true });
+    emitMouseClick({ x: 5, y: 3, button: 'left', press: true, motion: false });
     await new Promise((r) => setTimeout(r, 250));
     expect(lastFrame() ?? '').toContain('Feed B');
   });

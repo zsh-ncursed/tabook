@@ -17,6 +17,9 @@ export interface BookDetailProps {
   onRead: () => void;
   onClose: () => void;
   onHelp?: () => void;
+  /** True while an App-level overlay (help, palette, …) is open above the
+   * modal; the cover image is dropped then so it can't cover the overlay. */
+  inputDisabled?: boolean;
 }
 
 // Modal chrome: border-top(1) + paddingY-top(1) + title(1) + marginY(1) +
@@ -26,7 +29,7 @@ const MODAL_CHROME = 8;
 const TEXT_WIDTH = 48;
 
 export function BookDetail(props: BookDetailProps): React.JSX.Element {
-  const { book, config, theme, onRead, onClose, onHelp } = props;
+  const { book, config, theme, onRead, onClose, onHelp, inputDisabled = false } = props;
   const { stdout } = useStdout();
   const resolver = useMemo(() => createActionResolver(config), [config]);
   const termHeight = stdout.rows ?? 24;
@@ -47,6 +50,13 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
   }, [book.path, book.coverKey, hasCover]);
 
   useEffect(() => {
+    // An App-level overlay (help, …) renders above this modal; the cover
+    // would cover it, so drop the image for the overlay's lifetime and
+    // re-draw when it closes.
+    if (inputDisabled) {
+      imageLayer.clear();
+      return;
+    }
     if (hasCover && coverData && coverData.length > 0 && book.coverKey) {
       if (!imageLayer.start()) return;
       const res = new Map<string, Uint8Array>();
@@ -59,7 +69,7 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
       imageLayer.clear();
     }
     return () => imageLayer.clear();
-  }, [hasCover, coverData, book.coverKey]);
+  }, [hasCover, coverData, book.coverKey, inputDisabled]);
 
   // Build all text lines: metadata + wrapped annotation.
   const metaLines: string[] = [];

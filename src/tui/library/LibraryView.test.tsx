@@ -9,6 +9,8 @@ import { defaultConfig } from '../../config/defaults.js';
 import { THEMES } from '../../themes/themes.js';
 import type { Theme } from '../../themes/themes.js';
 import { emitMouseClick } from '../mouse.js';
+import { imageLayer } from '../imageLayer.js';
+import { FB2_SAMPLE } from '../../formats/test-utils.js';
 
 const theme: Theme = THEMES[defaultConfig().theme] ?? THEMES['dracula']!;
 const config = defaultConfig();
@@ -40,6 +42,7 @@ beforeEach(() => {
 afterEach(() => {
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
+  vi.restoreAllMocks();
 });
 
 function makeProps(overrides: Partial<Parameters<typeof LibraryView>[0]> = {}) {
@@ -201,14 +204,161 @@ describe('LibraryView grouping and cursor', () => {
   });
 });
 
+describe('LibraryView cover thumbnails', () => {
+  it('draws a cover thumbnail for a book with a coverKey', async () => {
+    const filePath = path.join(dir, 'cover.fb2');
+    fs.writeFileSync(filePath, FB2_SAMPLE, 'utf8');
+    db.addBook({
+      path: filePath,
+      filename: 'cover.fb2',
+      format: 'fb2',
+      size: fs.statSync(filePath).size,
+      metadata: {
+        title: 'With Cover',
+        authors: [{ firstName: 'A', lastName: 'B' }],
+        genres: [],
+        annotation: '',
+        coverKey: 'cover.jpg',
+      },
+    });
+    // Force the facade's start() to succeed so update() is reachable.
+    vi.spyOn(imageLayer, 'start').mockReturnValue(true);
+    const updateSpy = vi.spyOn(imageLayer, 'update');
+    const { lastFrame } = render(<LibraryView {...makeProps()} />);
+    await settle();
+    expect(lastFrame() ?? '').toContain('With Cover');
+    expect(updateSpy).toHaveBeenCalled();
+    const [placements] = updateSpy.mock.calls.at(-1)! as [
+      Array<{ identifier: string; width: number; height: number }>,
+      Map<string, Uint8Array>,
+    ];
+    expect(placements.length).toBe(1);
+    expect(placements[0]!.identifier).toMatch(/^lib-cover-/);
+    expect(placements[0]!.width).toBeGreaterThan(0);
+    expect(placements[0]!.height).toBe(3);
+  });
+
+  it('repositions remaining covers after a book is deleted', async () => {
+    // Three books with covers: A(y=1), B(y=4), C(y=7). Deleting B (cursor
+    // row 1) must re-draw C at y=4 — not leave it at its old y=7 position.
+    for (const t of ['A', 'B', 'C']) {
+      const filePath = path.join(dir, `${t}.fb2`);
+      fs.writeFileSync(filePath, FB2_SAMPLE, 'utf8');
+      db.addBook({
+        path: filePath,
+        filename: `${t}.fb2`,
+        format: 'fb2',
+        size: fs.statSync(filePath).size,
+        metadata: {
+          title: `Book ${t}`,
+          authors: [{ firstName: 'A', lastName: 'B' }],
+          genres: [],
+          annotation: '',
+          coverKey: 'cover.jpg',
+        },
+      });
+    }
+    vi.spyOn(imageLayer, 'start').mockReturnValue(true);
+    const updateSpy = vi.spyOn(imageLayer, 'update');
+    const { stdin } = render(<LibraryView {...makeProps()} />);
+    await settle();
+    // Cursor is on Book A (row 0); move to Book B (row 1) and delete it.
+    stdin.write('j');
+    await settle();
+    stdin.write('d');
+    await settle();
+    stdin.write('y');
+    await settle();
+    const [placements] = updateSpy.mock.calls.at(-1)! as [
+      Array<{ identifier: string; y: number }>,
+      Map<string, Uint8Array>,
+    ];
+    const ys = placements.map((p) => p.y).sort((a, b) => a - b);
+    expect(ys).toEqual([1, 4]);
+  });
+
+  it('repositions remaining covers after a book is deleted (full call sequence)', async () => {
+    // Five books; delete the middle one while the list is scrolled so the
+    // visible window shifts. Every update call must carry correct y's for
+    // the rows it represents — a stale call (old y for a moved cover) is
+    // what would look like "images shifted up" in the terminal.
+    for (const t of ['A', 'B', 'C', 'D', 'E']) {
+      const filePath = path.join(dir, `${t}.fb2`);
+      fs.writeFileSync(filePath, FB2_SAMPLE, 'utf8');
+      db.addBook({
+        path: filePath,
+        filename: `${t}.fb2`,
+        format: 'fb2',
+        size: fs.statSync(filePath).size,
+        metadata: {
+          title: `Book ${t}`,
+          authors: [{ firstName: 'A', lastName: 'B' }],
+          genres: [],
+          annotation: '',
+          coverKey: 'cover.jpg',
+        },
+      });
+    }
+    vi.spyOn(imageLayer, 'start').mockReturnValue(true);
+    const updateSpy = vi.spyOn(imageLayer, 'update');
+    const { stdin } = render(<LibraryView {...makeProps()} />);
+    await settle();
+    // Cursor: Book A → C (2 j presses; B is at index 1).
+    stdin.write('j');
+    await settle();
+    stdin.write('j');
+    await settle();
+    // Delete Book C (the selected one).
+    stdin.write('d');
+    await settle();
+    stdin.write('y');
+    await settle();
+    const lastCall = updateSpy.mock.calls.at(-1)! as [
+      Array<{ identifier: string; y: number }>,
+      Map<string, Uint8Array>,
+    ];
+    const ys = lastCall[0].map((p) => p.y).sort((a, b) => a - b);
+    // Books A, B, D, E remain; their covers sit at y=1,4,7,10 (CARD_ROWS=3
+    // apart), with no gap where C was.
+    expect(ys).toEqual([1, 4, 7, 10]);
+    expect(lastCall[0]).toHaveLength(4);
+  });
+
+  it('does not draw covers when an App-level overlay (inputDisabled) is open', async () => {
+    const filePath = path.join(dir, 'cover.fb2');
+    fs.writeFileSync(filePath, FB2_SAMPLE, 'utf8');
+    db.addBook({
+      path: filePath,
+      filename: 'cover.fb2',
+      format: 'fb2',
+      size: fs.statSync(filePath).size,
+      metadata: {
+        title: 'With Cover',
+        authors: [{ firstName: 'A', lastName: 'B' }],
+        genres: [],
+        annotation: '',
+        coverKey: 'cover.jpg',
+      },
+    });
+    vi.spyOn(imageLayer, 'start').mockReturnValue(true);
+    const updateSpy = vi.spyOn(imageLayer, 'update');
+    const clearSpy = vi.spyOn(imageLayer, 'clear');
+    render(<LibraryView {...makeProps({ inputDisabled: true })} />);
+    await settle();
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(clearSpy).toHaveBeenCalled();
+  });
+});
+
 describe('LibraryView mouse clicks', () => {
   it('a click moves the cursor to the row under it', async () => {
     addBook(db, '/tmp/a.fb2', 'Alpha Book');
     addBook(db, '/tmp/b.fb2', 'Beta Book');
     const { lastFrame } = render(<LibraryView {...makeProps()} />);
     await settle();
-    // Rows start below the 1-line header: y=2 → row 0, y=3 → row 1.
-    emitMouseClick({ x: 5, y: 3, button: 'left', press: true });
+    // Rows start below the 1-line header; each card is CARD_ROWS (3) tall,
+    // so row 0 spans y=2..4 and row 1 spans y=5..7 (1-based terminal Y).
+    emitMouseClick({ x: 5, y: 6, button: 'left', press: true, motion: false });
     await settle();
     const frame = lastFrame() ?? '';
     const selLine = frame.split('\n').find((l) => l.includes('▶'));
@@ -220,9 +370,9 @@ describe('LibraryView mouse clicks', () => {
     addBook(db, '/tmp/a.fb2', 'Alpha Book');
     const { lastFrame } = render(<LibraryView {...makeProps()} />);
     await settle();
-    emitMouseClick({ x: 5, y: 2, button: 'left', press: true }); // row 0
+    emitMouseClick({ x: 5, y: 2, button: 'left', press: true, motion: false }); // row 0
     await settle();
-    emitMouseClick({ x: 5, y: 2, button: 'left', press: true }); // double-click
+    emitMouseClick({ x: 5, y: 2, button: 'left', press: true, motion: false }); // double-click
     await settle();
     const frame = lastFrame() ?? '';
     // BookDetail modal opened: metadata line is visible.

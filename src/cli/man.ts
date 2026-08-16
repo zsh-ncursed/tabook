@@ -32,6 +32,7 @@ const KEY_ACTION_DESC: Record<string, string> = {
   book_info: 'show book info',
   help: 'show help',
   command: 'open the command prompt',
+  command_palette: 'open the command palette (fuzzy search)',
   search: 'search',
   search_next: 'next search result',
   search_prev: 'previous search result',

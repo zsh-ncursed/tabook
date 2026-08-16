@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { validCommandPrefixLength, COMMANDS, COMMAND_NAMES, completeCommand } from './commands.js';
+import {
+  validCommandPrefixLength,
+  COMMANDS,
+  COMMAND_NAMES,
+  completeCommand,
+  commandExecutable,
+  fuzzyMatch,
+  fuzzyMatchCommands,
+  type CommandDef,
+} from './commands.js';
 
 describe('validCommandPrefixLength', () => {
   it('returns 0 for empty input', () => {
@@ -68,6 +77,99 @@ describe('COMMANDS registry', () => {
       expect(def.screens.length).toBeGreaterThan(0);
       expect(def.names.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('commandExecutable', () => {
+  const def = (usage: string): CommandDef => ({
+    names: ['x'],
+    usage,
+    desc: 'd',
+    screens: ['reader'],
+  });
+
+  it('keeps plain commands unchanged', () => {
+    expect(commandExecutable(def(':group'))).toBe(':group');
+    expect(commandExecutable(def(':themes'))).toBe(':themes');
+  });
+
+  it('strips optional arguments', () => {
+    expect(commandExecutable(def(':open [path]'))).toBe(':open');
+  });
+
+  it('strips required arguments', () => {
+    expect(commandExecutable(def(':theme <name>'))).toBe(':theme');
+  });
+
+  it('keeps subcommand tokens but drops their arguments', () => {
+    expect(commandExecutable(def(':opds add <name> <url> [user] [pass]'))).toBe(':opds add');
+    expect(commandExecutable(def(':library remove <path>'))).toBe(':library remove');
+  });
+
+  it('drops alias separators in usage strings', () => {
+    expect(commandExecutable(def(':q / :quit'))).toBe(':q');
+  });
+
+  it('produces a runnable command for every registry entry', () => {
+    for (const c of COMMANDS) {
+      const exec = commandExecutable(c);
+      expect(exec.startsWith(':')).toBe(true);
+      expect(exec.split(' ')[0]).toBe(c.usage.split(' ')[0]);
+    }
+  });
+});
+
+describe('fuzzyMatch', () => {
+  it('returns null when the query is not a subsequence', () => {
+    expect(fuzzyMatch('xyz', ':theme')).toBeNull();
+    expect(fuzzyMatch('tmeh', ':theme')).toBeNull();
+  });
+
+  it('matches a subsequence in order, case-insensitively', () => {
+    const m = fuzzyMatch('thm', ':theme');
+    expect(m).not.toBeNull();
+    expect(m!.indices).toEqual([1, 2, 4]); // t h m in ":theme"
+  });
+
+  it('scores prefix matches better than scattered ones', () => {
+    const prefix = fuzzyMatch('th', ':theme')!;
+    const scattered = fuzzyMatch('tme', ':theme')!;
+    expect(prefix.score).toBeLessThan(scattered.score);
+  });
+
+  it('empty query matches with score 0', () => {
+    expect(fuzzyMatch('', 'anything')).toEqual({ score: 0, indices: [] });
+  });
+});
+
+describe('fuzzyMatchCommands', () => {
+  it('returns every command for the screen when the query is empty', () => {
+    const all = fuzzyMatchCommands('', 'reader');
+    expect(all.length).toBe(COMMANDS.filter((c) => c.screens.includes('reader')).length);
+    expect(all.every((m) => m.def.screens.includes('reader'))).toBe(true);
+  });
+
+  it('filters by screen', () => {
+    const library = fuzzyMatchCommands('', 'library');
+    expect(library.some((m) => m.def.usage === ':sort <field>')).toBe(true);
+    expect(library.some((m) => m.def.usage === ':goto <page>')).toBe(false);
+  });
+
+  it('finds commands by fuzzy query and ranks best first', () => {
+    const results = fuzzyMatchCommands('simpl', 'reader');
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0]!.def.names).toContain('simplified');
+  });
+
+  it('searches the description too', () => {
+    // 'catalog' appears only in descriptions, never in usage strings.
+    const results = fuzzyMatchCommands('catalog', 'reader');
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((m) => m.def.usage.startsWith(':opds'))).toBe(true);
+  });
+
+  it('ignores a leading colon in the query', () => {
+    expect(fuzzyMatchCommands(':simpl', 'reader')[0]!.def.names).toContain('simplified');
   });
 });
 

@@ -6,7 +6,7 @@ import {
   buildRemove,
   buildTransmit,
   detectNativeGraphics,
-  placementRows,
+  fitBox,
 } from './kittyLayer.js';
 import { reconcile, type ImagePlacement } from './imageLayer.js';
 
@@ -58,10 +58,23 @@ describe('escape builders', () => {
     expect(esc).toBe(`\x1b_Ga=t,t=f,f=100,i=7,q=2;${payload}\x1b\\`);
   });
 
-  it('builds a placement anchored at the target cell', () => {
-    const esc = buildPlace(7, 3, 4, 20, 10);
-    // cursor moved to 1-based (5, 4), then placed
-    expect(esc).toBe(`\x1b[5;4H\x1b_Ga=p,i=7,p=1,c=20,r=10,q=2\x1b\\`);
+  it('builds a placement anchored at the target cell, preserving the cursor', () => {
+    const esc = buildPlace(7, 3, 4, { cols: 20, rows: 10 });
+    // cursor saved (DECSC), moved to 1-based (5, 4), placed with C=1 (no
+    // post-placement cursor movement), cursor restored (DECRC) — so Ink's
+    // diff frames, which track the cursor position, stay aligned.
+    expect(esc).toBe(`\x1b7\x1b[5;4H\x1b_Ga=p,i=7,p=1,c=20,r=10,C=1,q=2\x1b\\\x1b8`);
+  });
+
+  it('omits the dimension the terminal must compute from the aspect ratio', () => {
+    // only cols: kitty derives rows from the image aspect (no distortion)
+    expect(buildPlace(7, 3, 4, { cols: 20 })).toBe(
+      `\x1b7\x1b[5;4H\x1b_Ga=p,i=7,p=1,c=20,C=1,q=2\x1b\\\x1b8`,
+    );
+    // only rows
+    expect(buildPlace(7, 3, 4, { rows: 10 })).toBe(
+      `\x1b7\x1b[5;4H\x1b_Ga=p,i=7,p=1,r=10,C=1,q=2\x1b\\\x1b8`,
+    );
   });
 
   it('builds removal and clear', () => {
@@ -70,23 +83,30 @@ describe('escape builders', () => {
   });
 });
 
-describe('placementRows (aspect-preserving box height)', () => {
-  it('fits a wide image into the reserved rows without distortion', () => {
-    // 4:1 image in a 20x10 box -> 5 rows, not 10
-    expect(placementRows(20, 10, 400, 100)).toBe(5);
+describe('fitBox (aspect-preserving placement box)', () => {
+  it('keeps a portrait cover in a wide short card undistorted (the stretch bug)', () => {
+    // 2:3 cover in a 12x3 library card: fixing rows at 3 makes kitty compute
+    // the columns from the aspect ratio -> a narrow portrait, not a stretched
+    // wide flat rectangle (both c and r would stretch it instead).
+    expect(fitBox(12, 3, 300, 450)).toEqual({ rows: 3 });
   });
 
-  it('clamps to the reserved box for tall images', () => {
-    // 1:2 image in a 20x10 box -> would be 40 rows, clamped to 10
-    expect(placementRows(20, 10, 100, 200)).toBe(10);
+  it('fixes the width for wide images so the height fits the reserved box', () => {
+    // 4:1 image in a 20x10 box -> 5 rows at 20 cols, fits
+    expect(fitBox(20, 10, 400, 100)).toEqual({ cols: 20 });
+  });
+
+  it('fixes the height for tall images', () => {
+    // 1:2 image in a 20x10 box -> would need 40 rows at 20 cols, so fix rows
+    expect(fitBox(20, 10, 100, 200)).toEqual({ rows: 10 });
+  });
+
+  it('fits a square image inside a wide short box', () => {
+    expect(fitBox(12, 3, 100, 100)).toEqual({ rows: 3 });
   });
 
   it('falls back to the full box when dimensions are unknown', () => {
-    expect(placementRows(20, 10, 0, 0)).toBe(10);
-  });
-
-  it('never returns zero rows', () => {
-    expect(placementRows(10, 5, 10000, 1)).toBeGreaterThanOrEqual(1);
+    expect(fitBox(20, 10, 0, 0)).toEqual({ cols: 20, rows: 10 });
   });
 });
 
@@ -127,7 +147,9 @@ describe('KittyImageLayer', () => {
     layer.update([p1], resources);
     const first = written.join('');
     expect(first).toContain('a=t,t=f,f=100,i=1');
-    expect(first).toContain('a=p,i=1,p=1,c=20,r=10,q=2');
+    // 1x1 px image in a 20x10 box: width-limited, kitty derives the rows
+    expect(first).toContain('a=p,i=1,p=1,c=20,C=1,q=2');
+    expect(first).not.toContain('r=10');
 
     // same identifier, moved down: only a placement, no re-transmit
     layer.update([p2], resources);

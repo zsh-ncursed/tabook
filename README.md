@@ -20,7 +20,8 @@ vim-like controls. Built with TypeScript, React + Ink and a native Rust core
   protocol support — JPEG/GIF/WebP/BMP are converted to PNG on the fly by the
   Rust core. Terminals without it (alacritty, xterm, …) fall back to the
   optional `ueberzugpp` X11/wayland overlay. Covers appear in the library
-  detail view, the reading-view info modal and the book list.
+  detail view, the reading-view info modal, the library book list and the
+  OPDS catalog browser (thumbnails next to each entry).
 - **Image zoom** (`z`): enlarge the illustration on the current page ~2.5× to
   inspect it, then press `Esc` to restore it in place.
 - A local library backed by SQLite (stored in the native core via bundled rusqlite): metadata, reading progress, bookmarks, reading sessions and history.
@@ -149,6 +150,7 @@ the output of `--completion` into your shell's completion directory.
 | `W`                   | Toggle wide screen                   |
 | `?`                   | Help                                 |
 | `:`                   | Command line                         |
+| `Ctrl+P`              | Command palette (fuzzy search)       |
 | `enter`               | Select / open                        |
 | `escape`              | Back                                 |
 | `q`                   | Quit (library) / close book (reader) |

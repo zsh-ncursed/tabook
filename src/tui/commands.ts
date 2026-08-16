@@ -148,6 +148,80 @@ export const COMMANDS: CommandDef[] = [
 // validation and tab completion.
 export const COMMAND_NAMES: readonly string[] = [...new Set(COMMANDS.flatMap((c) => c.names))];
 
+/**
+ * The executable form of a command for the command palette: the usage string
+ * with argument placeholders stripped (':open [path]' → ':open', ':opds add
+ * <name> <url> [user] [pass]' → ':opds add'). Running it either performs the
+ * command (for optional-arg commands like :open the bare form opens the
+ * picker/theme-picker) or prints usage when required args are missing.
+ */
+export function commandExecutable(def: CommandDef): string {
+  // ':q / :quit' → ':q': a ' / ' suffix lists aliases — the first spelling
+  // is the canonical executable form.
+  const primary = def.usage.split(' / ')[0]!;
+  return primary
+    .split(' ')
+    .filter((token) => !token.startsWith('<') && !token.startsWith('['))
+    .join(' ');
+}
+
+export interface CommandMatch {
+  def: CommandDef;
+  /** Fuzzy-match score; lower is better (0 = query is a prefix). */
+  score: number;
+  /** Char offsets in the haystack that matched the query. */
+  indices: number[];
+}
+
+/**
+ * Subsequence fuzzy match: every query char must appear in `text` in order
+ * (case-insensitive). Returns the matched offsets plus a score that rewards
+ * matches that start early and are packed together, or null when the query
+ * is not a subsequence. Empty query scores 0 with no indices.
+ */
+export function fuzzyMatch(
+  query: string,
+  text: string,
+): { score: number; indices: number[] } | null {
+  const q = query.toLowerCase();
+  const t = text.toLowerCase();
+  if (q === '') return { score: 0, indices: [] };
+  let prev = -1;
+  let score = 0;
+  const indices: number[] = [];
+  for (const ch of q) {
+    const idx = t.indexOf(ch, prev + 1);
+    if (idx === -1) return null;
+    if (prev === -1)
+      score += idx; // start-position penalty
+    else score += idx - prev - 1; // gap penalty between consecutive matches
+    prev = idx;
+    indices.push(idx);
+  }
+  return { score, indices };
+}
+
+/**
+ * Commands available for the given screen, fuzzy-filtered by `query` and
+ * sorted by match quality (best first). An empty query returns every command
+ * for the screen in registry order.
+ */
+export function fuzzyMatchCommands(query: string, screen: CommandScreen): CommandMatch[] {
+  const q = query.trim().toLowerCase().replace(/^:/, '');
+  const candidates = COMMANDS.filter((c) => c.screens.includes(screen));
+  if (q === '') {
+    return candidates.map((def) => ({ def, score: 0, indices: [] }));
+  }
+  const out: CommandMatch[] = [];
+  for (const def of candidates) {
+    const haystack = `${def.usage} ${def.desc}`;
+    const m = fuzzyMatch(q, haystack);
+    if (m !== null) out.push({ def, score: m.score, indices: m.indices });
+  }
+  out.sort((a, b) => a.score - b.score || a.def.usage.localeCompare(b.def.usage));
+  return out;
+}
+
 export const OPDS_SUBS = ['add', 'remove', 'list'] as const;
 export const LIBRARY_SUBS = ['add', 'remove', 'list', 'scan'] as const;
 

@@ -9,8 +9,11 @@ import { TextPrompt } from '../components/TextPrompt.js';
 import { BookDetail } from './BookDetail.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { forceRedraw } from '../screenRefresh.js';
-import { useMouseClicks } from '../mouse.js';
+import { useMouseClicks, wasMouseChunkRecent } from '../mouse.js';
 import { truncateW, wrapText } from '../../utils/text.js';
+import { imageLayer, type ImagePlacement } from '../imageLayer.js';
+import { buildLineIndex, rowAtLine, visibleWindow, CARD_ROWS, COVER_W } from '../listLayout.js';
+import { extractCoverBytes } from '../../formats/cover.js';
 import { existsSync, unlinkSync } from 'node:fs';
 
 interface LibraryCommandBus {
@@ -30,6 +33,7 @@ export interface LibraryViewProps {
   onOpenFile: () => void;
   onQuit: () => void;
   onHelp: () => void;
+  onOpenPalette?: () => void;
   runCommand: (text: string) => void;
   completeCommand?: (value: string) => string | null;
   validCommandPrefix?: (value: string) => number;
@@ -46,6 +50,14 @@ interface Row {
 
 const SORT_FIELDS: SortField[] = ['title', 'author', 'added', 'progress'];
 
+// Book cards: each book occupies CARD_ROWS terminal lines so a cover
+// thumbnail (COVER_W × CARD_ROWS) can be drawn next to it without covering
+// neighboring rows. Group headers stay 1 line (handled by listLayout).
+
+function rowHeight(row: Row): number {
+  return row.kind === 'header' ? 1 : CARD_ROWS;
+}
+
 export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   const {
     db,
@@ -59,6 +71,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
     onOpenFile,
     onQuit,
     onHelp,
+    onOpenPalette,
     runCommand,
     completeCommand,
     validCommandPrefix,
@@ -88,6 +101,11 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   const [detailBook, setDetailBook] = useState<BookRecord | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<BookRecord | null>(null);
   const [confirmDeleteFile, setConfirmDeleteFile] = useState(false);
+  // Cover bytes by book id, lazily extracted for the visible window only and
+  // cached so scrolling doesn't re-parse every file on every render. The
+  // undefined case means "no cover / failed to extract" and is also cached
+  // so a missing cover isn't re-read on every scroll frame.
+  const [covers, setCovers] = useState<Map<number, Uint8Array | undefined>>(new Map());
   const resolver = useMemo(() => createActionResolver(config), [config]);
 
   useEffect(() => {
@@ -255,6 +273,9 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       case 'command':
         setMode('command');
         break;
+      case 'command_palette':
+        onOpenPalette?.();
+        break;
       case 'quit':
         onQuit();
         break;
@@ -270,6 +291,9 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   const libInputRef = useRef({ mode, resolver, handleAction });
   libInputRef.current = { mode, resolver, handleAction };
   const handleLibInput = useCallback((input: string, key: Key) => {
+    // Drop the bogus '[' keypress Ink produces from an SGR mouse chunk (see
+    // mouse.ts) — the click was already handled by the mouse module.
+    if (wasMouseChunkRecent()) return;
     const s = libInputRef.current;
     if (s.mode !== 'normal') return;
     const keyName = resolveKeyName(input, key);
@@ -287,25 +311,89 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
         1 + Math.min(4, wrapText(selectedBook.annotation, Math.max(20, width - 4)).length),
       )
     : 0;
-  const visibleCount = Math.max(3, height - 5 - annotationLines);
-  const start = Math.max(
-    0,
-    Math.min(cursor - Math.floor(visibleCount / 2), Math.max(0, rows.length - visibleCount)),
+  // The list is a window of rows with non-uniform heights (1-line group
+  // headers, CARD_ROWS-line book cards) fitted into `maxLines` terminal lines;
+  // listLayout keeps cursor centering, slicing and mouse hit-testing in sync.
+  const maxLines = Math.max(3, height - 5 - annotationLines);
+  const listIndex = useMemo(() => buildLineIndex(rows, rowHeight), [rows]);
+  const { start, end } = useMemo(
+    () => visibleWindow(rows, listIndex, cursor, maxLines),
+    [rows, listIndex, cursor, maxLines],
   );
-  const visibleRows = rows.slice(start, start + visibleCount);
+  const visibleRows = rows.slice(start, end);
 
   // Mouse: a click moves the cursor to the row under it; a second click on
   // the same row within 350 ms opens it (like enter). The list starts one
-  // row below the header, and terminal Y is 1-based.
+  // row below the header, and terminal Y is 1-based; the click line is mapped
+  // back to a row through the line index (cards are CARD_ROWS tall).
+  // Lazy cover extraction: for the visible window only, read cover bytes for
+  // books that have a coverKey and aren't cached yet. Runs when the window
+  // shifts (scroll/cursor move), so covers appear as rows enter the screen.
+  useEffect(() => {
+    const next = new Map(covers);
+    let changed = false;
+    for (let i = start; i < end && i < rows.length; i++) {
+      const row = rows[i];
+      if (row?.kind !== 'book') continue;
+      const book = row.book!;
+      if (!book.coverKey || next.has(book.id)) continue;
+      next.set(book.id, extractCoverBytes(book.path, book.format, book.coverKey));
+      changed = true;
+    }
+    if (changed) setCovers(next);
+  }, [rows, start, end, covers]);
+
+  // Draw cover thumbnails next to the visible cards. The list starts one
+  // row below the header (terminal row 1, 0-indexed); each card's cover box
+  // is COVER_W wide and CARD_ROWS tall at the card's first line. When an
+  // App-level overlay is open (inputDisabled) or the view isn't in normal
+  // mode, drop the images — they'd cover the modal (ueberzugpp windows live
+  // above the terminal). update() reconciles by identifier, so scrolled-out
+  // covers are removed and unchanged ones aren't re-sent.
+  useEffect(() => {
+    if (inputDisabled || mode !== 'normal') {
+      imageLayer.clear();
+      return;
+    }
+    if (!imageLayer.start()) return;
+    const placements: ImagePlacement[] = [];
+    const resources = new Map<string, Uint8Array>();
+    const listTop = listIndex.prefix[start] ?? 0;
+    for (let i = start; i < end && i < rows.length; i++) {
+      const row = rows[i];
+      if (row?.kind !== 'book') continue;
+      const book = row.book!;
+      const bytes = covers.get(book.id);
+      if (!bytes || bytes.length === 0) continue;
+      const id = `lib-cover-${book.id}`;
+      const line = (listIndex.prefix[i] ?? 0) - listTop;
+      placements.push({
+        identifier: id,
+        x: 1, // list container has paddingX=1
+        y: 1 + line,
+        width: COVER_W,
+        height: CARD_ROWS,
+        src: id,
+      });
+      resources.set(id, bytes);
+    }
+    imageLayer.update(placements, resources);
+  }, [rows, start, end, covers, listIndex, inputDisabled, mode]);
+
+  useEffect(() => () => imageLayer.clear(), []);
+
   const clickStateRef = useRef({ row: -1, time: 0 });
-  const mouseStateRef = useRef({ start, rows, inputDisabled, mode });
-  mouseStateRef.current = { start, rows, inputDisabled, mode };
+  const mouseStateRef = useRef({ start, end, rows, listIndex, inputDisabled, mode });
+  mouseStateRef.current = { start, end, rows, listIndex, inputDisabled, mode };
   useMouseClicks((click) => {
     if (click.button !== 'left' || !click.press) return;
     const s = mouseStateRef.current;
     if (s.mode !== 'normal' || s.inputDisabled) return;
-    const absolute = s.start + (click.y - 2);
-    if (absolute < 0 || absolute >= s.rows.length) return;
+    const line = click.y - 2;
+    const windowLines = (s.listIndex.prefix[s.end] ?? 0) - (s.listIndex.prefix[s.start] ?? 0);
+    if (line < 0 || line >= windowLines) return;
+    const absolute = rowAtLine(s.rows, s.listIndex, (s.listIndex.prefix[s.start] ?? 0) + line);
+    if (absolute < s.start || absolute >= s.end) return;
     const row = s.rows[absolute];
     if (row?.kind !== 'book') return; // group headers are not clickable
     const now = Date.now();
@@ -376,9 +464,9 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
             }
             const book = row.book!;
             const selected = absolute === cursor;
-            const titleW = Math.max(10, width - 46);
-            const title = truncateW(book.title, titleW);
-            const meta = [
+            const textW = Math.max(10, width - COVER_W - 40);
+            const title = truncateW(book.title, textW);
+            const sub = [
               book.authorsText,
               book.seriesText,
               book.progressPercent !== null ? `${book.progressPercent}%` : '',
@@ -386,21 +474,24 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
               .filter(Boolean)
               .join(' · ');
             return (
-              <Box key={`b-${absolute}`}>
+              // 3-line card: title, authors, series · progress. The text is
+              // indented past the cover thumbnail column (COVER_W + 2) so the
+              // image drawn by imageLayer doesn't overlap it.
+              <Box key={`b-${absolute}`} flexDirection="column" paddingLeft={COVER_W + 2}>
                 <Text
                   color={selected ? theme.colors.background : theme.colors.text}
                   backgroundColor={selected ? theme.colors.accent : undefined}
                   bold={selected}
                 >
-                  {' '}
-                  {selected ? '▶' : ' '} {title}
+                  {selected ? '▶ ' : '  '}
+                  {title}
                 </Text>
-                {meta ? (
-                  <Text color={theme.colors.dim} dimColor>
-                    {'  '}
-                    {truncateW(meta, Math.max(10, width - 40))}
-                  </Text>
-                ) : null}
+                <Text color={theme.colors.dim} dimColor>
+                  {truncateW(book.authorsText || 'Unknown author', textW)}
+                </Text>
+                <Text color={theme.colors.dim} dimColor>
+                  {sub ? truncateW(sub, textW) : ' '}
+                </Text>
               </Box>
             );
           })}
@@ -469,6 +560,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           theme={theme}
           onRead={() => onOpenBook(detailBook)}
           onHelp={onHelp}
+          inputDisabled={inputDisabled}
           onClose={() => {
             setDetailBook(null);
             setMode('normal');
