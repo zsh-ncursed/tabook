@@ -12,11 +12,16 @@
 // canonicalizers below instead of raw deep-equals.
 
 import { readFileSync } from 'node:fs';
-import { getNative, isNativeAvailable } from '../native.js';
+import { getNative, getNativeLoadError, isNativeAvailable, whenNativeReady } from '../native.js';
 import type * as NativeTypes from '@tabook/native';
 import type { Block, Inline } from '../formats/model.js';
 import type { TextLine } from '../renderer/layout.js';
 import type { TypographyConfig } from '../config/defaults.js';
+
+// The binding may load asynchronously (the dynamic-import path in native.ts);
+// await readiness so the snapshot below is never taken while it is still
+// null — that race used to silently skip the whole parity suite.
+await whenNativeReady();
 
 export const native: typeof NativeTypes | null = isNativeAvailable() ? getNative() : null;
 
@@ -24,9 +29,11 @@ export const native: typeof NativeTypes | null = isNativeAvailable() ? getNative
  *  loaded in tests, but skip loudly if it is ever missing. */
 export function requireNative(): typeof NativeTypes {
   if (!native) {
+    const reason = getNativeLoadError();
     throw new Error(
       'native module not available — parity tests require the committed .node binding ' +
-        '(rebuild with npm run build:native)',
+        '(rebuild with npm run build:native)' +
+        (reason ? ` — ${reason}` : ''),
     );
   }
   return native;
