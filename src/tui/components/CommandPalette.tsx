@@ -6,6 +6,7 @@ import { commandExecutable, fuzzyMatchCommands, type CommandMatch } from '../com
 import { resolveKeyName } from '../keymap.js';
 import { useInputDispatch } from '../useInputDispatch.js';
 import { useTerminalSize } from '../useTerminalSize.js';
+import { centeredWindow } from '../listLayout.js';
 import { truncateW } from '../../utils/text.js';
 
 export interface CommandPaletteProps {
@@ -81,11 +82,8 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element {
   };
 
   const visibleCount = Math.min(12, Math.max(3, height - 8));
-  const start = Math.max(
-    0,
-    Math.min(cursor - Math.floor(visibleCount / 2), Math.max(0, matches.length - visibleCount)),
-  );
-  const visible = matches.slice(start, start + visibleCount);
+  const { start, end } = centeredWindow(matches.length, cursor, visibleCount);
+  const visible = matches.slice(start, end);
 
   return (
     <Box flexDirection="column">

@@ -26,6 +26,14 @@ export interface DownloadJob {
   result?: DownloadResult;
 }
 
+// Download progress as a whole percent, or null when the server sent no
+// Content-Length. Shared by the downloads list and the OPDS status-bar label,
+// which used to compute Math.floor((received/total)*100) separately.
+export function jobPercent(job: DownloadJob): number | null {
+  if (job.total && job.total > 0) return Math.floor((job.received / job.total) * 100);
+  return null;
+}
+
 interface PendingJob extends DownloadJob {
   entry: OpdsEntry;
   auth: OpdsAuth;

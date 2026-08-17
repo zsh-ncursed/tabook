@@ -22,7 +22,7 @@ import {
 import { parseOpenSearch, buildSearchUrl } from '../../opds/opensearch.js';
 import type { OpdsFeed, OpdsEntry } from '../../opds/model.js';
 import { pickAcquisitionLink } from '../../opds/model.js';
-import { useDownloadQueue } from '../../opds/downloadQueue.js';
+import { useDownloadQueue, jobPercent } from '../../opds/downloadQueue.js';
 import { useImageLayer, type ImagePlacement } from '../imageLayer.js';
 import {
   buildLineIndex,
@@ -135,10 +135,10 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   const downloadsLabel = (() => {
     const cur = currentJob;
     if (cur) {
-      const pct =
-        cur.total && cur.total > 0 ? `${Math.floor((cur.received / cur.total) * 100)}% ` : '';
+      const pct = jobPercent(cur);
+      const pctStr = pct !== null ? `${pct}% ` : '';
       const suffix = pendingCount > 0 ? ` (+${pendingCount})` : '';
-      return `↓ ${pct}${truncateW(cur.title, 22)}${suffix}`;
+      return `↓ ${pctStr}${truncateW(cur.title, 22)}${suffix}`;
     }
     return pendingCount > 0 ? `↓ ${pendingCount} queued` : undefined;
   })();

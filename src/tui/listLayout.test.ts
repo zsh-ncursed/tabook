@@ -3,6 +3,7 @@ import {
   buildLineIndex,
   rowAtLine,
   visibleWindow,
+  centeredWindow,
   cursorForAction,
   CARD_ROWS,
   COVER_W,
@@ -11,6 +12,29 @@ import {
 // Rows with mixed heights: 1-line headers and 3-line cards.
 const heightOf = (row: { h: number }): number => row.h;
 const rows = [{ h: 1 }, { h: 3 }, { h: 3 }, { h: 1 }, { h: 3 }];
+
+describe('centeredWindow', () => {
+  it('centers the cursor in the middle of the list', () => {
+    expect(centeredWindow(20, 10, 5)).toEqual({ start: 8, end: 13 });
+  });
+
+  it('clamps at the start and end of the list', () => {
+    expect(centeredWindow(20, 0, 5)).toEqual({ start: 0, end: 5 });
+    expect(centeredWindow(20, 19, 5)).toEqual({ start: 15, end: 20 });
+  });
+
+  it('shows the whole list when it is shorter than the viewport', () => {
+    expect(centeredWindow(3, 1, 5)).toEqual({ start: 0, end: 3 });
+  });
+
+  it('clamps a stale cursor beyond the list', () => {
+    expect(centeredWindow(20, 25, 5)).toEqual({ start: 15, end: 20 });
+  });
+
+  it('handles an empty list', () => {
+    expect(centeredWindow(0, 0, 5)).toEqual({ start: 0, end: 0 });
+  });
+});
 
 describe('cursorForAction', () => {
   it('clamps navigation within [0, count - 1]', () => {

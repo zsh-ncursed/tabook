@@ -2,6 +2,8 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { DownloadJob } from '../../opds/downloadQueue.js';
+import { jobPercent } from '../../opds/downloadQueue.js';
+import { centeredWindow } from '../listLayout.js';
 import { truncateW } from '../../utils/text.js';
 
 export function DownloadsList(props: {
@@ -21,11 +23,8 @@ export function DownloadsList(props: {
     );
   }
   const visibleCount = Math.max(3, height - 6);
-  const start = Math.max(
-    0,
-    Math.min(cursor - Math.floor(visibleCount / 2), Math.max(0, jobs.length - visibleCount)),
-  );
-  const visible = jobs.slice(start, start + visibleCount);
+  const { start, end } = centeredWindow(jobs.length, cursor, visibleCount);
+  const visible = jobs.slice(start, end);
   const titleW = Math.max(10, width - 40);
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -61,11 +60,10 @@ function jobStatusText(job: DownloadJob): string {
   switch (job.status) {
     case 'queued':
       return 'queued';
-    case 'downloading':
-      if (job.total && job.total > 0) {
-        return `${Math.floor((job.received / job.total) * 100)}%`;
-      }
-      return 'downloading…';
+    case 'downloading': {
+      const pct = jobPercent(job);
+      return pct !== null ? `${pct}%` : 'downloading…';
+    }
     case 'done':
       return '✓ done';
     case 'failed':

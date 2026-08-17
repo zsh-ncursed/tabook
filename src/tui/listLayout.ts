@@ -78,6 +78,27 @@ export function visibleWindow<T>(
 }
 
 /**
+ * The visible [start, end) slice of a uniform-height (1-line row) list,
+ * centered on the cursor — the row-uniform equivalent of visibleWindow (the
+ * line index is the identity, so no prefix array is needed). Shared by the
+ * command palette and the downloads list, which used to repeat the same
+ * clamp arithmetic.
+ */
+export function centeredWindow(
+  count: number,
+  cursor: number,
+  viewport: number,
+): { start: number; end: number } {
+  if (count === 0) return { start: 0, end: 0 };
+  const clamped = Math.min(Math.max(0, cursor), count - 1);
+  const start = Math.max(
+    0,
+    Math.min(clamped - Math.floor(viewport / 2), Math.max(0, count - viewport)),
+  );
+  return { start, end: Math.min(count, start + viewport) };
+}
+
+/**
  * The cursor index after a navigation action, clamped to [0, count - 1].
  * Shared by the views' per-mode key switches, which used to repeat the same
  * Math.min/Math.max arithmetic for every list (catalogs, feed entries,
