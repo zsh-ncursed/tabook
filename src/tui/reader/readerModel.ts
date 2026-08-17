@@ -4,7 +4,9 @@ import { BookLayout, type TextLine } from '../../renderer/layout.js';
 import { simplifyBlocksWithMap } from '../../renderer/simplify.js';
 import { BookSearchIndex, type SearchMatch } from '../../search/index.js';
 import type { TypographyConfig } from '../../config/defaults.js';
-import { normalizeWhitespace } from '../../utils/text.js';
+import { topLevelChapters, hasDirectChildHeadings, directChildHeadings } from './readerToc.js';
+import { ReaderSearch, type SearchState } from './readerSearch.js';
+import type { TocHeading } from './readerToc.js';
 
 export interface ReaderOptions {
   typo: TypographyConfig;
@@ -15,20 +17,9 @@ export interface ReaderOptions {
   bookId: number | null;
 }
 
-export interface SearchState {
-  query: string;
-  matches: number;
-  current: number;
-}
-
-export interface TocHeading {
-  blockIndex: number;
-  label: string;
-}
-
 export class ReaderSession {
   readonly book: ParsedBook;
-  search: BookSearchIndex;
+  private search: ReaderSearch;
   private _bookId: number | null;
   private readonly db: LibraryDb;
 
@@ -48,9 +39,6 @@ export class ReaderSession {
   private width: number;
   private height: number;
   private line = 0;
-  private matches: SearchMatch[] = [];
-  private currentMatch = -1;
-  private query = '';
   private readonly tocHeadingCache = new Map<string, TocHeading[]>();
   private readonly tocHasHeadingCache = new Map<string, boolean>();
 
@@ -71,7 +59,9 @@ export class ReaderSession {
     } else {
       this.blocks = book.content;
     }
-    this.search = new BookSearchIndex(this.blocks);
+    this.search = new ReaderSearch(new BookSearchIndex(this.blocks), (match) =>
+      this.jumpToMatch(match),
+    );
     this.layout = this.buildLayout();
   }
 
@@ -85,8 +75,7 @@ export class ReaderSession {
       // book-wide pass per query change — the same order as the search
       // itself; when no query is active the callback short-circuits to
       // undefined and the pass is cheap.
-      getHighlights: (blockIndex) =>
-        this.query === '' ? undefined : this.search.blockHighlights(this.query, blockIndex),
+      getHighlights: (blockIndex) => this.search.blockHighlights(blockIndex),
       justify: this.justify,
     });
   }
@@ -126,12 +115,8 @@ export class ReaderSession {
       this.blocks = this.book.content;
       this.simplifiedMap = null;
     }
-    this.search = new BookSearchIndex(this.blocks);
+    this.search.setIndex(new BookSearchIndex(this.blocks));
     this.layout = this.buildLayout();
-    if (this.query !== '') {
-      this.matches = this.search.search(this.query);
-      this.currentMatch = -1;
-    }
     this.line = this.layout.lineForCharOffset(offset);
   }
 
@@ -253,14 +238,8 @@ export class ReaderSession {
     return blockIndex;
   }
 
-  // Top-level TOC entries (the chapters the TOC modal lists by default):
-  // the minimum level present in the TOC.
   private chapters(): TocEntry[] {
-    const toc = this.book.toc;
-    if (toc.length === 0) return [];
-    let minLevel = Infinity;
-    for (const e of toc) if (e.level < minLevel) minLevel = e.level;
-    return toc.filter((e) => e.level === minLevel);
+    return topLevelChapters(this.book.toc);
   }
 
   // Index (in layout coordinates) of the block the reader is currently on.
@@ -318,21 +297,7 @@ export class ReaderSession {
   chapterHasHeadings(chapterId: string): boolean {
     const cached = this.tocHasHeadingCache.get(chapterId);
     if (cached !== undefined) return cached;
-    const toc = this.book.toc;
-    const idx = toc.findIndex((e) => e.id === chapterId);
-    let has = false;
-    if (idx >= 0) {
-      // Only direct children that are themselves TOC entries count: a bare
-      // heading block at childLevel without a matching TOC entry is a
-      // sub-subheading nested inside a deeper chapter, not a direct child.
-      for (let i = idx + 1; i < toc.length; i++) {
-        if (toc[i]!.level <= toc[idx]!.level) break;
-        if (toc[i]!.level === toc[idx]!.level + 1) {
-          has = true;
-          break;
-        }
-      }
-    }
+    const has = hasDirectChildHeadings(this.book.toc, chapterId);
     this.tocHasHeadingCache.set(chapterId, has);
     return has;
   }
@@ -340,23 +305,7 @@ export class ReaderSession {
   chapterHeadings(chapterId: string): TocHeading[] {
     const cached = this.tocHeadingCache.get(chapterId);
     if (cached) return cached;
-    const toc = this.book.toc;
-    const idx = toc.findIndex((e) => e.id === chapterId);
-    const out: TocHeading[] = [];
-    if (idx >= 0) {
-      const childLevel = toc[idx]!.level + 1;
-      // Collect direct children from the TOC itself — only TOC entries at
-      // childLevel under this chapter. Bare heading blocks at childLevel
-      // that lack a TOC entry are nested inside a deeper sub-chapter and
-      // would pollute the direct-children list.
-      for (let i = idx + 1; i < toc.length; i++) {
-        if (toc[i]!.level <= toc[idx]!.level) break;
-        if (toc[i]!.level === childLevel) {
-          const label = normalizeWhitespace(toc[i]!.label);
-          if (label !== '') out.push({ blockIndex: toc[i]!.blockIndex, label });
-        }
-      }
-    }
+    const out = directChildHeadings(this.book.toc, chapterId);
     this.tocHeadingCache.set(chapterId, out);
     return out;
   }
@@ -397,40 +346,21 @@ export class ReaderSession {
   // ---- search ----
 
   setQuery(query: string): void {
-    const normalized = query.trim();
-    if (normalized === this.query) return;
-    this.query = normalized;
-    if (normalized === '') {
-      this.matches = [];
-      this.currentMatch = -1;
-    } else {
-      this.matches = this.search.search(normalized);
-      this.currentMatch = -1;
-    }
-    // Highlights are pulled lazily via getHighlights on the next layout pass.
-    this.layout.invalidate();
+    // Highlights are pulled lazily via getHighlights on the next layout pass;
+    // invalidate only when the query actually changed.
+    if (this.search.setQuery(query)) this.layout.invalidate();
   }
 
   searchState(): SearchState {
-    return {
-      query: this.query,
-      matches: this.matches.length,
-      current: this.matches.length > 0 ? Math.max(0, this.currentMatch) : -1,
-    };
+    return this.search.state();
   }
 
   nextMatch(): boolean {
-    if (this.matches.length === 0) return false;
-    this.currentMatch = (this.currentMatch + 1) % this.matches.length;
-    this.jumpToMatch(this.matches[this.currentMatch]!);
-    return true;
+    return this.search.next();
   }
 
   prevMatch(): boolean {
-    if (this.matches.length === 0) return false;
-    this.currentMatch = this.currentMatch <= 0 ? this.matches.length - 1 : this.currentMatch - 1;
-    this.jumpToMatch(this.matches[this.currentMatch]!);
-    return true;
+    return this.search.prev();
   }
 
   private jumpToMatch(match: SearchMatch): void {
@@ -439,7 +369,7 @@ export class ReaderSession {
   }
 
   hasActiveQuery(): boolean {
-    return this.query !== '';
+    return this.search.hasActiveQuery();
   }
 
   // ---- bookmarks ----

@@ -5,6 +5,7 @@
 // reports byte progress via the streaming fetch; the queue survives leaving
 // the OPDS view (module-level singleton), so a download started in the
 // catalog finishes and lands in the library even if the user navigates away.
+import { createContext, useContext } from 'react';
 import type { OpdsEntry } from './model.js';
 import type { OpdsAuth, DownloadProgress } from './client.js';
 import type { LibraryDb } from '../db/db.js';
@@ -175,3 +176,12 @@ export class DownloadQueue {
 
 /** Shared queue used by the OPDS view — survives leaving the view. */
 export const opdsDownloadQueue = new DownloadQueue();
+
+// Dependency injection: views read the queue from React context instead of
+// importing the module singleton, so a test can render with an isolated
+// DownloadQueue instance. Defaults to the shared singleton.
+export const DownloadQueueContext = createContext<DownloadQueue>(opdsDownloadQueue);
+
+export function useDownloadQueue(): DownloadQueue {
+  return useContext(DownloadQueueContext);
+}

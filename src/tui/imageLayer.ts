@@ -11,6 +11,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createContext, useContext } from 'react';
 import { KittyImageLayer } from './kittyLayer.js';
 import { reconcile, type ShownGeometry } from './imageReconcile.js';
 
@@ -342,3 +343,13 @@ export class ImageLayer {
 }
 
 export const imageLayer = new ImageLayer();
+
+// Dependency injection: views read the layer from React context instead of
+// importing the module singleton directly, so a test can render a view with
+// its own isolated ImageLayer instance. Defaults to the shared singleton —
+// existing callers and vi.spyOn(imageLayer, …) keep working unchanged.
+export const ImageLayerContext = createContext<ImageLayer>(imageLayer);
+
+export function useImageLayer(): ImageLayer {
+  return useContext(ImageLayerContext);
+}

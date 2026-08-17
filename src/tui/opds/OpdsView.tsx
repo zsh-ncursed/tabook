@@ -20,11 +20,24 @@ import {
   OpdsError,
 } from '../../opds/client.js';
 import { parseOpenSearch, buildSearchUrl } from '../../opds/opensearch.js';
-import type { OpdsFeed, OpdsEntry, OpdsFacet } from '../../opds/model.js';
+import type { OpdsFeed, OpdsEntry } from '../../opds/model.js';
 import { pickAcquisitionLink } from '../../opds/model.js';
-import { opdsDownloadQueue, type DownloadJob } from '../../opds/downloadQueue.js';
-import { imageLayer, type ImagePlacement } from '../imageLayer.js';
-import { buildLineIndex, rowAtLine, visibleWindow, CARD_ROWS, COVER_W } from '../listLayout.js';
+import { useDownloadQueue } from '../../opds/downloadQueue.js';
+import { useImageLayer, type ImagePlacement } from '../imageLayer.js';
+import {
+  buildLineIndex,
+  rowAtLine,
+  visibleWindow,
+  cursorForAction,
+  CARD_ROWS,
+  COVER_W,
+} from '../listLayout.js';
+import { feedToRows, rowHeight } from './feedRows.js';
+import { BrowsingFeedList } from './BrowsingFeedList.js';
+import { AuthPrompt } from './AuthPrompt.js';
+import { CatalogList } from './CatalogList.js';
+import { DownloadsList } from './DownloadsList.js';
+import { EntryDetail } from './EntryDetail.js';
 
 export interface OpdsViewProps {
   db: LibraryDb;
@@ -49,15 +62,6 @@ type Mode =
   | 'auth-username'
   | 'auth-password';
 
-type BrowsingRow =
-  | { kind: 'facet-group'; label: string }
-  | { kind: 'facet'; facet: OpdsFacet }
-  | { kind: 'entry'; entry: OpdsEntry };
-
-function rowHeight(row: BrowsingRow): number {
-  return row.kind === 'entry' ? CARD_ROWS : 1;
-}
-
 interface FeedHistoryEntry {
   feed: OpdsFeed;
   cursor: number;
@@ -76,6 +80,8 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
     onOpenDownloaded,
     inputDisabled = false,
   } = props;
+  const queue = useDownloadQueue();
+  const imageLayer = useImageLayer();
   const [width, height] = useTerminalSize();
   // Navigation keys resolve through the configurable keymap like every other
   // view; only feed-specific verbs (d download, n next page, c catalogs, u
@@ -114,17 +120,17 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   }, [loadCatalogs, refreshTrigger]);
 
   useEffect(() => {
-    return opdsDownloadQueue.subscribe(() => setQueueTick((t) => t + 1));
+    return queue.subscribe(() => setQueueTick((t) => t + 1));
   }, []);
 
   const currentFeedEntry = feedStack.length > 0 ? feedStack[feedStack.length - 1] : null;
   const currentFeed = currentFeedEntry?.feed ?? null;
 
   // Live view of the shared background download queue.
-  const queueJobs = opdsDownloadQueue.snapshot();
-  const queueActive = opdsDownloadQueue.active;
-  const currentJob = opdsDownloadQueue.current;
-  const pendingCount = opdsDownloadQueue.pendingCount;
+  const queueJobs = queue.snapshot();
+  const queueActive = queue.active;
+  const currentJob = queue.current;
+  const pendingCount = queue.pendingCount;
 
   const downloadsLabel = (() => {
     const cur = currentJob;
@@ -138,28 +144,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   })();
 
   // Flatten facets + entries into displayable rows
-  const rows = useMemo(() => {
-    if (!currentFeed) return [];
-    const result: BrowsingRow[] = [];
-
-    const grouped = new Map<string, OpdsFacet[]>();
-    for (const facet of currentFeed.facets) {
-      const arr = grouped.get(facet.group) ?? [];
-      arr.push(facet);
-      grouped.set(facet.group, arr);
-    }
-    for (const [group, facets] of grouped) {
-      result.push({ kind: 'facet-group', label: group });
-      for (const f of facets) {
-        result.push({ kind: 'facet', facet: f });
-      }
-    }
-
-    for (const entry of currentFeed.entries) {
-      result.push({ kind: 'entry', entry });
-    }
-    return result;
-  }, [currentFeed]);
+  const rows = useMemo(() => feedToRows(currentFeed), [currentFeed]);
 
   useEffect(() => {
     if (cursor >= rows.length && rows.length > 0) {
@@ -349,7 +334,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         notify('No downloadable format (EPUB/FB2) for this entry');
         return;
       }
-      opdsDownloadQueue.enqueue({
+      queue.enqueue({
         entry,
         auth: catalogAuth(activeCatalog),
         db,
@@ -437,7 +422,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         if (keyName === 'd') {
           const job = queueJobs[downloadsCursor];
           if (job && (job.status === 'queued' || job.status === 'downloading')) {
-            opdsDownloadQueue.cancel(job.id);
+            queue.cancel(job.id);
           }
           return;
         }
@@ -449,16 +434,10 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         const action = resolver.feed(keyName);
         switch (action) {
           case 'move_cursor_down':
-            setDownloadsCursor((c) => Math.min(queueJobs.length - 1, c + 1));
-            break;
           case 'move_cursor_up':
-            setDownloadsCursor((c) => Math.max(0, c - 1));
-            break;
           case 'go_to_start':
-            setDownloadsCursor(0);
-            break;
           case 'go_to_end':
-            setDownloadsCursor(queueJobs.length - 1);
+            setDownloadsCursor((c) => cursorForAction(action, c, queueJobs.length));
             break;
           case 'select':
           case 'move_cursor_right': {
@@ -489,12 +468,8 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         const action = resolver.feed(keyName);
         switch (action) {
           case 'move_cursor_down':
-            setCatalogCursor((c) =>
-              catalogs.length === 0 ? 0 : Math.min(catalogs.length - 1, c + 1),
-            );
-            break;
           case 'move_cursor_up':
-            setCatalogCursor((c) => Math.max(0, c - 1));
+            setCatalogCursor((c) => cursorForAction(action, c, catalogs.length));
             break;
           case 'select':
             handleSelect();
@@ -558,28 +533,13 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         const action = resolver.feed(keyName);
         switch (action) {
           case 'move_cursor_down':
-            saveCurrentPosition();
-            setCursor((c) => Math.min(rows.length - 1, c + 1));
-            break;
           case 'move_cursor_up':
-            saveCurrentPosition();
-            setCursor((c) => Math.max(0, c - 1));
-            break;
           case 'go_to_start':
-            saveCurrentPosition();
-            setCursor(0);
-            break;
           case 'go_to_end':
-            saveCurrentPosition();
-            setCursor(rows.length - 1);
-            break;
           case 'page_down':
-            saveCurrentPosition();
-            setCursor((c) => Math.min(rows.length - 1, c + Math.max(1, height - 6)));
-            break;
           case 'page_up':
             saveCurrentPosition();
-            setCursor((c) => Math.max(0, c - Math.max(1, height - 6)));
+            setCursor((c) => cursorForAction(action, c, rows.length, height - 6));
             break;
           case 'select':
           case 'move_cursor_right':
@@ -905,56 +865,13 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
           <Text color={theme.colors.dim}>esc — back</Text>
         </Box>
       ) : (
-        <Box flexDirection="column" paddingX={1}>
-          {visibleRows.map((row, i) => {
-            const absolute = start + i;
-            const selected = absolute === cursor;
-            if (row.kind === 'facet-group') {
-              return (
-                <Text key={`fg-${absolute}`} color={theme.colors.accent} bold>
-                  {' '}
-                  {row.label}
-                </Text>
-              );
-            }
-            if (row.kind === 'facet') {
-              const label = `${row.facet.active ? '● ' : '  '}${row.facet.title}${row.facet.count ? ` (${row.facet.count})` : ''}`;
-              return (
-                <Text
-                  key={`f-${absolute}`}
-                  color={selected ? theme.colors.accent : theme.colors.dim}
-                  bold={selected}
-                >
-                  {selected ? '▸ ' : '  '}
-                  {label}
-                </Text>
-              );
-            }
-            const entry = row.entry;
-            const textW = Math.max(10, width - COVER_W - 40);
-            const title = truncateW(entry.title, textW);
-            const author = truncateW(entry.authors[0]?.name ?? 'Unknown author', textW);
-            const marker = entry.isAcquisition ? '📚' : '📁';
-            const sub = [entry.language, entry.issued, entry.publisher].filter(Boolean).join(' · ');
-            return (
-              // 3-line card: title, author, language · year · publisher. The
-              // text is indented past the cover thumbnail column so the image
-              // drawn by imageLayer doesn't overlap it.
-              <Box key={`e-${absolute}`} flexDirection="column" paddingLeft={COVER_W + 2}>
-                <Text color={selected ? theme.colors.accent : theme.colors.text} bold={selected}>
-                  {selected ? '▸ ' : '  '}
-                  {marker} {title}
-                </Text>
-                <Text color={theme.colors.dim} dimColor>
-                  {author}
-                </Text>
-                <Text color={theme.colors.dim} dimColor>
-                  {sub ? truncateW(sub, textW) : ' '}
-                </Text>
-              </Box>
-            );
-          })}
-        </Box>
+        <BrowsingFeedList
+          rows={visibleRows}
+          start={start}
+          cursor={cursor}
+          theme={theme}
+          width={width}
+        />
       )}
 
       {mode === 'search' ? (
@@ -974,51 +891,28 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         </Box>
       ) : null}
 
-      {mode === 'auth-username' ? (
-        <Box paddingX={1} flexDirection="column">
-          <Text color={theme.colors.accent} bold>
-            Authentication required (HTTP 401)
-          </Text>
-          <Text color={theme.colors.dim}>Catalog: {authCatalog?.name ?? 'Unknown'}</Text>
-          <TextPrompt
-            theme={theme}
-            prefix="username: "
-            placeholder="username"
-            initialValue={authUsername}
-            onSubmit={(value) => {
-              setAuthUsername(value);
-              setMode('auth-password');
-            }}
-            onCancel={() => {
-              setAuthCatalog(null);
-              setMode('catalog-list');
-              forceRedraw();
-            }}
-          />
-        </Box>
-      ) : null}
-
-      {mode === 'auth-password' ? (
-        <Box paddingX={1} flexDirection="column">
-          <Text color={theme.colors.accent} bold>
-            Password for {authUsername}
-          </Text>
-          <TextPrompt
-            theme={theme}
-            prefix="password: "
-            placeholder="password (leave empty for none)"
-            secret
-            onSubmit={(value) => {
-              void retryWithAuth(authUsername, value);
-            }}
-            onCancel={() => {
-              setAuthCatalog(null);
-              setAuthUsername('');
-              setMode('catalog-list');
-              forceRedraw();
-            }}
-          />
-        </Box>
+      {mode === 'auth-username' || mode === 'auth-password' ? (
+        <AuthPrompt
+          stage={mode === 'auth-password' ? 'password' : 'username'}
+          catalogName={authCatalog?.name ?? 'Unknown'}
+          username={authUsername}
+          theme={theme}
+          onUsername={(value) => {
+            setAuthUsername(value);
+            setMode('auth-password');
+          }}
+          onPassword={(value) => {
+            void retryWithAuth(authUsername, value);
+          }}
+          onCancel={() => {
+            setAuthCatalog(null);
+            // Cancel at the password stage resets the flow; at the username
+            // stage the typed name stays so a retry is pre-filled.
+            if (mode === 'auth-password') setAuthUsername('');
+            setMode('catalog-list');
+            forceRedraw();
+          }}
+        />
       ) : null}
 
       <StatusBar
@@ -1027,206 +921,29 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         data={{
           title: statusLeft,
           downloads: downloadsLabel,
-          hint:
-            mode === 'catalog-list'
-              ? 'j/k navigate · enter open · ? help · q quit'
-              : mode === 'browsing'
-                ? 'j/k · enter/l open · d download · x downloads · / search · u/h up · n next · p prev · c catalogs · ? help'
-                : mode === 'entry-detail'
-                  ? 'enter/d/l download · x downloads · h/esc back · ? help'
-                  : mode === 'downloads'
-                    ? 'j/k · enter open done · d cancel · x/esc close · ? help'
-                    : mode === 'error'
-                      ? '? help · esc back'
-                      : '',
+          hint: statusHint(mode),
         }}
       />
     </Box>
   );
 }
 
-function CatalogList(props: {
-  catalogs: CatalogRecord[];
-  cursor: number;
-  theme: Theme;
-  width: number;
-}): React.JSX.Element {
-  const { catalogs, cursor, theme, width } = props;
-  if (catalogs.length === 0) {
-    return (
-      <Box paddingX={2} paddingY={2} flexDirection="column">
-        <Text color={theme.colors.text}>No OPDS catalogs configured.</Text>
-        <Text color={theme.colors.dim}>Add one via SQLite or a future :opds add command.</Text>
-      </Box>
-    );
+// Status bar hint for the current mode.
+function statusHint(mode: Mode): string {
+  switch (mode) {
+    case 'catalog-list':
+      return 'j/k navigate · enter open · ? help · q quit';
+    case 'browsing':
+      return 'j/k · enter/l open · d download · x downloads · / search · u/h up · n next · p prev · c catalogs · ? help';
+    case 'entry-detail':
+      return 'enter/d/l download · x downloads · h/esc back · ? help';
+    case 'downloads':
+      return 'j/k · enter open done · d cancel · x/esc close · ? help';
+    case 'error':
+      return '? help · esc back';
+    default:
+      return '';
   }
-  const nameW = Math.max(10, width - 40);
-  return (
-    <Box flexDirection="column" paddingX={1}>
-      {catalogs.map((cat, i) => {
-        const selected = i === cursor;
-        const name = truncateW(cat.name, nameW);
-        const url = truncateW(cat.url, 35);
-        return (
-          <Box key={cat.id} flexDirection="row">
-            <Text color={selected ? theme.colors.accent : theme.colors.text} bold={selected}>
-              {selected ? '▸ ' : '  '}
-            </Text>
-            <Text color={selected ? theme.colors.accent : theme.colors.text} bold={selected}>
-              {name}
-            </Text>
-            <Text color={theme.colors.dim}> — {url}</Text>
-            {cat.username ? <Text color={theme.colors.dim}> · 🔒</Text> : null}
-          </Box>
-        );
-      })}
-    </Box>
-  );
-}
-
-function DownloadsList(props: {
-  theme: Theme;
-  width: number;
-  height: number;
-  jobs: DownloadJob[];
-  cursor: number;
-}): React.JSX.Element {
-  const { theme, width, height, jobs, cursor } = props;
-  if (jobs.length === 0) {
-    return (
-      <Box paddingX={2} paddingY={1} flexDirection="column">
-        <Text color={theme.colors.text}>No downloads.</Text>
-        <Text color={theme.colors.dim}>Press d on a book to queue it. esc — close</Text>
-      </Box>
-    );
-  }
-  const visibleCount = Math.max(3, height - 6);
-  const start = Math.max(
-    0,
-    Math.min(cursor - Math.floor(visibleCount / 2), Math.max(0, jobs.length - visibleCount)),
-  );
-  const visible = jobs.slice(start, start + visibleCount);
-  const titleW = Math.max(10, width - 40);
-  return (
-    <Box flexDirection="column" paddingX={1}>
-      {visible.map((job, i) => {
-        const absolute = start + i;
-        const selected = absolute === cursor;
-        const color = selected ? theme.colors.accent : theme.colors.text;
-        const status = jobStatusText(job);
-        const statusColor =
-          job.status === 'done'
-            ? theme.colors.link
-            : job.status === 'failed'
-              ? (theme.colors.error ?? theme.colors.dim)
-              : theme.colors.dim;
-        return (
-          <Box key={job.id} flexDirection="row">
-            <Text color={color} bold={selected}>
-              {selected ? '▸ ' : '  '}
-            </Text>
-            <Text color={color} bold={selected}>
-              {truncateW(job.title, titleW)}
-            </Text>
-            <Text color={statusColor}> — {status}</Text>
-            {job.error ? <Text color={theme.colors.dim}> ({truncateW(job.error, 30)})</Text> : null}
-          </Box>
-        );
-      })}
-    </Box>
-  );
-}
-
-function jobStatusText(job: DownloadJob): string {
-  switch (job.status) {
-    case 'queued':
-      return 'queued';
-    case 'downloading':
-      if (job.total && job.total > 0) {
-        return `${Math.floor((job.received / job.total) * 100)}%`;
-      }
-      return 'downloading…';
-    case 'done':
-      return '✓ done';
-    case 'failed':
-      return '✗ failed';
-    case 'cancelled':
-      return 'cancelled';
-  }
-}
-
-function EntryDetail(props: {
-  entry: OpdsEntry;
-  theme: Theme;
-  width: number;
-  height: number;
-}): React.JSX.Element {
-  const { entry, theme, width, height } = props;
-  const textWidth = Math.max(30, width - 4);
-  const lines: Array<{ label: string; value: string }> = [];
-  lines.push({ label: 'Title', value: entry.title });
-  if (entry.authors.length > 0) {
-    lines.push({ label: 'Author', value: entry.authors.map((a) => a.name).join(', ') });
-  }
-  if (entry.language) lines.push({ label: 'Language', value: entry.language });
-  if (entry.publisher) lines.push({ label: 'Publisher', value: entry.publisher });
-  if (entry.issued) lines.push({ label: 'Year', value: entry.issued });
-  if (entry.identifier) lines.push({ label: 'ISBN', value: entry.identifier });
-  const acqLink = pickAcquisitionLink(entry.acquisitionLinks);
-  if (acqLink?.type) {
-    lines.push({ label: 'Format', value: acqLink.type });
-  }
-  if (entry.categories.length > 0) {
-    lines.push({ label: 'Subjects', value: entry.categories.map((c) => c.term).join(', ') });
-  }
-  const summary = entry.summary ?? entry.content ?? '';
-  const summaryLines = wrapText(summary, textWidth);
-  const maxLines = Math.max(5, height - lines.length - 8);
-
-  return (
-    <Box flexDirection="column" paddingX={2} paddingY={1}>
-      {lines.map((line, i) => (
-        <Box key={i} flexDirection="row">
-          <Text color={theme.colors.dim}>{line.label}: </Text>
-          <Text color={theme.colors.text} wrap="truncate">
-            {truncateW(line.value, textWidth - line.label.length - 2)}
-          </Text>
-        </Box>
-      ))}
-      {summary ? (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color={theme.colors.dim}>Summary:</Text>
-          {summaryLines.slice(0, maxLines).map((line, i) => (
-            <Text key={i} color={theme.colors.text}>
-              {line}
-            </Text>
-          ))}
-        </Box>
-      ) : null}
-      <Box marginTop={1}>
-        <Text color={theme.colors.accent} bold>
-          Press d or enter to download · esc to go back
-        </Text>
-      </Box>
-    </Box>
-  );
-}
-
-function wrapText(text: string, width: number): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length === 0) return [];
-  const lines: string[] = [];
-  let line = '';
-  for (const word of words) {
-    if (line.length + word.length + 1 > width) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = line ? `${line} ${word}` : word;
-    }
-  }
-  if (line) lines.push(line);
-  return lines;
 }
 
 function formatError(err: unknown): string {

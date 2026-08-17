@@ -6,7 +6,7 @@ import type { BookRecord } from '../../db/db.js';
 import { Modal } from '../components/Modal.js';
 import { createActionResolver, resolveKeyName } from '../keymap.js';
 import { formatBytes, truncate, wrapText } from '../../utils/text.js';
-import { imageLayer } from '../imageLayer.js';
+import { useImageLayer } from '../imageLayer.js';
 import { forceRedraw } from '../screenRefresh.js';
 import { parseBookFile } from '../../formats/index.js';
 
@@ -31,6 +31,7 @@ const TEXT_WIDTH = 48;
 export function BookDetail(props: BookDetailProps): React.JSX.Element {
   const { book, config, theme, onRead, onClose, onHelp, inputDisabled = false } = props;
   const { stdout } = useStdout();
+  const imageLayer = useImageLayer();
   const resolver = useMemo(() => createActionResolver(config), [config]);
   const termHeight = stdout.rows ?? 24;
   const hasCover = !!book.coverKey;

@@ -6,7 +6,7 @@ import { render } from 'ink-testing-library';
 import { BookDetail } from './BookDetail.js';
 import { defaultConfig } from '../../config/defaults.js';
 import { THEMES } from '../../themes/themes.js';
-import { imageLayer } from '../imageLayer.js';
+import { ImageLayer, imageLayer, ImageLayerContext } from '../imageLayer.js';
 import { FB2_SAMPLE } from '../../formats/test-utils.js';
 import type { BookRecord } from '../../db/db.js';
 
@@ -81,5 +81,25 @@ describe('BookDetail cover vs App-level overlays', () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(updateSpy).not.toHaveBeenCalled();
     expect(clearSpy).toHaveBeenCalled();
+  });
+});
+
+describe('BookDetail image layer injection', () => {
+  it('draws the cover on a provided instance, not the module singleton', async () => {
+    const custom = new ImageLayer();
+    vi.spyOn(custom, 'start').mockReturnValue(true);
+    const customUpdate = vi.spyOn(custom, 'update');
+    const singletonUpdate = vi.spyOn(imageLayer, 'update');
+    render(
+      <ImageLayerContext.Provider value={custom}>
+        <BookDetail {...makeProps()} />
+      </ImageLayerContext.Provider>,
+    );
+    await new Promise((r) => setTimeout(r, 100));
+    expect(customUpdate).toHaveBeenCalledWith(
+      [{ identifier: 'cover', x: 2, y: 5, width: 16, height: 14, src: 'cover.jpg' }],
+      expect.any(Map),
+    );
+    expect(singletonUpdate).not.toHaveBeenCalled();
   });
 });

@@ -3,6 +3,8 @@
 // OPDS views both render a window of rows into a fixed number of terminal
 // lines; this module translates between the two coordinate spaces so cursor
 // centering, visible slicing and mouse hit-testing stay correct.
+
+import type { KeyAction } from '../config/defaults.js';
 //
 // Coordinates:
 //   row   — index into the row array (a book, a header, an entry, …)
@@ -73,4 +75,35 @@ export function visibleWindow<T>(
   // end = first row that starts at or after top + maxLines.
   const end = rowAtLine(rows, index, top + maxLines - 1) + 1;
   return { start, end };
+}
+
+/**
+ * The cursor index after a navigation action, clamped to [0, count - 1].
+ * Shared by the views' per-mode key switches, which used to repeat the same
+ * Math.min/Math.max arithmetic for every list (catalogs, feed entries,
+ * downloads, …). Returns the cursor unchanged for non-navigation actions.
+ */
+export function cursorForAction(
+  action: KeyAction | undefined,
+  cursor: number,
+  count: number,
+  pageSize = 1,
+): number {
+  const last = Math.max(0, count - 1);
+  switch (action) {
+    case 'move_cursor_down':
+      return Math.min(last, cursor + 1);
+    case 'move_cursor_up':
+      return Math.max(0, cursor - 1);
+    case 'page_down':
+      return Math.min(last, cursor + Math.max(1, pageSize));
+    case 'page_up':
+      return Math.max(0, cursor - Math.max(1, pageSize));
+    case 'go_to_start':
+      return 0;
+    case 'go_to_end':
+      return last;
+    default:
+      return cursor;
+  }
 }

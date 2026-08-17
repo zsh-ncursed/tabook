@@ -1,28 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Text, useApp } from 'ink';
+import { Box, useApp } from 'ink';
 import type { LibraryDb, BookRecord, SortField } from '../db/db.js';
 import type { Config } from '../config/defaults.js';
-import { THEMES, themeNames } from '../themes/themes.js';
+import { THEMES } from '../themes/themes.js';
 import { openBook, parseBookFile } from '../formats/index.js';
 import type { ParsedBook } from '../formats/model.js';
 import { ReaderSession } from './reader/readerModel.js';
 import { LibraryView } from './library/LibraryView.js';
 import { ReaderView } from './reader/ReaderView.js';
 import { OpdsView } from './opds/OpdsView.js';
-import { HelpView } from './help/HelpView.js';
-import { ThemePicker } from './components/ThemePicker.js';
-import { FolderRemoveConfirm } from './components/FolderRemoveConfirm.js';
-import { OpenPathPrompt } from './components/OpenPathPrompt.js';
-import { CommandPalette } from './components/CommandPalette.js';
+import { AppOverlays } from './components/AppOverlays.js';
 import { useTerminalSize } from './useTerminalSize.js';
+import { useAppCommands } from './useAppCommands.js';
 import { pickBookFile } from '../utils/open.js';
-import { completeCommand, validCommandPrefixLength } from './commands.js';
 import { serializeConfig } from '../config/config.js';
 import { defaultConfig } from '../config/defaults.js';
-import { runCommand, type AppScreen, type CommandContext } from './runCommand.js';
+import type { AppScreen } from './runCommand.js';
 import { useLibraryScanner } from './useLibraryScanner.js';
 import { enableMouseReporting, disableMouseReporting } from './mouse.js';
-import { imageLayer } from './imageLayer.js';
+import { useImageLayer } from './imageLayer.js';
 import * as fs from 'node:fs';
 
 export interface AppProps {
@@ -40,6 +36,7 @@ const AUTO_SAVE_INTERVAL_MS = 5000;
 
 export function App(props: AppProps): React.JSX.Element {
   const { db, config } = props;
+  const imageLayer = useImageLayer();
   const configPathRef = useRef(props.configPath);
   const { exit } = useApp();
   // Live copy of the config so :config edit can reload the file without a
@@ -259,61 +256,44 @@ export function App(props: AppProps): React.JSX.Element {
     setLibraryRefresh,
   });
 
-  const handleCommand = useCallback(
-    (text: string): void => {
-      const ctx: CommandContext = {
-        db,
-        screen,
-        session,
-        themeName,
-        themeOverride: props.themeOverride,
-        configPath: configPathRef.current ?? null,
-        notify,
-        exit,
-        openBookPath,
-        openFileDialog,
-        closeReader,
-        attachLibraryFolder,
-        runLibraryScan,
-        setScreen,
-        setHelpOpen,
-        setThemeName,
-        setThemePickerOpen,
-        setFolderRemoveConfirm,
-        persistConfig,
-        setLibraryRefresh,
-        setCmdVersion,
-        setLiveConfig,
-        libraryCmdRef,
-        prePickThemeRef: { current: null },
-      };
-      runCommand(text, ctx);
-    },
-    [
-      db,
-      screen,
-      session,
-      themeName,
-      props.themeOverride,
-      notify,
-      exit,
-      openBookPath,
-      openFileDialog,
-      closeReader,
-      attachLibraryFolder,
-      runLibraryScan,
-      persistConfig,
-    ],
-  );
+  const { runCommand, completeCommand, validCommandPrefix } = useAppCommands({
+    db,
+    screen,
+    session,
+    themeName,
+    themeOverride: props.themeOverride,
+    configPath: configPathRef.current ?? null,
+    notify,
+    exit,
+    openBookPath,
+    openFileDialog,
+    closeReader,
+    attachLibraryFolder,
+    runLibraryScan,
+    persistConfig,
+    setScreen,
+    setHelpOpen,
+    setThemeName,
+    setThemePickerOpen,
+    setFolderRemoveConfirm,
+    setLibraryRefresh,
+    setCmdVersion,
+    setLiveConfig,
+    libraryCmdRef,
+  });
 
-  const completeCommandCb = useCallback(
-    (value: string): string | null => completeCommand(value, themeNames),
-    [],
-  );
-
-  const validCommandPrefix = useCallback((value: string): number => {
-    return validCommandPrefixLength(value);
-  }, []);
+  // :library remove confirmation — detach the folder and delete its books
+  // (progress and bookmarks included); files on disk are untouched.
+  const confirmFolderRemove = useCallback((): void => {
+    const target = folderRemoveConfirm;
+    if (!target) return;
+    const folder = db.getLibraryFolderByPath(target.path);
+    const removedBooks = db.removeBooksByLibraryRoot(target.path);
+    if (folder) db.removeLibraryFolder(folder.id);
+    notify(`Detached ${target.path}; removed ${removedBooks} book${removedBooks === 1 ? '' : 's'}`);
+    setFolderRemoveConfirm(null);
+    setLibraryRefresh((c) => c + 1);
+  }, [db, folderRemoveConfirm, notify]);
 
   useEffect(() => {
     if (props.initialPath) {
@@ -402,8 +382,8 @@ export function App(props: AppProps): React.JSX.Element {
           onQuit={() => exit()}
           onHelp={() => setHelpOpen(true)}
           onOpenPalette={openCommandPalette}
-          runCommand={handleCommand}
-          completeCommand={completeCommandCb}
+          runCommand={runCommand}
+          completeCommand={completeCommand}
           validCommandPrefix={validCommandPrefix}
           inputDisabled={inputDisabled}
         />
@@ -434,85 +414,46 @@ export function App(props: AppProps): React.JSX.Element {
           onOpenFile={openFileDialog}
           onHelp={() => setHelpOpen(true)}
           onOpenPalette={openCommandPalette}
-          runCommand={handleCommand}
-          completeCommand={completeCommandCb}
+          runCommand={runCommand}
+          completeCommand={completeCommand}
           validCommandPrefix={validCommandPrefix}
           inputDisabled={inputDisabled}
         />
       ) : null}
-      {folderRemoveConfirm ? (
-        <FolderRemoveConfirm
-          theme={theme}
-          path={folderRemoveConfirm.path}
-          count={folderRemoveConfirm.count}
-          isActive={folderRemoveConfirm !== null}
-          onConfirm={() => {
-            const target = folderRemoveConfirm;
-            if (!target) return;
-            const folder = db.getLibraryFolderByPath(target.path);
-            const removedBooks = db.removeBooksByLibraryRoot(target.path);
-            if (folder) db.removeLibraryFolder(folder.id);
-            notify(
-              `Detached ${target.path}; removed ${removedBooks} book${removedBooks === 1 ? '' : 's'}`,
-            );
-            setFolderRemoveConfirm(null);
-            setLibraryRefresh((c) => c + 1);
-          }}
-          onCancel={() => setFolderRemoveConfirm(null)}
-        />
-      ) : null}
-      {helpOpen ? (
-        <HelpView
-          config={liveConfig}
-          theme={theme}
-          screen={screen}
-          onClose={() => setHelpOpen(false)}
-        />
-      ) : null}
-      {commandPaletteOpen ? (
-        <CommandPalette
-          theme={theme}
-          screen={screen}
-          onRun={handleCommand}
-          onClose={() => setCommandPaletteOpen(false)}
-        />
-      ) : null}
-      {themePickerOpen ? (
-        <ThemePicker
-          theme={theme}
-          config={liveConfig}
-          items={themeNames()}
-          currentTheme={themeName}
-          isActive={themePickerOpen}
-          onPreview={(name) => setThemeName(name)}
-          onApply={(name) => {
-            setThemeName(name);
-            persistConfig(name);
-            notify(`Theme: ${name}`);
-          }}
-          onClose={(apply, previousTheme) => {
-            if (!apply && previousTheme && THEMES[previousTheme]) {
-              setThemeName(previousTheme);
-            }
-            setThemePickerOpen(false);
-          }}
-        />
-      ) : null}
-      {promptOpenPath ? (
-        <OpenPathPrompt
-          theme={theme}
-          onOpen={(p) => {
-            setPromptOpenPath(false);
-            void openBookPath(p);
-          }}
-          onCancel={() => setPromptOpenPath(false)}
-        />
-      ) : null}
-      {message ? (
-        <Box paddingX={1}>
-          <Text color={theme.colors.accent}>{message.text}</Text>
-        </Box>
-      ) : null}
+      <AppOverlays
+        theme={theme}
+        screen={screen}
+        config={liveConfig}
+        themeName={themeName}
+        folderRemoveConfirm={folderRemoveConfirm}
+        helpOpen={helpOpen}
+        commandPaletteOpen={commandPaletteOpen}
+        themePickerOpen={themePickerOpen}
+        promptOpenPath={promptOpenPath}
+        message={message}
+        onRunCommand={runCommand}
+        onConfirmFolderRemove={confirmFolderRemove}
+        onCancelFolderRemove={() => setFolderRemoveConfirm(null)}
+        onCloseHelp={() => setHelpOpen(false)}
+        onClosePalette={() => setCommandPaletteOpen(false)}
+        onThemePreview={(name) => setThemeName(name)}
+        onThemeApply={(name) => {
+          setThemeName(name);
+          persistConfig(name);
+          notify(`Theme: ${name}`);
+        }}
+        onThemeClose={(apply, previousTheme) => {
+          if (!apply && previousTheme && THEMES[previousTheme]) {
+            setThemeName(previousTheme);
+          }
+          setThemePickerOpen(false);
+        }}
+        onOpenPath={(p) => {
+          setPromptOpenPath(false);
+          void openBookPath(p);
+        }}
+        onCancelPath={() => setPromptOpenPath(false)}
+      />
     </Box>
   );
 }

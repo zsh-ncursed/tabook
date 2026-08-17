@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useInput, type Key } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { Config, KeyAction } from '../../config/defaults.js';
@@ -9,10 +9,18 @@ import { TextPrompt } from '../components/TextPrompt.js';
 import { BookDetail } from './BookDetail.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { forceRedraw } from '../screenRefresh.js';
-import { useMouseClicks, wasMouseChunkRecent } from '../mouse.js';
+import { useMouseClicks } from '../mouse.js';
+import { useInputDispatch } from '../useInputDispatch.js';
 import { truncateW, wrapText } from '../../utils/text.js';
-import { imageLayer, type ImagePlacement } from '../imageLayer.js';
-import { buildLineIndex, rowAtLine, visibleWindow, CARD_ROWS, COVER_W } from '../listLayout.js';
+import { useImageLayer, type ImagePlacement } from '../imageLayer.js';
+import {
+  buildLineIndex,
+  rowAtLine,
+  visibleWindow,
+  cursorForAction,
+  CARD_ROWS,
+  COVER_W,
+} from '../listLayout.js';
 import { extractCoverBytes } from '../../formats/cover.js';
 import { existsSync, unlinkSync } from 'node:fs';
 
@@ -77,6 +85,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
     validCommandPrefix,
     inputDisabled = false,
   } = props;
+  const imageLayer = useImageLayer();
   const [width, height] = useTerminalSize();
   const [books, setBooks] = useState<BookRecord[]>([]);
   const [recentBooks, setRecentBooks] = useState<BookRecord[]>([]);
@@ -122,65 +131,10 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
 
   const bookList = useMemo(() => {
     const source = view === 'recent' ? recentBooks : view === 'continue' ? continueBooks : books;
-    const q = filter.trim().toLowerCase();
-    const filtered = q
-      ? source.filter(
-          (b) =>
-            b.title.toLowerCase().includes(q) ||
-            b.authorsText.toLowerCase().includes(q) ||
-            (b.seriesText ?? '').toLowerCase().includes(q) ||
-            b.genres.some((g) => g.toLowerCase().includes(q)),
-        )
-      : source;
-    const sorted =
-      view === 'recent' || view === 'continue'
-        ? filtered
-        : [...filtered].sort((a, b) => compareBooks(a, b, sortField));
-    return sorted;
+    return filterAndSortBooks(source, filter, sortField, view === 'all');
   }, [books, recentBooks, continueBooks, view, filter, sortField]);
 
-  const rows = useMemo<Row[]>(() => {
-    if (!groupBySeries) {
-      return bookList.map((book) => ({ kind: 'book', book }));
-    }
-    const groups = new Map<string, BookRecord[]>();
-    const standalone: BookRecord[] = [];
-    for (const book of bookList) {
-      // Group by the series *name* — not seriesText, which embeds the volume
-      // number ('Trilogy #1'), so numbered volumes would each form their own
-      // single-book group instead of one 'Trilogy' group.
-      const groupKey = book.series?.name || book.seriesText;
-      if (groupKey) {
-        const arr = groups.get(groupKey) ?? [];
-        arr.push(book);
-        groups.set(groupKey, arr);
-      } else {
-        standalone.push(book);
-      }
-    }
-    const result: Row[] = [];
-    const groupNames = [...groups.keys()].sort((a, b) => a.localeCompare(b));
-    for (const name of groupNames) {
-      const arr = groups.get(name)!;
-      arr.sort((a, b) => {
-        const na = a.series?.number ?? Infinity;
-        const nb = b.series?.number ?? Infinity;
-        if (na !== nb) return na - nb;
-        return a.title.localeCompare(b.title);
-      });
-      result.push({ kind: 'header', label: `${name} (${arr.length})` });
-      for (const book of arr) {
-        result.push({ kind: 'book', book });
-      }
-    }
-    if (standalone.length > 0) {
-      result.push({ kind: 'header', label: `Standalone (${standalone.length})` });
-      for (const book of standalone) {
-        result.push({ kind: 'book', book });
-      }
-    }
-    return result;
-  }, [bookList, groupBySeries]);
+  const rows = useMemo(() => buildRows(bookList, groupBySeries), [bookList, groupBySeries]);
 
   useEffect(() => {
     if (cursor >= rows.length) setCursor(Math.max(0, rows.length - 1));
@@ -203,105 +157,39 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   })();
 
   const handleAction = (action: KeyAction | undefined): void => {
-    switch (action) {
-      case 'move_cursor_down':
-        setCursor((c) => nextBook(rows, c));
-        break;
-      case 'move_cursor_up':
-        setCursor((c) => prevBook(rows, c));
-        break;
-      case 'page_down':
-        setCursor((c) => snapToBook(rows, Math.min(c + Math.max(1, height - 6), rows.length - 1)));
-        break;
-      case 'page_up':
-        setCursor((c) => snapToBook(rows, Math.max(0, c - Math.max(1, height - 6))));
-        break;
-      case 'go_to_start':
-        setCursor(snapToBook(rows, 0));
-        break;
-      case 'go_to_end':
-        setCursor(snapToBook(rows, rows.length - 1));
-        break;
-      case 'select':
-        if (selectedBook) {
-          setDetailBook(selectedBook);
-          setMode('detail');
-        }
-        break;
-      case 'book_info':
-        if (selectedBook) {
-          setDetailBook(selectedBook);
-          setMode('detail');
-        }
-        break;
-      case 'open_file':
-        onOpenFile();
-        break;
-      case 'delete_from_library':
-        if (selectedBook) {
-          setConfirmTarget(selectedBook);
-          setConfirmDeleteFile(false);
-          setMode('confirm-delete');
-        }
-        break;
-      case 'delete_file':
-        if (selectedBook) {
-          setConfirmTarget(selectedBook);
-          setConfirmDeleteFile(true);
-          setMode('confirm-delete');
-        }
-        break;
-      case 'sort_cycle':
-        setSortField(
-          (field) => SORT_FIELDS[(SORT_FIELDS.indexOf(field) + 1) % SORT_FIELDS.length]!,
-        );
-        break;
-      case 'toggle_recent':
-        setView((v) => (v === 'recent' ? 'all' : 'recent'));
-        setCursor(0);
-        setFilter('');
-        break;
-      case 'toggle_continue':
-        setView((v) => (v === 'continue' ? 'all' : 'continue'));
-        setCursor(0);
-        setFilter('');
-        break;
-      case 'search':
-        filterBaselineRef.current = filter;
-        setMode('filter');
-        break;
-      case 'command':
-        setMode('command');
-        break;
-      case 'command_palette':
-        onOpenPalette?.();
-        break;
-      case 'quit':
-        onQuit();
-        break;
-      case 'help':
-        onHelp();
-        break;
-      default:
-        break;
-    }
+    dispatchLibraryAction(action, {
+      rows,
+      height,
+      selectedBook,
+      filter,
+      filterBaselineRef,
+      setCursor,
+      setDetailBook,
+      setConfirmTarget,
+      setConfirmDeleteFile,
+      setMode,
+      setSortField,
+      setView,
+      setFilter,
+      onOpenFile,
+      onOpenPalette,
+      onQuit,
+      onHelp,
+    });
   };
 
   // Stable handler backed by a ref — prevents Ink useInput re-subscribe race.
-  const libInputRef = useRef({ mode, resolver, handleAction });
-  libInputRef.current = { mode, resolver, handleAction };
-  const handleLibInput = useCallback((input: string, key: Key) => {
-    // Drop the bogus '[' keypress Ink produces from an SGR mouse chunk (see
-    // mouse.ts) — the click was already handled by the mouse module.
-    if (wasMouseChunkRecent()) return;
-    const s = libInputRef.current;
-    if (s.mode !== 'normal') return;
+  // useInputDispatch registers one stable useInput (mouse-chunk filtering
+  // included) and routes every keypress through dispatchRef.current, which we
+  // overwrite each render with a fresh closure over the current state.
+  const dispatchRef = useInputDispatch(mode === 'normal' && !inputDisabled);
+  dispatchRef.current = (input: string, key: Key) => {
+    if (mode !== 'normal') return;
     const keyName = resolveKeyName(input, key);
     if (keyName === null) return;
-    const action = s.resolver.feed(keyName);
-    s.handleAction(action);
-  }, []);
-  useInput(handleLibInput, { isActive: mode === 'normal' && !inputDisabled });
+    const action = resolver.feed(keyName);
+    handleAction(action);
+  };
 
   // Reserve space for the annotation preview pane (header + up to 4 lines)
   // when the selected book has one, so the list doesn't overflow the screen.
@@ -451,51 +339,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           </Text>
         </Box>
       ) : (
-        <Box flexDirection="column" paddingX={1}>
-          {visibleRows.map((row, i) => {
-            const absolute = start + i;
-            if (row.kind === 'header') {
-              return (
-                <Text key={`h-${absolute}`} color={theme.colors.accent} bold>
-                  {' '}
-                  {row.label}
-                </Text>
-              );
-            }
-            const book = row.book!;
-            const selected = absolute === cursor;
-            const textW = Math.max(10, width - COVER_W - 40);
-            const title = truncateW(book.title, textW);
-            const sub = [
-              book.authorsText,
-              book.seriesText,
-              book.progressPercent !== null ? `${book.progressPercent}%` : '',
-            ]
-              .filter(Boolean)
-              .join(' · ');
-            return (
-              // 3-line card: title, authors, series · progress. The text is
-              // indented past the cover thumbnail column (COVER_W + 2) so the
-              // image drawn by imageLayer doesn't overlap it.
-              <Box key={`b-${absolute}`} flexDirection="column" paddingLeft={COVER_W + 2}>
-                <Text
-                  color={selected ? theme.colors.background : theme.colors.text}
-                  backgroundColor={selected ? theme.colors.accent : undefined}
-                  bold={selected}
-                >
-                  {selected ? '▶ ' : '  '}
-                  {title}
-                </Text>
-                <Text color={theme.colors.dim} dimColor>
-                  {truncateW(book.authorsText || 'Unknown author', textW)}
-                </Text>
-                <Text color={theme.colors.dim} dimColor>
-                  {sub ? truncateW(sub, textW) : ' '}
-                </Text>
-              </Box>
-            );
-          })}
-        </Box>
+        <BookList rows={visibleRows} start={start} cursor={cursor} theme={theme} width={width} />
       )}
 
       {mode === 'filter' ? (
@@ -618,6 +462,254 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       />
     </Box>
   );
+}
+
+// Filter by title/author/series/genre and sort. `sort` is false for the
+// recent/continue views, which keep their natural (recency) order.
+function filterAndSortBooks(
+  source: BookRecord[],
+  filter: string,
+  sortField: SortField,
+  sort: boolean,
+): BookRecord[] {
+  const q = filter.trim().toLowerCase();
+  const filtered = q
+    ? source.filter(
+        (b) =>
+          b.title.toLowerCase().includes(q) ||
+          b.authorsText.toLowerCase().includes(q) ||
+          (b.seriesText ?? '').toLowerCase().includes(q) ||
+          b.genres.some((g) => g.toLowerCase().includes(q)),
+      )
+    : source;
+  if (!sort) return filtered;
+  return [...filtered].sort((a, b) => compareBooks(a, b, sortField));
+}
+
+// Build the display row list (group headers + book rows) from the filtered
+// book list. Grouped view groups by series *name* — not seriesText, which
+// embeds the volume number ('Trilogy #1'), so numbered volumes would each
+// form their own single-book group instead of one 'Trilogy' group.
+function buildRows(bookList: BookRecord[], groupBySeries: boolean): Row[] {
+  if (!groupBySeries) {
+    return bookList.map((book) => ({ kind: 'book', book }));
+  }
+  const groups = new Map<string, BookRecord[]>();
+  const standalone: BookRecord[] = [];
+  for (const book of bookList) {
+    const groupKey = book.series?.name || book.seriesText;
+    if (groupKey) {
+      const arr = groups.get(groupKey) ?? [];
+      arr.push(book);
+      groups.set(groupKey, arr);
+    } else {
+      standalone.push(book);
+    }
+  }
+  const result: Row[] = [];
+  const groupNames = [...groups.keys()].sort((a, b) => a.localeCompare(b));
+  for (const name of groupNames) {
+    const arr = groups.get(name)!;
+    arr.sort((a, b) => {
+      const na = a.series?.number ?? Infinity;
+      const nb = b.series?.number ?? Infinity;
+      if (na !== nb) return na - nb;
+      return a.title.localeCompare(b.title);
+    });
+    result.push({ kind: 'header', label: `${name} (${arr.length})` });
+    for (const book of arr) {
+      result.push({ kind: 'book', book });
+    }
+  }
+  if (standalone.length > 0) {
+    result.push({ kind: 'header', label: `Standalone (${standalone.length})` });
+    for (const book of standalone) {
+      result.push({ kind: 'book', book });
+    }
+  }
+  return result;
+}
+
+// The visible window of rows (group headers + book cards) for the main list.
+// Pure presentational — navigation and selection live in LibraryView.
+function BookList(props: {
+  rows: Row[];
+  start: number;
+  cursor: number;
+  theme: Theme;
+  width: number;
+}): React.JSX.Element {
+  const { rows, start, cursor, theme, width } = props;
+  return (
+    <Box flexDirection="column" paddingX={1}>
+      {rows.map((row, i) => {
+        const absolute = start + i;
+        if (row.kind === 'header') {
+          return (
+            <Text key={`h-${absolute}`} color={theme.colors.accent} bold>
+              {' '}
+              {row.label}
+            </Text>
+          );
+        }
+        const book = row.book!;
+        const selected = absolute === cursor;
+        const textW = Math.max(10, width - COVER_W - 40);
+        const title = truncateW(book.title, textW);
+        const sub = [
+          book.authorsText,
+          book.seriesText,
+          book.progressPercent !== null ? `${book.progressPercent}%` : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        return (
+          // 3-line card: title, authors, series · progress. The text is
+          // indented past the cover thumbnail column (COVER_W + 2) so the
+          // image drawn by imageLayer doesn't overlap it.
+          <Box key={`b-${absolute}`} flexDirection="column" paddingLeft={COVER_W + 2}>
+            <Text
+              color={selected ? theme.colors.background : theme.colors.text}
+              backgroundColor={selected ? theme.colors.accent : undefined}
+              bold={selected}
+            >
+              {selected ? '▶ ' : '  '}
+              {title}
+            </Text>
+            <Text color={theme.colors.dim} dimColor>
+              {truncateW(book.authorsText || 'Unknown author', textW)}
+            </Text>
+            <Text color={theme.colors.dim} dimColor>
+              {sub ? truncateW(sub, textW) : ' '}
+            </Text>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+// Context for dispatchLibraryAction: everything the action switch needs.
+// Built fresh on every render (handleAction is recreated each render anyway).
+interface LibraryActionContext {
+  rows: Row[];
+  height: number;
+  selectedBook: BookRecord | undefined;
+  filter: string;
+  filterBaselineRef: React.MutableRefObject<string>;
+  setCursor: React.Dispatch<React.SetStateAction<number>>;
+  setDetailBook: (book: BookRecord | null) => void;
+  setConfirmTarget: (book: BookRecord | null) => void;
+  setConfirmDeleteFile: (v: boolean) => void;
+  setMode: (m: Mode) => void;
+  setSortField: React.Dispatch<React.SetStateAction<SortField>>;
+  setView: React.Dispatch<React.SetStateAction<'all' | 'recent' | 'continue'>>;
+  setFilter: (v: string) => void;
+  onOpenFile: () => void;
+  onOpenPalette?: () => void;
+  onQuit: () => void;
+  onHelp: () => void;
+}
+
+// Library-mode action handling, extracted from the component so it can be
+// unit-tested without rendering the view. Cursor arithmetic (page/start/end)
+// goes through the shared cursorForAction; directional moves keep the
+// row-aware nextBook/prevBook (they skip group headers).
+function dispatchLibraryAction(action: KeyAction | undefined, ctx: LibraryActionContext): void {
+  const {
+    rows,
+    height,
+    selectedBook,
+    filter,
+    filterBaselineRef,
+    setCursor,
+    setDetailBook,
+    setConfirmTarget,
+    setConfirmDeleteFile,
+    setMode,
+    setSortField,
+    setView,
+    setFilter,
+    onOpenFile,
+    onOpenPalette,
+    onQuit,
+    onHelp,
+  } = ctx;
+  switch (action) {
+    case 'move_cursor_down':
+      setCursor((c) => nextBook(rows, c));
+      break;
+    case 'move_cursor_up':
+      setCursor((c) => prevBook(rows, c));
+      break;
+    case 'page_down':
+      setCursor((c) => snapToBook(rows, cursorForAction(action, c, rows.length, height - 6)));
+      break;
+    case 'page_up':
+      setCursor((c) => snapToBook(rows, cursorForAction(action, c, rows.length, height - 6)));
+      break;
+    case 'go_to_start':
+      setCursor(snapToBook(rows, cursorForAction(action, 0, rows.length)));
+      break;
+    case 'go_to_end':
+      setCursor(snapToBook(rows, cursorForAction(action, 0, rows.length)));
+      break;
+    case 'select':
+    case 'book_info':
+      if (selectedBook) {
+        setDetailBook(selectedBook);
+        setMode('detail');
+      }
+      break;
+    case 'open_file':
+      onOpenFile();
+      break;
+    case 'delete_from_library':
+      if (selectedBook) {
+        setConfirmTarget(selectedBook);
+        setConfirmDeleteFile(false);
+        setMode('confirm-delete');
+      }
+      break;
+    case 'delete_file':
+      if (selectedBook) {
+        setConfirmTarget(selectedBook);
+        setConfirmDeleteFile(true);
+        setMode('confirm-delete');
+      }
+      break;
+    case 'sort_cycle':
+      setSortField((field) => SORT_FIELDS[(SORT_FIELDS.indexOf(field) + 1) % SORT_FIELDS.length]!);
+      break;
+    case 'toggle_recent':
+      setView((v) => (v === 'recent' ? 'all' : 'recent'));
+      setCursor(0);
+      setFilter('');
+      break;
+    case 'toggle_continue':
+      setView((v) => (v === 'continue' ? 'all' : 'continue'));
+      setCursor(0);
+      setFilter('');
+      break;
+    case 'search':
+      filterBaselineRef.current = filter;
+      setMode('filter');
+      break;
+    case 'command':
+      setMode('command');
+      break;
+    case 'command_palette':
+      onOpenPalette?.();
+      break;
+    case 'quit':
+      onQuit();
+      break;
+    case 'help':
+      onHelp();
+      break;
+    default:
+      break;
+  }
 }
 
 function compareBooks(a: BookRecord, b: BookRecord, field: SortField): number {

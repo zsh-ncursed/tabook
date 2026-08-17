@@ -1,9 +1,46 @@
 import { describe, it, expect } from 'vitest';
-import { buildLineIndex, rowAtLine, visibleWindow, CARD_ROWS, COVER_W } from './listLayout.js';
+import {
+  buildLineIndex,
+  rowAtLine,
+  visibleWindow,
+  cursorForAction,
+  CARD_ROWS,
+  COVER_W,
+} from './listLayout.js';
 
 // Rows with mixed heights: 1-line headers and 3-line cards.
 const heightOf = (row: { h: number }): number => row.h;
 const rows = [{ h: 1 }, { h: 3 }, { h: 3 }, { h: 1 }, { h: 3 }];
+
+describe('cursorForAction', () => {
+  it('clamps navigation within [0, count - 1]', () => {
+    expect(cursorForAction('move_cursor_down', 0, 5)).toBe(1);
+    expect(cursorForAction('move_cursor_down', 4, 5)).toBe(4);
+    expect(cursorForAction('move_cursor_up', 0, 5)).toBe(0);
+    expect(cursorForAction('move_cursor_up', 4, 5)).toBe(3);
+    expect(cursorForAction('go_to_start', 3, 5)).toBe(0);
+    expect(cursorForAction('go_to_end', 0, 5)).toBe(4);
+  });
+
+  it('handles empty lists without going negative', () => {
+    expect(cursorForAction('move_cursor_down', 0, 0)).toBe(0);
+    expect(cursorForAction('move_cursor_up', 0, 0)).toBe(0);
+    expect(cursorForAction('go_to_end', 0, 0)).toBe(0);
+  });
+
+  it('pages by pageSize', () => {
+    expect(cursorForAction('page_down', 0, 10, 4)).toBe(4);
+    expect(cursorForAction('page_down', 8, 10, 4)).toBe(9);
+    expect(cursorForAction('page_up', 9, 10, 4)).toBe(5);
+    expect(cursorForAction('page_up', 0, 10, 4)).toBe(0);
+  });
+
+  it('returns the cursor unchanged for non-navigation actions', () => {
+    expect(cursorForAction('select', 2, 5)).toBe(2);
+    expect(cursorForAction('back', 2, 5)).toBe(2);
+    expect(cursorForAction(undefined, 2, 5)).toBe(2);
+  });
+});
 
 describe('buildLineIndex', () => {
   it('accumulates line counts with a leading zero', () => {
