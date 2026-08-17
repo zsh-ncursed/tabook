@@ -6,6 +6,7 @@ import {
   truncate,
   displayWidth,
   formatBytes,
+  formatDuration,
   shellSplit,
   splitChars,
   formatLocalTimestamp,
@@ -152,6 +153,16 @@ describe('formatBytes', () => {
     expect(formatBytes(2048)).toBe('2.0 KB');
     expect(formatBytes(3 * 1024 * 1024)).toBe('3.0 MB');
     expect(formatBytes(1024 ** 3)).toBe('1.0 GB');
+  });
+});
+
+describe('formatDuration', () => {
+  it('formats hours and minutes', () => {
+    expect(formatDuration(0)).toBe('0m');
+    expect(formatDuration(59)).toBe('0m');
+    expect(formatDuration(60)).toBe('1m');
+    expect(formatDuration(3661)).toBe('1h 1m');
+    expect(formatDuration(7200)).toBe('2h 0m');
   });
 });
 

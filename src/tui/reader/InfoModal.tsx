@@ -5,7 +5,7 @@ import type { LibraryDb } from '../../db/db.js';
 import type { ReaderSession } from './readerModel.js';
 import { Modal } from '../components/Modal.js';
 import { joinAuthors, formatSeries } from '../../formats/model.js';
-import { formatBytes, formatLocalTimestamp } from '../../utils/text.js';
+import { formatBytes, formatDuration, formatLocalTimestamp } from '../../utils/text.js';
 
 export function InfoModal(props: {
   session: ReaderSession;
@@ -58,11 +58,4 @@ export function InfoModal(props: {
       </Box>
     </Modal>
   );
-}
-
-function formatDuration(totalSeconds: number): string {
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
 }

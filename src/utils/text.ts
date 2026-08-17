@@ -321,6 +321,15 @@ export function formatBytes(bytes: number): string {
   return `${(mb / 1024).toFixed(1)} GB`;
 }
 
+// Compact reading-time formatting for the book-info modal: '1h 5m' for an
+// hour or more, '5m' below it (sub-minute durations round down to 0m).
+export function formatDuration(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 export function shellSplit(input: string): string[] {
   const result: string[] = [];
   let current = '';
