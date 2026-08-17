@@ -15,14 +15,16 @@ import { requireNative } from './helpers.js';
 // Guard the native binding so NativeDbBackend can open a database.
 requireNative();
 
-// ISO datetimes are wall-clock values written by SQL strftime / the Rust
-// clock; the two backends run milliseconds apart so the *strings* differ.
-// Normalize ISO-ish datetimes to a constant, and drop null/undefined (the
-// backends legitimately differ in optional-field presence, like the rest of
-// the parity suite), before comparing.
+// Datetimes are wall-clock values written by SQL datetime('now') / the Rust
+// clock; the two backends run milliseconds apart so the *strings* differ
+// (and under load they can straddle a second boundary). Normalize both the
+// 'YYYY-MM-DD HH:MM:SS' (SQLite) and 'YYYY-MM-DDTHH:MM:SS' (ISO) forms to a
+// constant, and drop null/undefined (the backends legitimately differ in
+// optional-field presence, like the rest of the parity suite), before
+// comparing.
 function canonical(value: unknown): unknown {
   if (typeof value === 'string') {
-    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) ? 'TIME' : value;
+    return /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(value) ? 'TIME' : value;
   }
   if (Array.isArray(value)) return value.map(canonical);
   if (value !== null && typeof value === 'object') {
