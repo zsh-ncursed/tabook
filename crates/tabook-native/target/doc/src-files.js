@@ -1,2 +1,0 @@
-createSrcSidebar('[["quick_xml",["",[["events",[],["attributes.rs","mod.rs"]],["parser",[],["element.rs","mod.rs","pi.rs"]],["reader",[],["buffered_reader.rs","mod.rs","ns_reader.rs","slice_reader.rs","state.rs"]]],["encoding.rs","errors.rs","escape.rs","lib.rs","name.rs","utils.rs","writer.rs"]]]]');
-//{"start":19,"fragment_lengths":[279]}
