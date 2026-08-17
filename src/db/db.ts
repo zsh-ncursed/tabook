@@ -233,7 +233,9 @@ function unwrapNative<T>(result: T): T {
 
 // ---- shared interface for the two backends ---------------------------------
 
-interface DbBackend {
+// Exported for the TS↔Rust parity suite (src/parity/db.parity.test.ts), which
+// drives both backends through the identical operation script.
+export interface DbBackend {
   readonly filePath: string;
   close(): void;
   fileExists(): boolean;
@@ -288,7 +290,7 @@ interface DbBackend {
 
 // ---- native (rusqlite) backend ----------------------------------------------
 
-class NativeDbBackend implements DbBackend {
+export class NativeDbBackend implements DbBackend {
   private readonly db: NativeTypes.LibraryDb;
   readonly filePath: string;
 
@@ -548,7 +550,7 @@ type SqliteCtor = typeof BetterSqlite3;
 
 const SCHEMA_VERSION = 5;
 
-class SqliteDbBackend implements DbBackend {
+export class SqliteDbBackend implements DbBackend {
   private readonly db: SqliteDatabase;
   readonly filePath: string;
 
