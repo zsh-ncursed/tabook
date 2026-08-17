@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { OpdsEntry } from '../../opds/model.js';
 import { pickAcquisitionLink } from '../../opds/model.js';
-import { truncateW } from '../../utils/text.js';
+import { truncateW, wrapText } from '../../utils/text.js';
 
 export function EntryDetail(props: {
   entry: OpdsEntry;
@@ -30,6 +30,9 @@ export function EntryDetail(props: {
     lines.push({ label: 'Subjects', value: entry.categories.map((c) => c.term).join(', ') });
   }
   const summary = entry.summary ?? entry.content ?? '';
+  // Display-width-aware wrap: wide (CJK) characters count double, so wrapped
+  // lines never overflow the terminal column budget like the old char-count
+  // wrap did. Paragraphs (\n) are kept as separate lines.
   const summaryLines = wrapText(summary, textWidth);
   const maxLines = Math.max(5, height - lines.length - 8);
 
@@ -60,21 +63,4 @@ export function EntryDetail(props: {
       </Box>
     </Box>
   );
-}
-
-function wrapText(text: string, width: number): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length === 0) return [];
-  const lines: string[] = [];
-  let line = '';
-  for (const word of words) {
-    if (line.length + word.length + 1 > width) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = line ? `${line} ${word}` : word;
-    }
-  }
-  if (line) lines.push(line);
-  return lines;
 }
