@@ -1,4 +1,5 @@
 import { shellSplit } from '../utils/text.js';
+import type { BookRecord } from '../db/db.js';
 
 export type CommandScreen = 'library' | 'reader' | 'opds';
 
@@ -220,6 +221,34 @@ export function fuzzyMatchCommands(query: string, screen: CommandScreen): Comman
   }
   out.sort((a, b) => a.score - b.score || a.def.usage.localeCompare(b.def.usage));
   return out;
+}
+
+export interface BookMatch {
+  book: BookRecord;
+  /** Fuzzy-match score; lower is better (0 = query is a prefix). */
+  score: number;
+  /** Char offsets in the haystack (title + author) that matched the query. */
+  indices: number[];
+}
+
+/**
+ * Fuzzy-match library books by title/authors/series/genres, reusing the same
+ * subsequence matcher as commands. Returns the best `limit` matches sorted by
+ * score, or [] for an empty query (the palette shows commands only then).
+ */
+export function fuzzyMatchBooks(query: string, books: BookRecord[], limit = 25): BookMatch[] {
+  const q = query.trim().toLowerCase().replace(/^:/, '');
+  if (q === '') return [];
+  const out: BookMatch[] = [];
+  for (const book of books) {
+    const haystack = [book.title, book.authorsText, book.seriesText ?? '', ...book.genres].join(
+      ' ',
+    );
+    const m = fuzzyMatch(q, haystack);
+    if (m !== null) out.push({ book, score: m.score, indices: m.indices });
+  }
+  out.sort((a, b) => a.score - b.score || a.book.title.localeCompare(b.book.title));
+  return out.slice(0, limit);
 }
 
 export const OPDS_SUBS = ['add', 'remove', 'list'] as const;

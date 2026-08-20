@@ -1,7 +1,14 @@
 import type { KeyAction } from '../../config/defaults.js';
-import { truncate } from '../../utils/text.js';
+import type { Config } from '../../config/defaults.js';
+import { truncateW } from '../../utils/text.js';
 import type { ReaderSession } from './readerModel.js';
 import type { Mode } from './modes.js';
+import { keyForAction } from '../keymap.js';
+
+/** Lookup helper — returns the first key bound to `action`, or undefined. */
+function k(config: Config, action: KeyAction): string | undefined {
+  return keyForAction(config, action);
+}
 
 // Context for dispatchReaderAction: everything the reading-mode action switch
 // needs beyond the session itself. Built fresh on every render (the caller
@@ -104,7 +111,7 @@ export function dispatchReaderAction(
       const label = action === 'next_chapter' ? session.nextChapter() : session.prevChapter();
       if (label !== null) {
         forceTick();
-        notify(`Chapter: ${truncate(label, 40)}`);
+        notify(`Chapter: ${truncateW(label, 40)}`);
       } else {
         notify(
           action === 'next_chapter'
@@ -188,27 +195,66 @@ export function dispatchReaderAction(
 // Context-aware hint for the StatusBar right side, reflecting the keys that
 // are actionable in the current reader mode. Kept compact (key-only, no
 // labels) so it fits on narrow terminals; the full mapping lives in Help (?).
-export function readerHint(mode: Mode): string {
+export function readerHint(mode: Mode, config: Config): string {
+  const key = (action: KeyAction): string => k(config, action) ?? '';
+  const keys = (...actions: KeyAction[]): string =>
+    actions.map(key).filter(Boolean).join('/') || '…';
+  const typeHint = 'type · enter · esc';
   switch (mode) {
-    case 'reading':
-      return 'j/k · space · [ ] · / · b · t · i · z · J · W · ? · q';
+    case 'reading': {
+      const nav = keys('move_cursor_down', 'scroll_down', 'page_down');
+      const navUp = keys('move_cursor_up', 'scroll_up', 'page_up');
+      return [
+        `${nav}/${navUp}`,
+        keys('select'),
+        keys('add_bookmark'),
+        keys('toc'),
+        keys('book_info'),
+        keys('toggle_simplified'),
+        keys('toggle_wide'),
+        keys('search'),
+        keys('next_chapter'),
+        keys('prev_chapter'),
+        keys('help'),
+        keys('quit'),
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    }
     case 'zoom':
-      return 'esc close';
+      return `esc close`;
     case 'search':
-      return 'type · enter search · esc cancel';
+      return typeHint + ' search';
     case 'command':
-      return 'type · enter run · esc cancel';
+      return typeHint + ' run';
     case 'bookmark':
     case 'bookmark-edit':
-      return 'type · enter save · esc cancel';
+      return typeHint + ' save';
     case 'bookmarks':
-      return 'j/k · enter · e · d · ? help · esc';
+      return [
+        keys('move_cursor_down', 'move_cursor_up'),
+        keys('select'),
+        'e',
+        'd',
+        keys('help'),
+        keys('back'),
+      ]
+        .filter(Boolean)
+        .join(' · ');
     case 'toc':
-      return 'j/k · space expand · enter jump · / · ? help · esc';
+      return [
+        keys('move_cursor_down', 'move_cursor_up'),
+        keys('select'),
+        keys('search'),
+        keys('help'),
+        keys('back'),
+      ]
+        .filter(Boolean)
+        .join(' · ');
     case 'toc-filter':
-      return 'type · enter · esc';
+      return typeHint;
     case 'info':
-      return '? help · esc close';
+      return [keys('help'), keys('back')].filter(Boolean).join(' · ');
     default:
       return '';
   }

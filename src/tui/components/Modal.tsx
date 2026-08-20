@@ -11,7 +11,7 @@ export function Modal(props: {
 }): React.JSX.Element {
   const { theme, title, children, footer } = props;
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" alignSelf="center">
       <Box borderStyle="round" borderColor={theme.colors.panelBorder} width={props.width ?? 60}>
         <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
           <Text color={theme.colors.heading} bold>

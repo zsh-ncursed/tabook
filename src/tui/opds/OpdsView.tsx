@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, type Key } from 'ink';
 import type { Theme } from '../../themes/themes.js';
-import type { Config } from '../../config/defaults.js';
+import type { Config, KeyAction } from '../../config/defaults.js';
 import type { LibraryDb, CatalogRecord } from '../../db/db.js';
-import { createActionResolver, resolveKeyName } from '../keymap.js';
+import { createActionResolver, resolveKeyName, keyForAction } from '../keymap.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TextPrompt } from '../components/TextPrompt.js';
 import { Spinner } from '../components/Spinner.js';
@@ -49,6 +49,7 @@ export interface OpdsViewProps {
   onOpenPalette?: () => void;
   onOpenDownloaded: (bookId: number, filePath: string) => void;
   inputDisabled?: boolean;
+  message?: string;
 }
 
 type Mode =
@@ -79,6 +80,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
     onOpenPalette,
     onOpenDownloaded,
     inputDisabled = false,
+    message,
   } = props;
   const queue = useDownloadQueue();
   const imageLayer = useImageLayer();
@@ -353,10 +355,11 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
 
   // `index` lets mouse double-clicks target a specific row directly (the
   // cursor state would be stale inside the synchronous click handler); callers
-  // without an index use the current cursor.
+  // without an index use the current cursor for browsing, or catalogCursor
+  // for catalog-list (which maintains its own cursor state).
   const handleSelect = useCallback(
     (index?: number) => {
-      const idx = index ?? cursor;
+      const idx = index ?? (mode === 'catalog-list' ? catalogCursor : cursor);
       if (mode === 'catalog-list') {
         const cat = catalogs[idx];
         if (cat) void openCatalog(cat);
@@ -687,7 +690,17 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       void fetchImage(href, { auth, base })
         .then((bytes) => {
           if (cancelled) return;
-          setCovers((prev) => new Map(prev).set(row.entry.id, bytes));
+          setCovers((prev) => {
+            const next = new Map(prev).set(row.entry.id, bytes);
+            // LRU cap: evict oldest entries when the cache exceeds the limit.
+            const CAP = 200;
+            while (next.size > CAP) {
+              const oldest = next.keys().next().value;
+              if (oldest !== undefined) next.delete(oldest);
+              else break;
+            }
+            return next;
+          });
         })
         .catch(() => {
           // cached as undefined above; a failed cover just stays invisible
@@ -918,29 +931,50 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       <StatusBar
         theme={theme}
         statusbar={config.statusbar}
+        width={width}
         data={{
           title: statusLeft,
           downloads: downloadsLabel,
-          hint: statusHint(mode),
+          hint: statusHint(mode, config),
+          message,
         }}
       />
     </Box>
   );
 }
 
-// Status bar hint for the current mode.
-function statusHint(mode: Mode): string {
+// Status bar hint for the current mode. Resolves keymap-bound actions from
+// config; feed-specific verbs (d/x/n/p/c/u) stay hardcoded because they
+// live outside the configurable keymap.
+function statusHint(mode: Mode, config: Config): string {
+  const k = (action: KeyAction): string => keyForAction(config, action) ?? '';
+  const nav = [k('move_cursor_down'), k('move_cursor_up')].filter(Boolean).join('/');
+  const sel = k('select');
+  const help = k('help');
+  const back = k('back');
+  const search = k('search');
   switch (mode) {
     case 'catalog-list':
-      return 'j/k navigate · enter open · ? help · q quit';
+      return [nav, `${sel} open`, help, k('quit')].filter(Boolean).join(' · ');
     case 'browsing':
-      return 'j/k · enter/l open · d download · x downloads · / search · u/h up · n next · p prev · c catalogs · ? help';
+      return [
+        nav,
+        `${sel}/l open`,
+        'd download',
+        'x downloads',
+        `${search} search`,
+        'u/h up',
+        'n next',
+        'p prev',
+        'c catalogs',
+        help,
+      ].join(' · ');
     case 'entry-detail':
-      return 'enter/d/l download · x downloads · h/esc back · ? help';
+      return [`${sel}/d/l download`, 'x downloads', `${back}/esc back`, help].join(' · ');
     case 'downloads':
-      return 'j/k · enter open done · d cancel · x/esc close · ? help';
+      return [nav, `${sel} open done`, 'd cancel', 'x/esc close', help].join(' · ');
     case 'error':
-      return '? help · esc back';
+      return [help, `${back} back`].filter(Boolean).join(' · ');
     default:
       return '';
   }

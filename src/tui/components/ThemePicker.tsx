@@ -31,7 +31,10 @@ export interface ThemePickerProps {
 export function ThemePicker(props: ThemePickerProps): React.JSX.Element {
   const { theme, config, items, currentTheme, isActive, onPreview, onApply, onClose } = props;
   const resolver = useMemo(() => createActionResolver(config), [config]);
-  const [cursor, setCursor] = useState(0);
+  const [cursor, setCursor] = useState(() => {
+    const idx = items.indexOf(currentTheme);
+    return idx >= 0 ? idx : 0;
+  });
   // The theme that was active when the picker mounted (useRef keeps the first
   // value even as onPreview updates the live theme), so cancel can restore it.
   const previousThemeRef = useRef<string | null>(currentTheme);

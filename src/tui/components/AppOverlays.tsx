@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text } from 'ink';
+
 import type { Theme } from '../../themes/themes.js';
 import { themeNames } from '../../themes/themes.js';
 import type { Config } from '../../config/defaults.js';
@@ -9,6 +9,7 @@ import { ThemePicker } from './ThemePicker.js';
 import { FolderRemoveConfirm } from './FolderRemoveConfirm.js';
 import { OpenPathPrompt } from './OpenPathPrompt.js';
 import { CommandPalette } from './CommandPalette.js';
+import type { BookRecord } from '../../db/db.js';
 
 export interface AppOverlaysProps {
   theme: Theme;
@@ -21,8 +22,11 @@ export interface AppOverlaysProps {
   commandPaletteOpen: boolean;
   themePickerOpen: boolean;
   promptOpenPath: boolean;
-  message: { text: string; key: number } | null;
+  /** Books offered by the command palette (fuzzy library search). */
+  paletteBooks?: BookRecord[];
   onRunCommand: (text: string) => void;
+  /** Open a book selected in the command palette. */
+  onOpenPaletteBook?: (record: BookRecord) => void;
   onConfirmFolderRemove: () => void;
   onCancelFolderRemove: () => void;
   onCloseHelp: () => void;
@@ -50,8 +54,9 @@ export function AppOverlays(props: AppOverlaysProps): React.JSX.Element {
     commandPaletteOpen,
     themePickerOpen,
     promptOpenPath,
-    message,
+    paletteBooks,
     onRunCommand,
+    onOpenPaletteBook,
     onConfirmFolderRemove,
     onCancelFolderRemove,
     onCloseHelp,
@@ -81,7 +86,9 @@ export function AppOverlays(props: AppOverlaysProps): React.JSX.Element {
         <CommandPalette
           theme={theme}
           screen={screen}
+          books={paletteBooks}
           onRun={onRunCommand}
+          onOpenBook={onOpenPaletteBook}
           onClose={onClosePalette}
         />
       ) : null}
@@ -99,11 +106,6 @@ export function AppOverlays(props: AppOverlaysProps): React.JSX.Element {
       ) : null}
       {promptOpenPath ? (
         <OpenPathPrompt theme={theme} onOpen={onOpenPath} onCancel={onCancelPath} />
-      ) : null}
-      {message ? (
-        <Box paddingX={1}>
-          <Text color={theme.colors.accent}>{message.text}</Text>
-        </Box>
       ) : null}
     </>
   );

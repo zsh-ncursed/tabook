@@ -7,8 +7,32 @@ import {
   commandExecutable,
   fuzzyMatch,
   fuzzyMatchCommands,
+  fuzzyMatchBooks,
   type CommandDef,
 } from './commands.js';
+import type { BookRecord } from '../db/db.js';
+
+function makeBook(partial: Partial<BookRecord>): BookRecord {
+  return {
+    id: 1,
+    path: '/tmp/book.fb2',
+    filename: 'book.fb2',
+    format: 'fb2',
+    size: 100,
+    title: 'Book',
+    authors: [],
+    authorsText: '',
+    genres: [],
+    annotation: '',
+    lang: 'ru',
+    seriesText: null,
+    addedAt: '2026-01-01 00:00:00',
+    lastOpenedAt: null,
+    progressPercent: null,
+    progressPosition: null,
+    ...partial,
+  };
+}
 
 describe('validCommandPrefixLength', () => {
   it('returns 0 for empty input', () => {
@@ -170,6 +194,61 @@ describe('fuzzyMatchCommands', () => {
 
   it('ignores a leading colon in the query', () => {
     expect(fuzzyMatchCommands(':simpl', 'reader')[0]!.def.names).toContain('simplified');
+  });
+});
+
+describe('fuzzyMatchBooks', () => {
+  const books = [
+    makeBook({
+      id: 1,
+      title: 'Harry Potter and the Philosopher\u2019s Stone',
+      authorsText: 'J. K. Rowling',
+    }),
+    makeBook({
+      id: 2,
+      title: 'The Hobbit',
+      authorsText: 'J. R. R. Tolkien',
+      seriesText: 'Middle-earth',
+    }),
+    makeBook({ id: 3, title: 'War and Peace', authorsText: 'Leo Tolstoy', genres: ['classic'] }),
+  ];
+
+  it('returns [] for an empty query (palette shows commands only)', () => {
+    expect(fuzzyMatchBooks('', books)).toEqual([]);
+  });
+
+  it('finds books by title with subsequence matching', () => {
+    const hits = fuzzyMatchBooks('hrry', books);
+    expect(hits.length).toBe(1);
+    expect(hits[0]!.book.title).toBe('Harry Potter and the Philosopher\u2019s Stone');
+  });
+
+  it('finds books by author', () => {
+    const hits = fuzzyMatchBooks('tolstoy', books);
+    expect(hits.length).toBe(1);
+    expect(hits[0]!.book.title).toBe('War and Peace');
+  });
+
+  it('finds books by series and genre', () => {
+    expect(fuzzyMatchBooks('middle', books)[0]!.book.title).toBe('The Hobbit');
+    expect(fuzzyMatchBooks('classic', books)[0]!.book.title).toBe('War and Peace');
+  });
+
+  it('ranks the best match first and caps the result list', () => {
+    const tolkien = [
+      makeBook({ id: 10, title: 'The Hobbit', authorsText: 'J. R. R. Tolkien' }),
+      makeBook({ id: 11, title: 'The Lord of the Rings', authorsText: 'J. R. R. Tolkien' }),
+    ];
+    // Both books carry the author, but the title hit (Hobbit) scores better
+    // than the author-only hit (Lord of the Rings).
+    const hits = fuzzyMatchBooks('hobbit tolkien', tolkien);
+    expect(hits[0]!.book.id).toBe(10);
+    const limited = fuzzyMatchBooks('tolkien', tolkien, 1);
+    expect(limited.length).toBe(1);
+  });
+
+  it('returns nothing when no book matches', () => {
+    expect(fuzzyMatchBooks('xyzzy', books)).toEqual([]);
   });
 });
 

@@ -3,8 +3,31 @@ import { render } from 'ink-testing-library';
 import { CommandPalette } from './CommandPalette.js';
 import { defaultConfig } from '../../config/defaults.js';
 import { THEMES } from '../../themes/themes.js';
+import type { BookRecord } from '../../db/db.js';
 
 const theme = THEMES[defaultConfig().theme] ?? THEMES['dracula']!;
+
+function makeBook(partial: Partial<BookRecord>): BookRecord {
+  return {
+    id: 1,
+    path: '/tmp/book.fb2',
+    filename: 'book.fb2',
+    format: 'fb2',
+    size: 100,
+    title: 'Book',
+    authors: [],
+    authorsText: '',
+    genres: [],
+    annotation: '',
+    lang: 'ru',
+    seriesText: null,
+    addedAt: '2026-01-01 00:00:00',
+    lastOpenedAt: null,
+    progressPercent: null,
+    progressPosition: null,
+    ...partial,
+  };
+}
 
 async function settle(ms = 30): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
@@ -96,5 +119,56 @@ describe('CommandPalette', () => {
     await settle(5);
     // 'th' still matches :theme (prefix); the list stays non-empty.
     expect(lastFrame() ?? '').toContain(':theme');
+  });
+
+  it('offers library books matching the query alongside commands', async () => {
+    const books = [
+      makeBook({
+        id: 1,
+        title: 'Harry Potter and the Philosopher\u2019s Stone',
+        authorsText: 'J. K. Rowling',
+      }),
+      makeBook({ id: 2, title: 'The Hobbit', authorsText: 'J. R. R. Tolkien' }),
+    ];
+    const { stdin, lastFrame } = renderPalette({ books });
+    await settle();
+    for (const ch of 'harr') {
+      stdin.write(ch);
+      await settle(5);
+    }
+    await settle();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Harry Potter');
+    // The non-matching book is filtered out.
+    expect(frame).not.toContain('The Hobbit');
+  });
+
+  it('opens a book with enter when a book row is selected', async () => {
+    const books = [makeBook({ id: 1, title: 'Anna Karenina', authorsText: 'Leo Tolstoy' })];
+    const onOpenBook = vi.fn();
+    const onClose = vi.fn();
+    const { stdin } = renderPalette({ books, onOpenBook, onClose });
+    await settle();
+    // A book-only query makes the book the first (and only) row.
+    for (const ch of 'anna') {
+      stdin.write(ch);
+      await settle(5);
+    }
+    await settle();
+    stdin.write('\r');
+    await settle();
+    expect(onOpenBook).toHaveBeenCalledWith(books[0]);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('keeps commands first and runs commands even when books are present', async () => {
+    const books = [makeBook({ id: 1, title: 'Open Sesame', authorsText: 'A. Author' })];
+    const onRun = vi.fn();
+    const { stdin } = renderPalette({ books, onRun });
+    await settle();
+    // With an empty query only commands are listed; enter runs :open.
+    stdin.write('\r');
+    await settle();
+    expect(onRun).toHaveBeenCalledWith(':open');
   });
 });

@@ -5,7 +5,7 @@ import type { ReaderSession } from './readerModel.js';
 import type { ActionResolver } from '../keymap.js';
 import { ListModal } from '../components/ListModal.js';
 import { TextPrompt } from '../components/TextPrompt.js';
-import { truncate } from '../../utils/text.js';
+import { truncateW } from '../../utils/text.js';
 import type { Mode } from './modes.js';
 
 interface BookmarkRow {
@@ -129,7 +129,7 @@ export function useTocBookmarks(params: {
         // so the row under the cursor is used directly.
         const row = item as TocItem;
         session.goToToc(row.blockIndex);
-        notify(`→ ${truncate(row.label, 40)}`);
+        notify(`→ ${truncateW(row.label, 40)}`);
         setTocFilter('');
       } else {
         const bm = bookmarks.find((b) => b.id === item.id);

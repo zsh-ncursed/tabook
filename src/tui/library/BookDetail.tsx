@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
+import { useTerminalSize } from '../useTerminalSize.js';
 import type { Theme } from '../../themes/themes.js';
 import type { Config } from '../../config/defaults.js';
 import type { BookRecord } from '../../db/db.js';
 import { Modal } from '../components/Modal.js';
 import { createActionResolver, resolveKeyName } from '../keymap.js';
-import { formatBytes, truncate, wrapText } from '../../utils/text.js';
+import { formatBytes, truncateW, wrapText } from '../../utils/text.js';
 import { useImageLayer } from '../imageLayer.js';
 import { forceRedraw } from '../screenRefresh.js';
-import { parseBookFile } from '../../formats/index.js';
+import { extractCoverBytes } from '../../formats/cover.js';
 
 export interface BookDetailProps {
   book: BookRecord;
@@ -25,12 +26,12 @@ export interface BookDetailProps {
 // Modal chrome: border-top(1) + paddingY-top(1) + title(1) + marginY(1) +
 // footer(1) + marginY(1) + paddingY-bottom(1) + border-bottom(1) = 8
 const MODAL_CHROME = 8;
-// Text column: modal 80 - border(2) - paddingX(2) - cover spacer(27) - right padding(1) = 48
-const TEXT_WIDTH = 48;
 
 export function BookDetail(props: BookDetailProps): React.JSX.Element {
   const { book, config, theme, onRead, onClose, onHelp, inputDisabled = false } = props;
   const { stdout } = useStdout();
+  const [termWidth] = useTerminalSize();
+  const modalWidth = Math.min(termWidth - 2, 80);
   const imageLayer = useImageLayer();
   const resolver = useMemo(() => createActionResolver(config), [config]);
   const termHeight = stdout.rows ?? 24;
@@ -42,13 +43,9 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
       setCoverData(null);
       return;
     }
-    try {
-      const parsed = parseBookFile(book.path);
-      setCoverData(parsed.resources.get(book.coverKey) ?? null);
-    } catch {
-      setCoverData(null);
-    }
-  }, [book.path, book.coverKey, hasCover]);
+    const bytes = extractCoverBytes(book.path, book.format, book.coverKey);
+    setCoverData(bytes ?? null);
+  }, [book.path, book.format, book.coverKey, hasCover]);
 
   useEffect(() => {
     // An App-level overlay (help, …) renders above this modal; the cover
@@ -72,6 +69,10 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
     return () => imageLayer.clear();
   }, [hasCover, coverData, book.coverKey, inputDisabled]);
 
+  const showCoverColumn = hasCover && coverData && coverData.length > 0;
+  // Text column: modal - border(2) - paddingX(2) - [cover spacer(27) if shown] - right padding(1)
+  const textWidth = modalWidth - 5 - (showCoverColumn ? 28 : 0);
+
   // Build all text lines: metadata + wrapped annotation.
   const metaLines: string[] = [];
   if (book.authorsText) metaLines.push(`Authors: ${book.authorsText}`);
@@ -94,7 +95,7 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
   if (book.annotation) {
     allLines.push('');
     allLines.push('__annotation_header__');
-    for (const line of wrapText(book.annotation, TEXT_WIDTH)) {
+    for (const line of wrapText(book.annotation, textWidth)) {
       allLines.push(line);
     }
   }
@@ -141,13 +142,11 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
     }
   });
 
-  const showCoverColumn = hasCover && coverData && coverData.length > 0;
-
   return (
     <Modal
       theme={theme}
-      title={truncate(book.title, 76)}
-      width={80}
+      title={truncateW(book.title, Math.max(10, modalWidth - 4))}
+      width={modalWidth}
       footer="Enter — read · ? help · esc — back · j/k scroll (rebindable)"
     >
       <Box flexDirection="row" height={maxVisible}>

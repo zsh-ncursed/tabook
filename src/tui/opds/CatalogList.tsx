@@ -35,7 +35,7 @@ export function CatalogList(props: {
               {name}
             </Text>
             <Text color={theme.colors.dim}> — {url}</Text>
-            {cat.username ? <Text color={theme.colors.dim}> · 🔒</Text> : null}
+            {cat.username ? <Text color={theme.colors.dim}> · #</Text> : null}
           </Box>
         );
       })}

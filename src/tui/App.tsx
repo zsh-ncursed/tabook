@@ -10,6 +10,7 @@ import { LibraryView } from './library/LibraryView.js';
 import { ReaderView } from './reader/ReaderView.js';
 import { OpdsView } from './opds/OpdsView.js';
 import { AppOverlays } from './components/AppOverlays.js';
+import { Spinner } from './components/Spinner.js';
 import { useTerminalSize } from './useTerminalSize.js';
 import { useAppCommands } from './useAppCommands.js';
 import { pickBookFile } from '../utils/open.js';
@@ -49,6 +50,10 @@ export function App(props: AppProps): React.JSX.Element {
   const [themeName, setThemeName] = useState(props.themeOverride ?? config.theme);
   const [libraryRefresh, setLibraryRefresh] = useState(0);
   const [message, setMessage] = useState<{ text: string; key: number } | null>(null);
+  // True while a book is being parsed for opening. The parse is synchronous
+  // and can take a moment on large files; showing a spinner before it runs
+  // (via setImmediate) gives the user feedback instead of a frozen screen.
+  const [openingBook, setOpeningBook] = useState(false);
   const sessionStartRef = useRef<number | null>(null);
   const startPageRef = useRef(0);
   const libraryCmdRef = useRef<{ sort?: SortField; group?: boolean }>({});
@@ -188,12 +193,21 @@ export function App(props: AppProps): React.JSX.Element {
 
   const openBookRecord = useCallback(
     (record: BookRecord): void => {
-      try {
-        const book = parseBookFile(record.path);
-        openParsedBook(book, record.id);
-      } catch (err) {
-        notify(`Cannot open ${record.title}: ${err instanceof Error ? err.message : String(err)}`);
-      }
+      // The parse is synchronous and can take a moment on large files. Show
+      // a spinner first (setImmediate lets the frame paint), then parse.
+      setOpeningBook(true);
+      setImmediate(() => {
+        try {
+          const book = parseBookFile(record.path);
+          openParsedBook(book, record.id);
+        } catch (err) {
+          notify(
+            `Cannot open ${record.title}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        } finally {
+          setOpeningBook(false);
+        }
+      });
     },
     [openParsedBook, notify],
   );
@@ -366,6 +380,14 @@ export function App(props: AppProps): React.JSX.Element {
     setCommandPaletteOpen(true);
   }, []);
 
+  // Books for the command palette's fuzzy library search. Loaded when the
+  // palette opens so the list is fresh (scans/removals since the last open
+  // are reflected); empty while closed so opening a big library stays cheap.
+  const paletteBooks = useMemo(() => {
+    if (!commandPaletteOpen) return [];
+    return db.listBooks();
+  }, [commandPaletteOpen, db, libraryRefresh]);
+
   return (
     <Box flexDirection="column" width="100%" height="100%">
       {screen === 'library' ? (
@@ -386,6 +408,7 @@ export function App(props: AppProps): React.JSX.Element {
           completeCommand={completeCommand}
           validCommandPrefix={validCommandPrefix}
           inputDisabled={inputDisabled}
+          message={message?.text}
         />
       ) : screen === 'opds' ? (
         <OpdsView
@@ -401,6 +424,7 @@ export function App(props: AppProps): React.JSX.Element {
           onOpenDownloaded={openDownloadedBook}
           onOpenPalette={openCommandPalette}
           inputDisabled={inputDisabled}
+          message={message?.text}
         />
       ) : session ? (
         <ReaderView
@@ -418,7 +442,13 @@ export function App(props: AppProps): React.JSX.Element {
           completeCommand={completeCommand}
           validCommandPrefix={validCommandPrefix}
           inputDisabled={inputDisabled}
+          message={message?.text}
         />
+      ) : null}
+      {openingBook ? (
+        <Box paddingX={2} paddingY={1}>
+          <Spinner label="Opening book…" theme={theme} />
+        </Box>
       ) : null}
       <AppOverlays
         theme={theme}
@@ -430,8 +460,12 @@ export function App(props: AppProps): React.JSX.Element {
         commandPaletteOpen={commandPaletteOpen}
         themePickerOpen={themePickerOpen}
         promptOpenPath={promptOpenPath}
-        message={message}
+        paletteBooks={paletteBooks}
         onRunCommand={runCommand}
+        onOpenPaletteBook={(record) => {
+          setCommandPaletteOpen(false);
+          openBookRecord(record);
+        }}
         onConfirmFolderRemove={confirmFolderRemove}
         onCancelFolderRemove={() => setFolderRemoveConfirm(null)}
         onCloseHelp={() => setHelpOpen(false)}

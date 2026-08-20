@@ -43,7 +43,7 @@ export function BrowsingFeedList(props: {
         const textW = Math.max(10, width - COVER_W - 40);
         const title = truncateW(entry.title, textW);
         const author = truncateW(entry.authors[0]?.name ?? 'Unknown author', textW);
-        const marker = entry.isAcquisition ? '📚' : '📁';
+        const marker = entry.isAcquisition ? '↓' : '»';
         const sub = [entry.language, entry.issued, entry.publisher].filter(Boolean).join(' · ');
         return (
           // 3-line card: title, author, language · year · publisher. The

@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import { resolveKeyName } from '../keymap.js';
 import { wasMouseChunkRecent } from '../mouse.js';
+import { splitChars } from '../../utils/text.js';
 import { execSync } from 'node:child_process';
 
 export interface TextPromptProps {
@@ -83,10 +84,6 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
   useEffect(() => {
     historyIdxRef.current = -1;
   }, [historyKey]);
-
-  useEffect(() => {
-    onValueChange?.(initialValue);
-  }, [initialValue, onValueChange]);
 
   useInput((input, key) => {
     // A mouse click while the prompt is open would otherwise type the bogus
@@ -210,15 +207,25 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
     }
   });
 
+  // Notify the parent of value changes, but skip the initial mount so a
+  // freshly-opened prompt doesn't double-fire onValueChange (once from the
+  // initialValue effect, once from the value effect). The parent's debounce
+  // handles the rest.
+  const firstRenderRef = useRef(true);
   useEffect(() => {
+    if (firstRenderRef.current) {
+      firstRenderRef.current = false;
+      return;
+    }
     onValueChange?.(value);
   }, [value, onValueChange]);
 
   const rendered = secret ? '\u2022'.repeat(value.length) : value;
   const validLen = validPrefixLength && !secret ? validPrefixLength(value) : 0;
-  const atCursor = rendered[cursor] ?? ' ';
-  const before = rendered.slice(0, cursor);
-  const after = rendered.slice(cursor + 1);
+  const chars = splitChars(rendered);
+  const atCursor = chars[cursor] ?? ' ';
+  const before = chars.slice(0, cursor).join('');
+  const after = chars.slice(cursor + 1).join('');
   const colorAt = (index: number): string =>
     index < validLen ? theme.colors.accent : theme.colors.text;
 
@@ -229,7 +236,7 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
       </Text>
       {before.length > 0 ? (
         <Text>
-          {before.split('').map((ch, i) => (
+          {splitChars(before).map((ch, i) => (
             <Text key={i} color={colorAt(i)}>
               {ch}
             </Text>
@@ -241,7 +248,7 @@ export function TextPrompt(props: TextPromptProps): React.JSX.Element {
       </Text>
       {after.length > 0 ? (
         <Text>
-          {after.split('').map((ch, i) => (
+          {splitChars(after).map((ch, i) => (
             <Text key={i} color={colorAt(cursor + 1 + i)}>
               {ch}
             </Text>

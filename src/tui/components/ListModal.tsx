@@ -38,7 +38,7 @@ export function ListModal(props: ListModalProps): React.JSX.Element {
   const startIdx = Math.max(0, Math.min(cursor - Math.floor(height / 2), items.length - height));
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" alignSelf="center">
       <Box borderStyle="round" borderColor={theme.colors.panelBorder} width={width}>
         <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
           <Text color={theme.colors.heading} bold>
@@ -55,7 +55,7 @@ export function ListModal(props: ListModalProps): React.JSX.Element {
                 <Box key={item.id}>
                   <Text
                     color={selected ? theme.colors.background : theme.colors.text}
-                    backgroundColor={selected ? theme.colors.accent : undefined}
+                    backgroundColor={selected ? theme.colors.selection : undefined}
                     bold={item.accent && !selected}
                     underline={item.underline && !selected}
                   >

@@ -3,7 +3,7 @@ import { Box, Text, useInput, type Key } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { Config, KeyAction } from '../../config/defaults.js';
 import type { BookRecord, LibraryDb, SortField } from '../../db/db.js';
-import { createActionResolver, resolveKeyName, actionLabel } from '../keymap.js';
+import { createActionResolver, resolveKeyName, actionLabel, keyForAction } from '../keymap.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TextPrompt } from '../components/TextPrompt.js';
 import { BookDetail } from './BookDetail.js';
@@ -46,6 +46,7 @@ export interface LibraryViewProps {
   completeCommand?: (value: string) => string | null;
   validCommandPrefix?: (value: string) => number;
   inputDisabled?: boolean;
+  message?: string;
 }
 
 type Mode = 'normal' | 'filter' | 'command' | 'detail' | 'confirm-delete';
@@ -84,6 +85,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
     completeCommand,
     validCommandPrefix,
     inputDisabled = false,
+    message,
   } = props;
   const imageLayer = useImageLayer();
   const [width, height] = useTerminalSize();
@@ -155,6 +157,12 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
     const row = rows[cursor];
     return row && row.kind === 'book' ? row.book : undefined;
   })();
+
+  // Position of the selected book within the (filtered) book list, 1-based.
+  // Shown in the header as "X/Y" so the user knows where they are in a long
+  // library. Undefined when nothing is selected (e.g. cursor on a header).
+  const selectedIndex = selectedBook ? bookList.indexOf(selectedBook) : -1;
+  const positionLabel = selectedIndex >= 0 ? `${selectedIndex + 1}/${bookList.length}` : undefined;
 
   const handleAction = (action: KeyAction | undefined): void => {
     dispatchLibraryAction(action, {
@@ -228,18 +236,29 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       next.set(book.id, extractCoverBytes(book.path, book.format, book.coverKey));
       changed = true;
     }
-    if (changed) setCovers(next);
+    if (changed) {
+      // LRU cap: evict oldest entries when the cache exceeds the limit.
+      const CAP = 200;
+      while (next.size > CAP) {
+        const oldest = next.keys().next().value;
+        if (oldest !== undefined) next.delete(oldest);
+        else break;
+      }
+      setCovers(next);
+    }
   }, [rows, start, end, covers]);
 
   // Draw cover thumbnails next to the visible cards. The list starts one
   // row below the header (terminal row 1, 0-indexed); each card's cover box
-  // is COVER_W wide and CARD_ROWS tall at the card's first line. When an
-  // App-level overlay is open (inputDisabled) or the view isn't in normal
-  // mode, drop the images — they'd cover the modal (ueberzugpp windows live
-  // above the terminal). update() reconciles by identifier, so scrolled-out
-  // covers are removed and unchanged ones aren't re-sent.
+  // is COVER_W wide and CARD_ROWS tall at the card's first line. Drop the
+  // images only when something actually covers them: an App-level overlay
+  // (inputDisabled) or a modal panel (detail / confirm-delete). Inline
+  // prompts (filter / command) render below the list, so covers stay — and
+  // the live filter re-draws them for the narrowed window as you type.
+  // update() reconciles by identifier, so scrolled-out covers are removed
+  // and unchanged ones aren't re-sent.
   useEffect(() => {
-    if (inputDisabled || mode !== 'normal') {
+    if (inputDisabled || mode === 'detail' || mode === 'confirm-delete') {
       imageLayer.clear();
       return;
     }
@@ -308,6 +327,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
             {' '}
             · {bookList.length} book{bookList.length === 1 ? '' : 's'}
           </Text>
+          {positionLabel ? <Text color={theme.colors.dim}> · {positionLabel}</Text> : null}
           {view === 'all' ? <Text color={theme.colors.dim}> · sort: {sortField}</Text> : null}
           {folderCount > 0 ? (
             <Text color={theme.colors.dim}>
@@ -317,7 +337,11 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
           ) : null}
           {groupBySeries ? <Text color={theme.colors.dim}> · grouped by series</Text> : null}
           {filter ? <Text color={theme.colors.accent}> · filter: "{filter}"</Text> : null}
-          <Text color={theme.colors.dim}> · R recent · C continue</Text>
+          <Text color={theme.colors.dim}>
+            {' '}
+            · {keyForAction(config, 'toggle_recent') ?? 'R'} recent ·{' '}
+            {keyForAction(config, 'toggle_continue') ?? 'C'} continue
+          </Text>
         </Box>
       </Box>
 
@@ -455,9 +479,11 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       <StatusBar
         theme={theme}
         statusbar={config.statusbar}
+        width={width}
         data={{
           title: `tabook · ${selectedBook ? truncateW(selectedBook.title, 30) : 'no selection'}`,
           hint: hintBar(config, 'library'),
+          message,
         }}
       />
     </Box>
@@ -570,10 +596,10 @@ function BookList(props: {
           <Box key={`b-${absolute}`} flexDirection="column" paddingLeft={COVER_W + 2}>
             <Text
               color={selected ? theme.colors.background : theme.colors.text}
-              backgroundColor={selected ? theme.colors.accent : undefined}
+              backgroundColor={selected ? theme.colors.selection : undefined}
               bold={selected}
             >
-              {selected ? '▶ ' : '  '}
+              {selected ? '▸ ' : '  '}
               {title}
             </Text>
             <Text color={theme.colors.dim} dimColor>
@@ -848,17 +874,29 @@ function DeleteConfirm(props: {
     }
   });
   return (
-    <Box flexDirection="column">
-      <Text color={theme.colors.error} bold>
-        {deleteFile
-          ? `Delete file AND library record for "${truncateW(book.title, 40)}"? (y/N · esc cancel)`
-          : `Remove "${truncateW(book.title, 40)}" from the library? (y/N · esc cancel)`}
-      </Text>
-      <Text color={theme.colors.dim} dimColor>
-        {deleteFile
-          ? 'This permanently deletes the file from disk. Cannot be undone.'
-          : 'Only the database record is removed; the file on disk is untouched.'}
-      </Text>
+    <Box flexDirection="column" alignSelf="center">
+      <Box borderStyle="round" borderColor={theme.colors.error} width={60}>
+        <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
+          <Text color={theme.colors.error} bold>
+            {deleteFile ? 'Delete book' : 'Remove from library'}
+          </Text>
+          <Box marginY={1} flexDirection="column">
+            <Text color={theme.colors.text}>
+              {deleteFile
+                ? `Delete file AND library record for "${truncateW(book.title, 50)}"?`
+                : `Remove "${truncateW(book.title, 50)}" from the library?`}
+            </Text>
+            <Text color={theme.colors.dim} dimColor>
+              {deleteFile
+                ? 'This permanently deletes the file from disk. Cannot be undone.'
+                : 'Only the database record is removed; the file on disk is untouched.'}
+            </Text>
+          </Box>
+          <Text color={theme.colors.dim} dimColor>
+            y confirm · esc cancel
+          </Text>
+        </Box>
+      </Box>
     </Box>
   );
 }

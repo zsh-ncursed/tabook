@@ -69,15 +69,15 @@ export function createActionResolver(config: Config): ActionResolver {
         sequence.length = 0;
         return combo;
       }
+      // No combo matched. If the current key could be the start of a future
+      // combo, keep it in the sequence; otherwise clear.
       sequence.length = 0;
-      if (candidate.length >= 2) {
+      if (
+        keyName.length === 1 &&
+        [...keymap.keys()].some((k) => k.startsWith(keyName) && k.length > 1)
+      ) {
         sequence.push(keyName);
-        return direct;
       }
-      if (keyName.length > 1) {
-        return direct;
-      }
-      sequence.push(keyName);
       return direct;
     },
   };
@@ -124,4 +124,12 @@ export function actionLabel(action: KeyAction): string {
     zoom_image: 'Zoom image',
   };
   return labels[action] ?? action;
+}
+
+/** First key bound to `action` in config, or undefined if unbound. */
+export function keyForAction(config: Config, action: KeyAction): string | undefined {
+  for (const [k, a] of Object.entries(config.keybindings)) {
+    if (a === action) return k;
+  }
+  return undefined;
 }

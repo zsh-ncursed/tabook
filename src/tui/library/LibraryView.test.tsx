@@ -96,8 +96,8 @@ describe('LibraryView grouping and cursor', () => {
       stdin.write('j');
       await settle();
       const frame = lastFrame() ?? '';
-      // Selected rows are marked with '▶'. Headers never carry the marker.
-      const selLine = frame.split('\n').find((l) => l.includes('▶'));
+      // Selected rows are marked with '▸'. Headers never carry the marker.
+      const selLine = frame.split('\n').find((l) => l.includes('▸'));
       expect(selLine).toBeDefined();
       expect(selLine).not.toMatch(/^\s*Trilogy/);
       expect(selLine).not.toMatch(/^\s*Standalone/);
@@ -113,7 +113,7 @@ describe('LibraryView grouping and cursor', () => {
     stdin.write('G');
     await settle();
     const frame = lastFrame() ?? '';
-    const selLine = frame.split('\n').find((l) => l.includes('▶'));
+    const selLine = frame.split('\n').find((l) => l.includes('▸'));
     expect(selLine).toBeDefined();
     expect(selLine).toContain('Beta');
   });
@@ -198,7 +198,7 @@ describe('LibraryView grouping and cursor', () => {
     const frame = lastFrame() ?? '';
     expect(frame).not.toContain('Beta');
     // Cursor must stay on a valid row: 'Alpha' is still selected.
-    const selLine = frame.split('\n').find((l) => l.includes('▶'));
+    const selLine = frame.split('\n').find((l) => l.includes('▸'));
     expect(selLine).toBeDefined();
     expect(selLine).toContain('Alpha');
   });
@@ -324,6 +324,54 @@ describe('LibraryView cover thumbnails', () => {
     expect(lastCall[0]).toHaveLength(4);
   });
 
+  it('keeps covers drawn while the filter prompt is open', async () => {
+    // The filter prompt is an inline row below the list, not a modal —
+    // covers must stay (and re-draw for the narrowed window as you type)
+    // instead of being cleared on every '/' keystroke.
+    for (const t of ['Alpha', 'Beta']) {
+      const filePath = path.join(dir, `${t}.fb2`);
+      fs.writeFileSync(filePath, FB2_SAMPLE, 'utf8');
+      db.addBook({
+        path: filePath,
+        filename: `${t}.fb2`,
+        format: 'fb2',
+        size: fs.statSync(filePath).size,
+        metadata: {
+          title: `Book ${t}`,
+          authors: [{ firstName: 'A', lastName: 'B' }],
+          genres: [],
+          annotation: '',
+          coverKey: 'cover.jpg',
+        },
+      });
+    }
+    vi.spyOn(imageLayer, 'start').mockReturnValue(true);
+    const updateSpy = vi.spyOn(imageLayer, 'update');
+    const clearSpy = vi.spyOn(imageLayer, 'clear');
+    const { stdin } = render(<LibraryView {...makeProps()} />);
+    await settle();
+    // Covers are drawn initially (2 placements).
+    expect(clearSpy).not.toHaveBeenCalled();
+    expect(updateSpy).toHaveBeenCalled();
+    // Open the filter prompt: covers must NOT be cleared.
+    stdin.write('/');
+    await settle();
+    expect(clearSpy).not.toHaveBeenCalled();
+    // Typing a narrowing query re-draws covers for the filtered window.
+    // The live filter debounces 120ms, so wait past it. 'alp' only matches
+    // 'Book Alpha', so Beta's cover must leave the window.
+    for (const ch of 'alp') {
+      stdin.write(ch);
+      await settle(200);
+    }
+    expect(clearSpy).not.toHaveBeenCalled();
+    const [placements] = updateSpy.mock.calls.at(-1)! as [
+      Array<{ identifier: string }>,
+      Map<string, Uint8Array>,
+    ];
+    expect(placements.length).toBe(1);
+  });
+
   it('does not draw covers when an App-level overlay (inputDisabled) is open', async () => {
     const filePath = path.join(dir, 'cover.fb2');
     fs.writeFileSync(filePath, FB2_SAMPLE, 'utf8');
@@ -361,7 +409,7 @@ describe('LibraryView mouse clicks', () => {
     emitMouseClick({ x: 5, y: 6, button: 'left', press: true, motion: false });
     await settle();
     const frame = lastFrame() ?? '';
-    const selLine = frame.split('\n').find((l) => l.includes('▶'));
+    const selLine = frame.split('\n').find((l) => l.includes('▸'));
     expect(selLine).toBeDefined();
     expect(selLine).toContain('Beta Book');
   });

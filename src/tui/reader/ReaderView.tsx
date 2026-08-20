@@ -14,7 +14,7 @@ import { useMouseClicks } from '../mouse.js';
 import { useInputDispatch } from '../useInputDispatch.js';
 import { copyToClipboard } from '../../utils/clipboard.js';
 import { useImageLayer, type ImagePlacement, IMAGE_ROWS, zoomGeometry } from '../imageLayer.js';
-import { truncate } from '../../utils/text.js';
+import { truncateW } from '../../utils/text.js';
 import { joinAuthors, formatSeries } from '../../formats/model.js';
 import type { Mode } from './modes.js';
 import {
@@ -44,6 +44,7 @@ export interface ReaderViewProps {
   completeCommand?: (value: string) => string | null;
   validCommandPrefix?: (value: string) => number;
   inputDisabled?: boolean;
+  message?: string;
 }
 
 export function ReaderView(props: ReaderViewProps): React.JSX.Element {
@@ -62,6 +63,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     completeCommand,
     validCommandPrefix,
     inputDisabled = false,
+    message,
   } = props;
   const imageLayer = useImageLayer();
   const [width, height] = useTerminalSize();
@@ -330,24 +332,25 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     .join(' · ');
 
   const statusData = {
-    title: truncate(metadata.title, 30),
+    title: truncateW(metadata.title, 30),
     page: session.pageNumber + 1,
     totalPages: session.totalPages(),
     percent: session.percent(),
-    search: searchState.query ? `search "${truncate(searchState.query, 20)}"` : undefined,
-    hint: readerHint(mode),
+    search: searchState.query ? `search "${truncateW(searchState.query, 20)}"` : undefined,
+    hint: readerHint(mode, config),
+    message,
   };
 
   return (
     <Box flexDirection="column" width="100%">
       <Box paddingX={1}>
         <Text color={theme.colors.heading} bold>
-          {truncate(metadata.title, Math.max(10, width - 20))}
+          {truncateW(metadata.title, Math.max(10, width - 20))}
         </Text>
         {headerMeta ? (
           <Text color={theme.colors.dim} dimColor>
             {'  '}
-            {truncate(headerMeta, Math.max(10, width - 40))}
+            {truncateW(headerMeta, Math.max(10, width - 40))}
           </Text>
         ) : null}
       </Box>
@@ -409,7 +412,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
           theme={theme}
           prefix="b "
           placeholder="bookmark label (optional)…"
-          initialValue={selection ? truncate(selectionText(session, selection), 60) : ''}
+          initialValue={selection ? truncateW(selectionText(session, selection), 60) : ''}
           onSubmit={(value) => {
             let bookId = session.bookId;
             if (bookId === null) {
@@ -439,9 +442,11 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
 
       {tocBm.render(mode, theme, height)}
 
-      {mode === 'info' ? <InfoModal session={session} db={db} theme={theme} /> : null}
+      {mode === 'info' ? (
+        <InfoModal session={session} db={db} config={config} theme={theme} />
+      ) : null}
 
-      <StatusBar theme={theme} statusbar={config.statusbar} data={statusData} />
+      <StatusBar theme={theme} statusbar={config.statusbar} data={statusData} width={width} />
     </Box>
   );
 }

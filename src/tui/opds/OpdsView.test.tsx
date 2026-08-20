@@ -81,7 +81,7 @@ describe('OpdsView — catalog list', () => {
     await settle();
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Standard Ebooks');
-    expect(frame).toContain('🔒');
+    expect(frame).toContain('#');
   });
 
   it('exits to library on q', async () => {
@@ -102,6 +102,28 @@ describe('OpdsView — catalog list', () => {
     stdin.write('\x1b');
     await settle();
     expect(onExit).toHaveBeenCalled();
+  });
+
+  it('enter opens the highlighted catalog, not always the first', async () => {
+    db.addCatalog({ name: 'Alpha', url: 'https://a/' });
+    db.addCatalog({ name: 'Beta', url: 'https://b/' });
+    const feedXml = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><id>https://b/</id><title>Feed B</title><updated>2026-01-01T00:00:00Z</updated><link rel="self" href="https://b/" type="application/atom+xml;profile=opds-catalog;kind=navigation"/></feed>`;
+    globalThis.fetch = vi.fn(async () =>
+      feedResponse(feedXml),
+    ) as unknown as typeof globalThis.fetch;
+    const { stdin, lastFrame } = render(<OpdsView {...makeProps()} />);
+    await settle();
+    // Move cursor to Beta
+    stdin.write('j');
+    await settle();
+    expect(lastFrame() ?? '').toContain('▸ Beta');
+    // Press Enter — should open Beta, not Alpha
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 200));
+    expect(lastFrame() ?? '').toContain('Feed B');
+    // Verify fetch was called with Beta's URL
+    const fetchCalls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    expect(fetchCalls.some((c: unknown[]) => String(c[0]).includes('b/'))).toBe(true);
   });
 });
 

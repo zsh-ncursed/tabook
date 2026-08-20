@@ -4,6 +4,7 @@ import {
   decodeEntities,
   normalizeWhitespace,
   truncate,
+  truncateW,
   displayWidth,
   formatBytes,
   formatDuration,
@@ -266,5 +267,37 @@ describe('stripHtml', () => {
     expect(out).toBe('Формат: fb2\nЯзык: ru\nРазмер: 40 Kb');
     expect(out).not.toContain('<');
     expect(out).not.toContain('&');
+  });
+});
+
+describe('truncateW', () => {
+  it('returns short text unchanged', () => {
+    expect(truncateW('hello', 10)).toBe('hello');
+  });
+
+  it('truncates ASCII with ellipsis', () => {
+    expect(truncateW('hello world', 5)).toBe('hell…');
+  });
+
+  it('counts CJK characters as 2 columns', () => {
+    // 5 CJK chars × 2 = 10 columns, fits in 10
+    expect(truncateW('中文中文中', 10)).toBe('中文中文中');
+    // 6 CJK chars × 2 = 12 columns, exceeds 10
+    expect(truncateW('中文中文中文', 10)).toBe('中文中文…');
+  });
+
+  it('handles mixed ASCII + CJK', () => {
+    // 'ab中文' = 2 + 4 = 6 columns
+    expect(truncateW('ab中文', 6)).toBe('ab中文');
+    // 'ab中文' = 6 columns, exceeds 5
+    expect(truncateW('ab中文', 5)).toBe('ab中…');
+  });
+
+  it('truncates Russian (1 column each) like ASCII', () => {
+    expect(truncateW('Привет мир', 7)).toBe('Привет…');
+  });
+
+  it('empty string returns empty', () => {
+    expect(truncateW('', 10)).toBe('');
   });
 });
