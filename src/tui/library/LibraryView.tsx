@@ -117,6 +117,8 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   // undefined case means "no cover / failed to extract" and is also cached
   // so a missing cover isn't re-read on every scroll frame.
   const [covers, setCovers] = useState<Map<number, Uint8Array | undefined>>(new Map());
+  const coversRef = useRef(covers);
+  coversRef.current = covers;
   const resolver = useMemo(() => createActionResolver(config), [config]);
 
   useEffect(() => {
@@ -226,7 +228,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   // books that have a coverKey and aren't cached yet. Runs when the window
   // shifts (scroll/cursor move), so covers appear as rows enter the screen.
   useEffect(() => {
-    const next = new Map(covers);
+    const next = new Map(coversRef.current);
     let changed = false;
     for (let i = start; i < end && i < rows.length; i++) {
       const row = rows[i];
@@ -246,7 +248,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       }
       setCovers(next);
     }
-  }, [rows, start, end, covers]);
+  }, [rows, start, end]);
 
   // Draw cover thumbnails next to the visible cards. The list starts one
   // row below the header (terminal row 1, 0-indexed); each card's cover box
@@ -463,6 +465,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
             setConfirmTarget(null);
             setConfirmDeleteFile(false);
             setMode('normal');
+            forceRedraw();
           }}
           onCancel={() => {
             setConfirmTarget(null);
