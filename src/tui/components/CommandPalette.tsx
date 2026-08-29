@@ -118,7 +118,9 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element {
     }
   };
 
-  const visibleCount = Math.min(12, Math.max(3, height - 8));
+  // Modal chrome: border(2) + paddingY(2) + title(1) + search(1) + footer(1) = 7
+  const MODAL_CHROME = 7;
+  const visibleCount = Math.min(12, Math.max(3, height - MODAL_CHROME));
   const { start, end } = centeredWindow(entries.length, cursor, visibleCount);
   const visible = entries.slice(start, end);
 

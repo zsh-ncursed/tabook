@@ -31,6 +31,7 @@ import {
   cursorForAction,
   CARD_ROWS,
   COVER_W,
+  LIST_FIRST_ROW,
 } from '../listLayout.js';
 import { feedToRows, rowHeight } from './feedRows.js';
 import { BrowsingFeedList } from './BrowsingFeedList.js';
@@ -62,6 +63,11 @@ type Mode =
   | 'downloads'
   | 'auth-username'
   | 'auth-password';
+
+// Terminal rows around the feed list: 1-line header + 1-line status bar +
+// headroom for the inline prompt row and scroll margins (same shape as the
+// library view). The visible window height is `height - LIST_CHROME`.
+const LIST_CHROME = 6;
 
 interface FeedHistoryEntry {
   feed: OpdsFeed;
@@ -542,7 +548,9 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
           case 'page_down':
           case 'page_up':
             saveCurrentPosition();
-            setCursor((c) => cursorForAction(action, c, rows.length, height - 6));
+            // Same formula as maxLines below (without the min-3 clamp, which
+            // is irrelevant for a jump step) so page moves match the window.
+            setCursor((c) => cursorForAction(action, c, rows.length, height - LIST_CHROME));
             break;
           case 'select':
           case 'move_cursor_right':
@@ -662,7 +670,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   // CARD_ROWS-line entry cards with cover thumbnails); the window, cursor
   // centering and mouse hit-testing go through listLayout. Catalog list rows
   // are all 1 line, so a plain window is fine there.
-  const maxLines = Math.max(3, height - 6);
+  const maxLines = Math.max(3, height - LIST_CHROME);
   const listIndex = useMemo(() => buildLineIndex(rows, rowHeight), [rows]);
   const { start, end } = useMemo(
     () => visibleWindow(rows, listIndex, cursor, maxLines),
@@ -780,10 +788,10 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
     if (s.inputDisabled) return;
     let absolute: number;
     if (s.mode === 'catalog-list') {
-      absolute = click.y - 2;
+      absolute = click.y - LIST_FIRST_ROW;
       if (absolute < 0 || absolute >= s.catalogs.length) return;
     } else if (s.mode === 'browsing') {
-      const line = click.y - 2;
+      const line = click.y - LIST_FIRST_ROW;
       const windowLines = (s.listIndex.prefix[s.end] ?? 0) - (s.listIndex.prefix[s.start] ?? 0);
       if (line < 0 || line >= windowLines) return;
       absolute = rowAtLine(s.rows, s.listIndex, (s.listIndex.prefix[s.start] ?? 0) + line);
@@ -936,6 +944,10 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
           title: statusLeft,
           downloads: downloadsLabel,
           hint: statusHint(mode, config),
+          mode:
+            mode === 'browsing' || mode === 'catalog-list' || mode === 'entry-detail'
+              ? undefined
+              : mode.toUpperCase(),
           message,
         }}
       />

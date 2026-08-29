@@ -139,7 +139,8 @@ export interface DisplayConfig {
 // Sections that can appear in the status bar. Each view provides its own data
 // (title, page, percent, ...); the config decides which sections are rendered
 // and on which side.
-export type StatusBarSection = 'title' | 'page' | 'percent' | 'search' | 'hint' | 'downloads';
+export type StatusBarSection =
+  'title' | 'page' | 'percent' | 'search' | 'hint' | 'downloads' | 'mode';
 
 export const STATUSBAR_SECTIONS: readonly StatusBarSection[] = [
   'title',
@@ -148,6 +149,7 @@ export const STATUSBAR_SECTIONS: readonly StatusBarSection[] = [
   'search',
   'hint',
   'downloads',
+  'mode',
 ];
 
 export interface StatusBarConfig {

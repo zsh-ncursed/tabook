@@ -123,7 +123,10 @@ export function useLibraryScanner(opts: {
       }
       db.addLibraryFolder(resolved);
       notify(`Attached folder: ${resolved}`);
-      void runLibraryScan(resolved);
+      // Defer the scan so the "Attached folder" notification renders before
+      // "Scanning …" overwrites it. setTimeout lets Ink flush a frame
+      // between the two notify() calls.
+      setTimeout(() => void runLibraryScan(resolved), 0);
     },
     [db, notify, runLibraryScan],
   );

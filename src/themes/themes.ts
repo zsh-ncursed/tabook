@@ -153,7 +153,9 @@ export const THEMES: Record<string, Theme> = {
     panel: '#193549',
     panelBorder: '#2d5a7b',
     statusBar: '#193549',
-    dim: '#0088ff',
+    // Desaturated variant of #0088ff — the original is too vivid for
+    // secondary text next to white body text.
+    dim: '#4488c3',
     link: '#0088ff',
   }),
 
@@ -163,9 +165,11 @@ export const THEMES: Record<string, Theme> = {
     heading: '#AAA0FA',
     accent: '#88c0d0',
     panel: '#181818',
-    panelBorder: '#e4e4e45e',
+    // #e4e4e4 at ~37% over the background, pre-blended to 6-digit hex —
+    // 8-digit RGBA is not parsed by color-convert and breaks ANSI output.
+    panelBorder: '#636363',
     statusBar: '#181818',
-    dim: '#e4e4e45e',
+    dim: '#636363',
     link: '#82D2CE',
   }),
 
@@ -283,7 +287,9 @@ export const THEMES: Record<string, Theme> = {
     heading: '#ffffff',
     accent: '#8da4f5',
     panel: '#171721',
-    panelBorder: '#b4b7c81f',
+    // Muted, visible border — replaces 8-digit RGBA '#b4b7c81f', which
+    // color-convert cannot parse.
+    panelBorder: '#3c3f52',
     statusBar: '#171721',
     dim: '#9d9da8',
     link: '#8da4f5',

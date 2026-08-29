@@ -14,6 +14,7 @@ import { useMouseClicks } from '../mouse.js';
 import { useInputDispatch } from '../useInputDispatch.js';
 import { copyToClipboard } from '../../utils/clipboard.js';
 import { useImageLayer, type ImagePlacement, IMAGE_ROWS, zoomGeometry } from '../imageLayer.js';
+import { CONTENT_FIRST_COL, LIST_FIRST_ROW } from '../listLayout.js';
 import { truncateW } from '../../utils/text.js';
 import { joinAuthors, formatSeries } from '../../formats/model.js';
 import type { Mode } from './modes.js';
@@ -208,19 +209,19 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   // Mouse text selection: press anchors, motion extends, release keeps the
   // range (with a hint). The reader content box has paddingX=1 and starts one
   // row below the title, so terminal cell (x, y) maps to viewport line
-  // y - 2 and rendered column x - 2.
+  // y - LIST_FIRST_ROW and rendered column x - CONTENT_FIRST_COL.
   const mouseStateRef = useRef({ mode, lines, session, inputDisabled });
   mouseStateRef.current = { mode, lines, session, inputDisabled };
   useMouseClicks((click) => {
     const s = mouseStateRef.current;
     if (click.button !== 'left' || s.mode !== 'reading' || s.inputDisabled) return;
-    const lineIdx = click.y - 2;
+    const lineIdx = click.y - LIST_FIRST_ROW;
     if (lineIdx < 0 || lineIdx >= s.lines.length) return;
     const line = s.lines[lineIdx]!;
     const renderedLen =
       line.indent + line.prefix.length + line.spans.reduce((n, sp) => n + sp.text.length, 0);
     if (renderedLen <= 0) return;
-    const col = Math.max(0, Math.min(renderedLen - 1, click.x - 2));
+    const col = Math.max(0, Math.min(renderedLen - 1, click.x - CONTENT_FIRST_COL));
     const cell: SelCell = { line: lineIdx, col };
     // SGR motion events arrive as "press" (M) with the motion bit set, so
     // motion must be checked before press: motion extends, press anchors.
@@ -338,6 +339,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     percent: session.percent(),
     search: searchState.query ? `search "${truncateW(searchState.query, 20)}"` : undefined,
     hint: readerHint(mode, config),
+    mode: mode === 'reading' ? undefined : mode.toUpperCase(),
     message,
   };
 

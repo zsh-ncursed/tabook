@@ -364,6 +364,9 @@ describe('LibraryView cover thumbnails', () => {
       stdin.write(ch);
       await settle(200);
     }
+    // The filter debounce is 200 ms; the last keystroke's timer fires
+    // after settle returns, so give it time to flush.
+    await settle(300);
     expect(clearSpy).not.toHaveBeenCalled();
     const [placements] = updateSpy.mock.calls.at(-1)! as [
       Array<{ identifier: string }>,

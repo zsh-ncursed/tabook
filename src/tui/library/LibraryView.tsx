@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Text, useInput, type Key } from 'ink';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Text, type Key } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { Config, KeyAction } from '../../config/defaults.js';
 import type { BookRecord, LibraryDb, SortField } from '../../db/db.js';
@@ -20,6 +20,7 @@ import {
   cursorForAction,
   CARD_ROWS,
   COVER_W,
+  LIST_FIRST_ROW,
 } from '../listLayout.js';
 import { extractCoverBytes } from '../../formats/cover.js';
 import { existsSync, unlinkSync } from 'node:fs';
@@ -58,6 +59,12 @@ interface Row {
 }
 
 const SORT_FIELDS: SortField[] = ['title', 'author', 'added', 'progress'];
+
+// Terminal rows around the book list: 1-line header + 1-line status bar +
+// headroom for the inline prompt row and scroll margins. Everything between
+// the header and the status bar is list area, so the visible window height is
+// `height - LIST_CHROME - annotationLines`.
+const LIST_CHROME = 5;
 
 // Book cards: each book occupies CARD_ROWS terminal lines so a cover
 // thumbnail (COVER_W × CARD_ROWS) can be drawn next to it without covering
@@ -166,10 +173,32 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   const selectedIndex = selectedBook ? bookList.indexOf(selectedBook) : -1;
   const positionLabel = selectedIndex >= 0 ? `${selectedIndex + 1}/${bookList.length}` : undefined;
 
+  // Reserve space for the annotation preview pane (header + up to 4 lines)
+  // when the selected book has one, so the list doesn't overflow the screen.
+  const annotationLines = selectedBook?.annotation
+    ? Math.min(
+        5,
+        1 + Math.min(4, wrapText(selectedBook.annotation, Math.max(20, width - 4)).length),
+      )
+    : 0;
+  // The list is a window of rows with non-uniform heights (1-line group
+  // headers, CARD_ROWS-line book cards) fitted into `maxLines` terminal lines;
+  // listLayout keeps cursor centering, slicing and mouse hit-testing in sync.
+  const maxLines = Math.max(3, height - LIST_CHROME - annotationLines);
+  const listIndex = useMemo(() => buildLineIndex(rows, rowHeight), [rows]);
+  const { start, end } = useMemo(
+    () => visibleWindow(rows, listIndex, cursor, maxLines),
+    [rows, listIndex, cursor, maxLines],
+  );
+  const visibleRows = rows.slice(start, end);
+
   const handleAction = (action: KeyAction | undefined): void => {
     dispatchLibraryAction(action, {
       rows,
-      height,
+      // Page jumps move by the visible window height, not the raw terminal
+      // height — otherwise page_down/page_up overshoot/undershoot by the
+      // chrome and annotation pane rows.
+      pageRows: maxLines,
       selectedBook,
       filter,
       filterBaselineRef,
@@ -188,37 +217,64 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
     });
   };
 
+  // :delete confirmation handlers, shared by the key dispatch below and the
+  // rendered dialog. forceRedraw on both paths: returning to 'normal' may
+  // produce a byte-identical frame that Ink's logUpdate would suppress,
+  // leaving the dialog on screen until the next keypress.
+  const cancelRemove = useCallback((): void => {
+    setConfirmTarget(null);
+    setConfirmDeleteFile(false);
+    setMode('normal');
+    forceRedraw();
+  }, []);
+
+  const confirmRemove = useCallback((): void => {
+    const target = confirmTarget;
+    if (!target) return;
+    const filePath = target.path;
+    db.removeBook(target.id);
+    if (confirmDeleteFile) {
+      try {
+        if (existsSync(filePath)) unlinkSync(filePath);
+        notify(`Deleted file and library record: ${target.title}`);
+      } catch (err) {
+        notify(
+          `Removed from library, but file delete failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    } else {
+      notify(`Removed from library: ${target.title}`);
+    }
+    const next = db.listBooks();
+    setBooks(next);
+    setCursor((c) => Math.min(Math.max(0, c), Math.max(0, next.length - 1)));
+    cancelRemove();
+  }, [confirmTarget, confirmDeleteFile, db, notify, cancelRemove]);
+
   // Stable handler backed by a ref — prevents Ink useInput re-subscribe race.
   // useInputDispatch registers one stable useInput (mouse-chunk filtering
   // included) and routes every keypress through dispatchRef.current, which we
   // overwrite each render with a fresh closure over the current state.
-  const dispatchRef = useInputDispatch(mode === 'normal' && !inputDisabled);
+  // Confirm-delete is dispatched here too (instead of a second useInput
+  // inside DeleteConfirm): a single always-registered useInput avoids Ink's
+  // setRawMode reference-count race when multiple hooks toggle isActive
+  // (see ReaderView for the full rationale).
+  const dispatchRef = useInputDispatch(
+    (mode === 'normal' || mode === 'confirm-delete') && !inputDisabled,
+  );
   dispatchRef.current = (input: string, key: Key) => {
+    if (mode === 'confirm-delete') {
+      const keyName = resolveKeyName(input, key);
+      if (keyName === 'y' || keyName === 'enter') confirmRemove();
+      else if (keyName === 'n' || keyName === 'escape') cancelRemove();
+      return;
+    }
     if (mode !== 'normal') return;
     const keyName = resolveKeyName(input, key);
     if (keyName === null) return;
     const action = resolver.feed(keyName);
     handleAction(action);
   };
-
-  // Reserve space for the annotation preview pane (header + up to 4 lines)
-  // when the selected book has one, so the list doesn't overflow the screen.
-  const annotationLines = selectedBook?.annotation
-    ? Math.min(
-        5,
-        1 + Math.min(4, wrapText(selectedBook.annotation, Math.max(20, width - 4)).length),
-      )
-    : 0;
-  // The list is a window of rows with non-uniform heights (1-line group
-  // headers, CARD_ROWS-line book cards) fitted into `maxLines` terminal lines;
-  // listLayout keeps cursor centering, slicing and mouse hit-testing in sync.
-  const maxLines = Math.max(3, height - 5 - annotationLines);
-  const listIndex = useMemo(() => buildLineIndex(rows, rowHeight), [rows]);
-  const { start, end } = useMemo(
-    () => visibleWindow(rows, listIndex, cursor, maxLines),
-    [rows, listIndex, cursor, maxLines],
-  );
-  const visibleRows = rows.slice(start, end);
 
   // Mouse: a click moves the cursor to the row under it; a second click on
   // the same row within 350 ms opens it (like enter). The list starts one
@@ -228,6 +284,10 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
   // books that have a coverKey and aren't cached yet. Runs when the window
   // shifts (scroll/cursor move), so covers appear as rows enter the screen.
   useEffect(() => {
+    // Skip extraction while an overlay covers the list — the draw effect
+    // will call clear() anyway, so extracting is wasted work that can
+    // trigger an unnecessary re-render cycle.
+    if (inputDisabled || mode === 'detail' || mode === 'confirm-delete') return;
     const next = new Map(coversRef.current);
     let changed = false;
     for (let i = start; i < end && i < rows.length; i++) {
@@ -248,7 +308,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       }
       setCovers(next);
     }
-  }, [rows, start, end]);
+  }, [rows, start, end, inputDisabled, mode]);
 
   // Draw cover thumbnails next to the visible cards. The list starts one
   // row below the header (terminal row 1, 0-indexed); each card's cover box
@@ -298,7 +358,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
     if (click.button !== 'left' || !click.press) return;
     const s = mouseStateRef.current;
     if (s.mode !== 'normal' || s.inputDisabled) return;
-    const line = click.y - 2;
+    const line = click.y - LIST_FIRST_ROW;
     const windowLines = (s.listIndex.prefix[s.end] ?? 0) - (s.listIndex.prefix[s.start] ?? 0);
     if (line < 0 || line >= windowLines) return;
     const absolute = rowAtLine(s.rows, s.listIndex, (s.listIndex.prefix[s.start] ?? 0) + line);
@@ -383,7 +443,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
             filterTimerRef.current = setTimeout(() => {
               setFilter(value.trim());
               setCursor(0);
-            }, 120);
+            }, 200);
           }}
           onSubmit={(value) => {
             if (filterTimerRef.current) {
@@ -440,39 +500,7 @@ export function LibraryView(props: LibraryViewProps): React.JSX.Element {
       ) : null}
 
       {mode === 'confirm-delete' && confirmTarget ? (
-        <DeleteConfirm
-          book={confirmTarget}
-          deleteFile={confirmDeleteFile}
-          theme={theme}
-          onConfirm={() => {
-            const filePath = confirmTarget.path;
-            db.removeBook(confirmTarget.id);
-            if (confirmDeleteFile) {
-              try {
-                if (existsSync(filePath)) unlinkSync(filePath);
-                notify(`Deleted file and library record: ${confirmTarget.title}`);
-              } catch (err) {
-                notify(
-                  `Removed from library, but file delete failed: ${err instanceof Error ? err.message : String(err)}`,
-                );
-              }
-            } else {
-              notify(`Removed from library: ${confirmTarget.title}`);
-            }
-            const next = db.listBooks();
-            setBooks(next);
-            setCursor((c) => Math.min(Math.max(0, c), Math.max(0, next.length - 1)));
-            setConfirmTarget(null);
-            setConfirmDeleteFile(false);
-            setMode('normal');
-            forceRedraw();
-          }}
-          onCancel={() => {
-            setConfirmTarget(null);
-            setConfirmDeleteFile(false);
-            setMode('normal');
-          }}
-        />
+        <DeleteConfirm book={confirmTarget} deleteFile={confirmDeleteFile} theme={theme} />
       ) : null}
 
       {selectedBook?.annotation ? (
@@ -622,7 +650,8 @@ function BookList(props: {
 // Built fresh on every render (handleAction is recreated each render anyway).
 interface LibraryActionContext {
   rows: Row[];
-  height: number;
+  /** Visible window height in terminal lines — the step for page moves. */
+  pageRows: number;
   selectedBook: BookRecord | undefined;
   filter: string;
   filterBaselineRef: React.MutableRefObject<string>;
@@ -647,7 +676,7 @@ interface LibraryActionContext {
 function dispatchLibraryAction(action: KeyAction | undefined, ctx: LibraryActionContext): void {
   const {
     rows,
-    height,
+    pageRows,
     selectedBook,
     filter,
     filterBaselineRef,
@@ -672,10 +701,10 @@ function dispatchLibraryAction(action: KeyAction | undefined, ctx: LibraryAction
       setCursor((c) => prevBook(rows, c));
       break;
     case 'page_down':
-      setCursor((c) => snapToBook(rows, cursorForAction(action, c, rows.length, height - 6)));
+      setCursor((c) => snapToBook(rows, cursorForAction(action, c, rows.length, pageRows)));
       break;
     case 'page_up':
-      setCursor((c) => snapToBook(rows, cursorForAction(action, c, rows.length, height - 6)));
+      setCursor((c) => snapToBook(rows, cursorForAction(action, c, rows.length, pageRows)));
       break;
     case 'go_to_start':
       setCursor(snapToBook(rows, cursorForAction(action, 0, rows.length)));
@@ -792,29 +821,20 @@ function hintBar(config: Config, view: string): string {
     return undefined;
   };
   if (view === 'library') {
-    const items = [
-      key('move_cursor_down'),
-      key('select'),
-      key('open_file'),
-      key('search'),
-      key('sort_cycle'),
-      key('toggle_recent'),
-      key('toggle_continue'),
-      key('delete_from_library'),
-      key('delete_file'),
-      key('help'),
-      key('command'),
-      key('quit'),
-    ];
-    return items
-      .map((k, i) => (k ? `${actionLabel(actionsList[i]!)} ${k}`.trim() : null))
+    return HINT_ACTIONS.map((action) => {
+      const k = key(action);
+      return k ? `${actionLabel(action)} ${k}`.trim() : null;
+    })
       .filter((s): s is string => s !== null)
       .join(' · ');
   }
   return '';
 }
 
-const actionsList: KeyAction[] = [
+// Actions shown in the library hint bar, in display order.  Kept as a single
+// list so adding/removing an entry is a one-line change (no parallel array
+// to keep in sync).
+const HINT_ACTIONS: KeyAction[] = [
   'move_cursor_down',
   'select',
   'open_file',
@@ -858,24 +878,16 @@ function AnnotationPreview(props: {
   );
 }
 
+// Presentational delete confirmation. Keys (y/enter confirm, n/esc cancel)
+// are dispatched by LibraryView's single useInput in confirm-delete mode —
+// this component deliberately has no useInput of its own (see ReaderView for
+// the raw-mode race rationale).
 function DeleteConfirm(props: {
   book: BookRecord;
   deleteFile: boolean;
   theme: Theme;
-  onConfirm: () => void;
-  onCancel: () => void;
 }): React.JSX.Element {
-  const { book, deleteFile, theme, onConfirm, onCancel } = props;
-  useInput((input, key) => {
-    const keyName = resolveKeyName(input, key);
-    if (keyName === 'y' || keyName === 'enter') {
-      onConfirm();
-      return;
-    }
-    if (keyName === 'n' || keyName === 'escape') {
-      onCancel();
-    }
-  });
+  const { book, deleteFile, theme } = props;
   return (
     <Box flexDirection="column" alignSelf="center">
       <Box borderStyle="round" borderColor={theme.colors.error} width={60}>

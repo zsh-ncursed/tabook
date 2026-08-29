@@ -64,19 +64,31 @@ export function createActionResolver(config: Config): ActionResolver {
     feed(keyName: string): KeyAction | undefined {
       const candidate = [...sequence, keyName];
       const direct = lookup([keyName]);
-      const combo = lookup(candidate);
+      // Only consider multi-key matches as combos.  A single-key lookup
+      // (candidate.length === 1) is the same as `direct` — it must not
+      // bypass the prefix check below, otherwise a key bound to both a
+      // single action and a combo prefix (e.g. g → scroll_down + gg →
+      // go_to_start) fires the single action AND the combo on gg.
+      const combo = candidate.length > 1 ? lookup(candidate) : undefined;
       if (combo !== undefined) {
         sequence.length = 0;
         return combo;
       }
-      // No combo matched. If the current key could be the start of a future
-      // combo, keep it in the sequence; otherwise clear.
-      sequence.length = 0;
-      if (
+      // Check if this key is a prefix of any longer combo.  If so, buffer
+      // it and suppress the direct single-key action — otherwise pressing
+      // e.g. 'g' (bound to scroll_down) before 'g' (completing 'gg') would
+      // fire both the single-key action AND the combo.
+      // Only vim-style character-by-character combos (like 'gg') are
+      // prefixable.  Named keys ('down', 'pageup') and modifier combos
+      // ('ctrl+d') are NOT multi-key sequences.  Real combos are always
+      // exactly 2 characters of printable input; named keys are 4+ chars.
+      const isPrefix =
         keyName.length === 1 &&
-        [...keymap.keys()].some((k) => k.startsWith(keyName) && k.length > 1)
-      ) {
+        [...keymap.keys()].some((k) => k.startsWith(keyName) && k.length === 2 && !k.includes('+'));
+      sequence.length = 0;
+      if (isPrefix) {
         sequence.push(keyName);
+        return undefined; // wait for the next key
       }
       return direct;
     },

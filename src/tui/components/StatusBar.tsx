@@ -2,7 +2,6 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { StatusBarConfig, StatusBarSection } from '../../config/defaults.js';
-import { truncateW } from '../../utils/text.js';
 
 function progressBar(percent: number, width: number): string {
   const filled = Math.round((percent / 100) * width);
@@ -21,6 +20,8 @@ export interface StatusBarData {
   downloads?: string; // active OPDS download status (e.g. "↓ 45% Title")
   /** Temporary notification — shown in place of the hint while active. */
   message?: string;
+  /** Current mode indicator (e.g. "SEARCH", "COMMAND") */
+  mode?: string;
 }
 
 function renderSection(
@@ -43,6 +44,10 @@ function renderSection(
       return data.hint ?? null;
     case 'downloads':
       return data.downloads ?? null;
+    case 'mode':
+      return data.mode ?? null;
+    default:
+      return null;
   }
 }
 
@@ -67,18 +72,22 @@ export function StatusBar(props: {
     .filter((s): s is string => s !== null);
   const hintRaw = data.message ?? (statusbar.right.includes('hint') ? data.hint : null);
   const barWidth = 10;
-  // Padding: 2 spaces (lead + trail) + optional progress bar + percentage
+  // Padding: 2 spaces (lead + trail) + optional progress bar + percentage + mode indicator
+  const modeSpace = data.mode ? 6 : 0; // ' [MODE] '
   const barSpace = showBar ? barWidth + 6 : 0; // '█░...' + ' XX%'
   const leftStr = left.join(' · ');
   const coreStr = rightCore.join(' · ');
-  // Available width for hint = total - left - core - separators - bar - padding
+  // Available width for hint = total - left - core - separators - bar - mode - padding
   const separatorWidth = (leftStr.length > 0 ? 3 : 0) + (coreStr.length > 0 ? 3 : 0);
   const hintMax = termWidth
-    ? Math.max(0, termWidth - 2 - leftStr.length - coreStr.length - separatorWidth - barSpace)
+    ? Math.max(
+        10,
+        termWidth - 2 - leftStr.length - coreStr.length - separatorWidth - barSpace - modeSpace,
+      )
     : undefined;
   const hint =
     hintMax !== undefined && hintRaw && hintRaw.length > hintMax
-      ? truncateW(hintRaw, Math.max(0, hintMax))
+      ? hintRaw.slice(0, hintMax)
       : hintRaw;
   return (
     <Box>
@@ -86,6 +95,7 @@ export function StatusBar(props: {
         {' '}
         {leftStr}
         {coreStr ? <Text color={theme.colors.dim}> · {coreStr}</Text> : null}
+        {data.mode ? <Text color={theme.colors.accent}> [{data.mode}]</Text> : null}
         {hint ? (
           <Text color={data.message ? theme.colors.accent : theme.colors.dim}> · {hint}</Text>
         ) : null}{' '}

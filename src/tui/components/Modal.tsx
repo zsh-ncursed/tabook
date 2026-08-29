@@ -21,9 +21,11 @@ export function Modal(props: {
             {children}
           </Box>
           {footer ? (
-            <Text color={theme.colors.dim} dimColor>
-              {footer}
-            </Text>
+            <Box marginY={1}>
+              <Text color={theme.colors.dim} dimColor>
+                {footer}
+              </Text>
+            </Box>
           ) : null}
         </Box>
       </Box>

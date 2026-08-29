@@ -50,4 +50,42 @@ describe('createActionResolver', () => {
     expect(r.feed('pagedown')).toBe('page_down');
     expect(r.feed('g')).toBeUndefined();
   });
+
+  it('does not double-fire when a key is both a single binding and a combo prefix', () => {
+    const config = defaultConfig();
+    config.keybindings.g = 'scroll_down';
+    config.keybindings.gg = 'go_to_start';
+    const r = createActionResolver(config);
+    // First 'g': key is a prefix of 'gg' — must NOT return scroll_down.
+    expect(r.feed('g')).toBeUndefined();
+    // Second 'g': completes 'gg' combo.
+    expect(r.feed('g')).toBe('go_to_start');
+  });
+
+  it('returns the single-key action when the next key breaks the combo', () => {
+    const config = defaultConfig();
+    config.keybindings.g = 'scroll_down';
+    config.keybindings.gg = 'go_to_start';
+    const r = createActionResolver(config);
+    // First 'g': buffered as prefix.
+    expect(r.feed('g')).toBeUndefined();
+    // 'j' breaks the combo — 'g' is flushed, 'j' resolves to its own action.
+    expect(r.feed('j')).toBe('move_cursor_down');
+    // But 'g' was consumed, so the single-key 'scroll_down' never fired.
+    // Next 'g' starts a fresh combo.
+    expect(r.feed('g')).toBeUndefined();
+    expect(r.feed('g')).toBe('go_to_start');
+  });
+
+  it('returns direct action for a non-prefix single key', () => {
+    const config = defaultConfig();
+    config.keybindings.g = 'scroll_down';
+    config.keybindings.gg = 'go_to_start';
+    const r = createActionResolver(config);
+    // 'j' is not a combo prefix — fires directly.
+    expect(r.feed('j')).toBe('move_cursor_down');
+    // 'g' is a prefix — buffered.
+    expect(r.feed('g')).toBeUndefined();
+    expect(r.feed('g')).toBe('go_to_start');
+  });
 });

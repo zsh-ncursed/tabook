@@ -46,6 +46,10 @@ export function App(props: AppProps): React.JSX.Element {
   const [width, height] = useTerminalSize();
   const [screen, setScreen] = useState<AppScreen>('library');
   const [session, setSession] = useState<ReaderSession | null>(null);
+  // Mirror of `session` in a ref so stable callbacks (flushSession, signal
+  // handlers) always see the latest value without re-creating themselves.
+  const sessionRef = useRef<ReaderSession | null>(null);
+  sessionRef.current = session;
   const [helpOpen, setHelpOpen] = useState(false);
   const [themeName, setThemeName] = useState(props.themeOverride ?? config.theme);
   const [libraryRefresh, setLibraryRefresh] = useState(0);
@@ -68,7 +72,11 @@ export function App(props: AppProps): React.JSX.Element {
 
   const theme = useMemo(() => {
     const t = THEMES[themeName];
-    return t ?? THEMES[defaultConfig().theme]!;
+    if (!t) {
+      notify(`Unknown theme "${themeName}", using default`);
+      return THEMES[defaultConfig().theme]!;
+    }
+    return t;
   }, [themeName]);
 
   // SGR mouse reporting. Click mode (button events only) in lists lets the
@@ -215,22 +223,29 @@ export function App(props: AppProps): React.JSX.Element {
   // Save progress and close the reading-session row (so it is not left
   // without ended_at, which would permanently exclude it from stats). Shared
   // by the normal close path and the SIGTERM/SIGHUP handlers.
+  //
+  // Intentionally stable (empty deps): reads session from sessionRef so
+  // the signal-handler effect never re-registers. Without this, every
+  // session open/close would remove+re-add the SIGTERM listener, and an
+  // exit() triggered from the handler would unmount before the new
+  // listener was attached — leaving zero handlers for a second signal.
   const flushSession = useCallback((): void => {
-    if (!session) return;
-    session.saveProgress();
-    if (session.bookId !== null && sessionStartRef.current !== null) {
-      const pages = Math.abs(session.pageNumber - startPageRef.current);
+    const s = sessionRef.current;
+    if (!s) return;
+    s.saveProgress();
+    if (s.bookId !== null && sessionStartRef.current !== null) {
+      const pages = Math.abs(s.pageNumber - startPageRef.current);
       db.endSession(sessionStartRef.current, pages);
       sessionStartRef.current = null;
     }
-  }, [session, db]);
+  }, [db]);
 
   const closeReader = useCallback((): void => {
     flushSession();
     setSession(null);
     setScreen('library');
     setLibraryRefresh((c) => c + 1);
-  }, [flushSession]);
+  }, [flushSession]); // flushSession is stable → closeReader is stable too
 
   const saveToLibrary = useCallback((): number | null => {
     if (!session) return null;
@@ -317,18 +332,21 @@ export function App(props: AppProps): React.JSX.Element {
 
   useEffect(() => {
     return () => {
-      if (session) session.saveProgress();
+      if (sessionRef.current) sessionRef.current.saveProgress();
     };
-  }, [session]);
+  }, []);
 
   // Periodic auto-save so an abrupt exit (SIGKILL, terminal close, power loss)
   // doesn't discard an entire reading session. The cleanup above only fires on
   // a normal unmount, which the process may never reach.
+  // Reads session from sessionRef so the interval is created once and never
+  // re-created (the ref always holds the latest session).
   useEffect(() => {
-    if (!session) return undefined;
-    const timer = setInterval(() => session.saveProgress(), AUTO_SAVE_INTERVAL_MS);
+    const timer = setInterval(() => {
+      sessionRef.current?.saveProgress();
+    }, AUTO_SAVE_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [session]);
+  }, []);
 
   // On graceful termination signals, flush progress AND end the reading
   // session so no row is left dangling without ended_at, then exit through
@@ -355,7 +373,7 @@ export function App(props: AppProps): React.JSX.Element {
       process.off('SIGHUP', flushAndExit);
       process.off('SIGINT', flushAndExit);
     };
-  }, [flushSession, exit]);
+  }, [exit]); // flushSession is stable — no re-registration needed
 
   const openDownloadedBook = useCallback(
     (bookId: number, filePath: string) => {

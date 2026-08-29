@@ -17,6 +17,16 @@ import type { KeyAction } from '../config/defaults.js';
 export const CARD_ROWS = 3;
 export const COVER_W = 12;
 
+// Terminal row (1-based, as reported by SGR mouse events) where the first
+// list/content line is drawn: row 1 is the view's header. Clicks map back to
+// content lines with `click.y - LIST_FIRST_ROW`.
+export const LIST_FIRST_ROW = 2;
+
+// Terminal column (1-based) where content starts: both the library/OPDS lists
+// and the reader use paddingX=1, so column 1 is padding and text begins at
+// column 2 (`click.x - CONTENT_FIRST_COL`).
+export const CONTENT_FIRST_COL = 2;
+
 export function buildLineIndex<T>(
   rows: readonly T[],
   heightOf: (row: T) => number,
