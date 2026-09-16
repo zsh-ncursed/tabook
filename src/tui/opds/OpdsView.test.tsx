@@ -17,6 +17,21 @@ import { imageLayer } from '../imageLayer.js';
 const theme: Theme = THEMES[defaultConfig().theme] ?? THEMES['dracula']!;
 const config = defaultConfig();
 
+// The desktop notification is a real subprocess in production; stub it so a
+// test can assert "download finished → user was told" without notify-send.
+// Hoisted (vi.mock is hoisted itself) so the module import sees the mock.
+vi.mock('../../notify/desktop.js', () => ({
+  notifyDesktop: vi.fn(),
+  __resetDesktopNotifyForTests: vi.fn(),
+}));
+
+/** Returns the stubbed notifyDesktop, cleared for the current test. */
+async function mockDesktopNotify(): Promise<ReturnType<typeof vi.fn>> {
+  const m = (await import('../../notify/desktop.js')).notifyDesktop as ReturnType<typeof vi.fn>;
+  m.mockClear();
+  return m;
+}
+
 let dir: string;
 let db: LibraryDb;
 
@@ -649,6 +664,113 @@ describe('OpdsView — download queue', () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(onOpenDownloaded).toHaveBeenCalledTimes(1);
     expect(onOpenDownloaded.mock.calls[0]![0]).toBeTypeOf('number');
+  });
+
+  it('offers "enter — read" on the entry and opens the book without leaving OPDS', async () => {
+    setup({
+      downloads: () => mockResponse(FB2_SAMPLE, { headers: { 'content-type': 'text/fb2+xml' } }),
+    });
+    const onOpenDownloaded = vi.fn();
+    process.env.XDG_CACHE_HOME = dir;
+    const { stdin, lastFrame } = render(<OpdsView {...makeProps({ onOpenDownloaded })} />);
+    await settle();
+    stdin.write('\r'); // open catalog
+    await new Promise((r) => setTimeout(r, 200));
+    stdin.write('j'); // entry "Book Two" (acquisition)
+    await new Promise((r) => setTimeout(r, 100));
+    stdin.write('\r'); // open its detail
+    await new Promise((r) => setTimeout(r, 100));
+    // Download from the detail view, then wait for completion.
+    stdin.write('d');
+    await new Promise((r) => setTimeout(r, 400));
+
+    // The detail view now advertises reading instead of just downloading,
+    // and the status-bar hint says "read".
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Downloaded');
+    expect(frame.toLowerCase()).toContain('read');
+    expect(frame).toContain('read ·');
+
+    // Enter opens the finished book directly — no walk back to the library.
+    expect(onOpenDownloaded).not.toHaveBeenCalled();
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 100));
+    expect(onOpenDownloaded).toHaveBeenCalledTimes(1);
+    expect(onOpenDownloaded.mock.calls[0]![0]).toBeTypeOf('number');
+  });
+
+  it('enter on an already-downloaded entry reads it instead of re-downloading', async () => {
+    // Second download of the same entry must not enqueue a duplicate job: the
+    // user already has the file, so enter opens it.
+    setup({
+      downloads: () => mockResponse(FB2_SAMPLE, { headers: { 'content-type': 'text/fb2+xml' } }),
+    });
+    const onOpenDownloaded = vi.fn();
+    process.env.XDG_CACHE_HOME = dir;
+    const { stdin } = render(<OpdsView {...makeProps({ onOpenDownloaded })} />);
+    await settle();
+    stdin.write('\r'); // open catalog
+    await new Promise((r) => setTimeout(r, 200));
+    stdin.write('j'); // entry "Book Two"
+    await new Promise((r) => setTimeout(r, 100));
+    stdin.write('d'); // first download
+    await new Promise((r) => setTimeout(r, 400));
+    expect(db.listBooks()).toHaveLength(1);
+
+    // Open the entry detail for the same entry and press enter again.
+    stdin.write('\r'); // detail
+    await new Promise((r) => setTimeout(r, 100));
+    stdin.write('\r'); // would re-download if it ignored the finished job
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(onOpenDownloaded).toHaveBeenCalledTimes(1);
+    // No duplicate book was added — the finished job was reused.
+    expect(db.listBooks()).toHaveLength(1);
+  });
+
+  it('fires a desktop notification when a download lands in the library', async () => {
+    const notifyMock = await mockDesktopNotify();
+    process.env.DISPLAY = ':0';
+
+    setup({
+      downloads: () => mockResponse(FB2_SAMPLE, { headers: { 'content-type': 'text/fb2+xml' } }),
+    });
+    process.env.XDG_CACHE_HOME = dir;
+    const { stdin } = render(<OpdsView {...makeProps()} />);
+    await settle();
+    stdin.write('\r'); // open catalog
+    await new Promise((r) => setTimeout(r, 200));
+    stdin.write('j'); // entry "Book Two"
+    await new Promise((r) => setTimeout(r, 100));
+    stdin.write('d');
+    await new Promise((r) => setTimeout(r, 400));
+
+    expect(db.listBooks()).toHaveLength(1);
+    // Body names the book and points at the library.
+    expect(notifyMock).toHaveBeenCalledWith('tabook', expect.stringContaining('in your library'));
+  });
+
+  it('stays silent when notifications are disabled in config', async () => {
+    const notifyMock = await mockDesktopNotify();
+    process.env.DISPLAY = ':0';
+
+    setup({
+      downloads: () => mockResponse(FB2_SAMPLE, { headers: { 'content-type': 'text/fb2+xml' } }),
+    });
+    process.env.XDG_CACHE_HOME = dir;
+    const config = { ...makeProps().config, notifications: false };
+    const { stdin } = render(<OpdsView {...makeProps({ config })} />);
+    await settle();
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 200));
+    stdin.write('j');
+    await new Promise((r) => setTimeout(r, 100));
+    stdin.write('d');
+    await new Promise((r) => setTimeout(r, 400));
+
+    // The book still lands; only the desktop ping is suppressed.
+    expect(db.listBooks()).toHaveLength(1);
+    expect(notifyMock).not.toHaveBeenCalled();
   });
 });
 

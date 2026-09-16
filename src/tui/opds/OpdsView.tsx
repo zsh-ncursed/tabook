@@ -24,6 +24,7 @@ import { parseOpenSearch, buildSearchUrl } from '../../opds/opensearch.js';
 import type { OpdsFeed, OpdsEntry } from '../../opds/model.js';
 import { pickAcquisitionLink } from '../../opds/model.js';
 import { useDownloadQueue, jobPercent } from '../../opds/downloadQueue.js';
+import { notifyDesktop } from '../../notify/desktop.js';
 import { useImageLayer, type ImagePlacement } from '../imageLayer.js';
 import {
   buildLineIndex,
@@ -144,6 +145,18 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   const queueActive = queue.active;
   const currentJob = queue.current;
   const pendingCount = queue.pendingCount;
+
+  // The finished job for the entry the user is looking at, if any. Jobs stay
+  // in the queue after completing, so this is also "you already have this
+  // book" — used to offer "enter — read" instead of downloading it again.
+  // When an entry was downloaded more than once, the latest result wins (it
+  // points at the file on disk now).
+  const doneForSelected = selectedEntry
+    ? findLast(
+        queueJobs,
+        (j) => j.entryId === selectedEntry.id && j.status === 'done' && j.result !== undefined,
+      )
+    : undefined;
 
   const downloadsLabel = (() => {
     const cur = currentJob;
@@ -354,14 +367,21 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         base: currentFeed?.url,
         onDone: (job) => {
           if (job.status === 'done') {
-            notify(`Downloaded: ${job.result?.title ?? entry.title}`);
+            const title = job.result?.title ?? entry.title;
+            notify(`Downloaded: ${title}`);
+            // The status line is invisible when the terminal is in another
+            // tab; the desktop notification is what actually reaches the
+            // user then. Best-effort — no-op without a notification daemon.
+            if (config.notifications) {
+              notifyDesktop('tabook', `Downloaded: ${title} — in your library`);
+            }
           } else if (job.status === 'failed') {
             notify(`Download failed: ${job.error ?? 'unknown error'}`);
           }
         },
       });
     },
-    [activeCatalog, currentFeed, db, notify],
+    [activeCatalog, currentFeed, db, notify, config.notifications],
   );
 
   // `index` lets mouse double-clicks target a specific row directly (the
@@ -596,7 +616,13 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
           case 'select':
           case 'move_cursor_right':
             if (selectedEntry) {
-              enqueueDownload(selectedEntry);
+              // The book is already downloaded: open it for reading instead
+              // of queuing the download a second time.
+              if (doneForSelected?.result) {
+                onOpenDownloaded(doneForSelected.result.bookId, doneForSelected.result.filePath);
+              } else {
+                enqueueDownload(selectedEntry);
+              }
             }
             break;
           case 'move_cursor_left':
@@ -875,6 +901,16 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
             <Box paddingX={2}>
               <Spinner label="Downloading" theme={theme} />
             </Box>
+          ) : doneForSelected?.result ? (
+            // The download finished while the user stayed on this entry (or
+            // they came back to an entry they already have). Offer to jump
+            // straight into the book instead of making them walk back to the
+            // library to find it.
+            <Box paddingX={2}>
+              <Text color={theme.colors.accent}>
+                ✓ Downloaded — {keyForAction(config, 'select') ?? 'enter'} to read
+              </Text>
+            </Box>
           ) : null}
         </Box>
       ) : rows.length === 0 ? (
@@ -940,7 +976,7 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
         data={{
           title: statusLeft,
           downloads: downloadsLabel,
-          hint: statusHint(mode, config),
+          hint: statusHint(mode, config, !!doneForSelected?.result),
           mode:
             mode === 'browsing' || mode === 'catalog-list' || mode === 'entry-detail'
               ? undefined
@@ -954,8 +990,10 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
 
 // Status bar hint for the current mode. All actions — including the feed
 // verbs (d/x/n/p/c) — resolve from the layered OPDS keymap, so the hint stays
-// truthful after rebinding them in config.toml.
-function statusHint(mode: Mode, config: Config): string {
+// truthful after rebinding them in config.toml. `downloaded` is set in
+// entry-detail when the book is already on disk, so the hint says "read"
+// instead of "download".
+function statusHint(mode: Mode, config: Config, downloaded = false): string {
   const k = (action: KeyAction): string => keyForAction(config, action) ?? '';
   const ok = (action: KeyAction): string => opdsKeyFor(config, action) ?? '';
   // Build "key label" entries, dropping any whose key is unbound.
@@ -988,8 +1026,11 @@ function statusHint(mode: Mode, config: Config): string {
         .join(' · ');
     case 'entry-detail': {
       const dl = ok('opds_download');
+      // The verb changes once the book is on disk: "read" opens it, otherwise
+      // the same key downloads it.
+      const selVerb = downloaded ? 'read' : dl ? `/${dl}/l download` : '/l download';
       return [
-        entry(sel, dl ? `/${dl}/l download` : '/l download'),
+        entry(sel, selVerb),
         entry(ok('opds_downloads'), 'downloads'),
         entry(back, '/esc back'),
         entry(help, 'help'),
@@ -1013,4 +1054,13 @@ function formatError(err: unknown): string {
     return err.statusCode ? `${err.statusCode}: ${err.message}` : err.message;
   }
   return err instanceof Error ? err.message : String(err);
+}
+
+// Like Array.prototype.find, but the LAST match — for queues where the newest
+// entry is the relevant one (a re-download supersedes the earlier result).
+function findLast<T>(items: readonly T[], predicate: (item: T) => boolean): T | undefined {
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (predicate(items[i]!)) return items[i];
+  }
+  return undefined;
 }

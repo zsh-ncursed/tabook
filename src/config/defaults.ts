@@ -175,6 +175,12 @@ export interface Config {
   autoTheme: boolean;
   /** Enable SGR mouse reporting (click selects rows in lists). */
   mouse: boolean;
+  /**
+   * Fire a desktop notification (notify-send / osascript) when an OPDS
+   * download lands in the library, so a download finishing while the app is
+   * in the background still gets your attention.
+   */
+  notifications: boolean;
   keybindings: Record<string, KeyAction>;
   typography: TypographyConfig;
   display: DisplayConfig;
@@ -187,6 +193,7 @@ export function defaultConfig(): Config {
     dbPath: '',
     autoTheme: false,
     mouse: true,
+    notifications: true,
     keybindings: { ...DEFAULT_KEYBINDINGS },
     typography: {
       measure: 80,

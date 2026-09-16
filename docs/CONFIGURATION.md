@@ -32,6 +32,10 @@ auto_theme = false
 # Default: true. Disable if you prefer plain text selection in the terminal.
 mouse = true
 
+# Desktop notification (notify-send / osascript) when an OPDS download lands
+# in the library. Default: true.
+notifications = true
+
 [keybindings]
 # Map key names to actions. See "Keybindings" below.
 j = "move_cursor_down"
@@ -82,6 +86,15 @@ protocol vim/less/htop use): a left click on a list row moves the cursor
 there, and a second click on the same row activates it (open the book,
 catalog, subsection or queue entry). Set to `false` to restore plain text
 selection in the terminal.
+
+### `notifications`
+
+When `true` (default), tabook fires a **desktop notification** (`notify-send`
+on Linux, `osascript` on macOS) when an OPDS download finishes and the book
+lands in the library — useful when the download completes while the terminal
+is in another tab or minimized, where the in-app status line is invisible.
+Set to `false` to stay quiet. Headless machines without a notification daemon
+are skipped automatically, so this never errors.
 
 ### `[keybindings]`
 

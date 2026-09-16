@@ -90,6 +90,7 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
     'db_path',
     'auto_theme',
     'mouse',
+    'notifications',
     'keybindings',
     'typography',
     'display',
@@ -116,6 +117,7 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
 
   if (typeof parsed.auto_theme === 'boolean') config.autoTheme = parsed.auto_theme;
   if (typeof parsed.mouse === 'boolean') config.mouse = parsed.mouse;
+  if (typeof parsed.notifications === 'boolean') config.notifications = parsed.notifications;
 
   if (parsed.keybindings && typeof parsed.keybindings === 'object') {
     config.keybindings = normalizeKeybindings(
@@ -233,6 +235,7 @@ export function serializeConfig(config: Config): string {
     db_path: config.dbPath,
     auto_theme: config.autoTheme,
     mouse: config.mouse,
+    notifications: config.notifications,
     keybindings,
     typography: {
       measure: config.typography.measure,

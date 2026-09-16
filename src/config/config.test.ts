@@ -236,6 +236,16 @@ describe('serializeConfig', () => {
     expect(reparsed.autoTheme).toBe(true);
     expect(reparsed.mouse).toBe(false);
   });
+
+  it('round-trips the notifications toggle through TOML', () => {
+    const config = defaultConfig();
+    expect(config.notifications).toBe(true);
+    config.notifications = false;
+    const text = serializeConfig(config);
+    expect(text).toContain('notifications = false');
+    const reparsed = parseTomlConfig(text, defaultConfig(), []);
+    expect(reparsed.notifications).toBe(false);
+  });
 });
 
 describe('KEY_ACTIONS', () => {
