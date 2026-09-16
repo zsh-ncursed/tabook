@@ -35,7 +35,12 @@ export type KeyAction =
   | 'toggle_wide'
   | 'toggle_recent'
   | 'toggle_continue'
-  | 'zoom_image';
+  | 'zoom_image'
+  | 'opds_download'
+  | 'opds_downloads'
+  | 'opds_next_page'
+  | 'opds_prev_page'
+  | 'opds_catalogs';
 
 export const KEY_ACTIONS: readonly KeyAction[] = [
   'move_cursor_up',
@@ -75,6 +80,11 @@ export const KEY_ACTIONS: readonly KeyAction[] = [
   'toggle_recent',
   'toggle_continue',
   'zoom_image',
+  'opds_download',
+  'opds_downloads',
+  'opds_next_page',
+  'opds_prev_page',
+  'opds_catalogs',
 ];
 
 export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {

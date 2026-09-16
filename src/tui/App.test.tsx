@@ -133,4 +133,27 @@ describe('App — library entry folder checks', () => {
     await settle();
     expect(scanLibraryFolderMock).not.toHaveBeenCalled();
   });
+
+  // ponytail: the root must always be at least the terminal height. Ink has
+  // two paint paths — a frame SHORTER than the screen is written incrementally
+  // (erase N previous lines + new frame), a TALLER one wipes the whole screen
+  // first. A view that is short now and tall a moment later (a confirm dialog
+  // opens, then closes) leaves the incremental path's line counter stale, so
+  // the next erase under-clears and the tail of the old, taller frame stays
+  // on screen: stale rows and dialog borders the user can still see after the
+  // action completed. Keeping every frame ≥ the screen height forces the
+  // full-clear path, so nothing stale can survive a redraw. This test pins
+  // the invariant; it cannot reproduce the visual bug itself (ink-testing
+  // never reports a real rows count), which needs a live terminal.
+  it('renders the root at least the terminal height so stale frames cannot survive', async () => {
+    const { lastFrame, unmount } = render(<App db={db} config={defaultConfig()} />);
+    await settle();
+    const frame = lastFrame() ?? '';
+    // useTerminalSize falls back to 24 rows when stdout has no `rows` (tests).
+    // minHeight (not height) so a genuinely taller frame still grows — a
+    // smaller value here would mean the layout clips content instead.
+    expect(frame.split('\n').length).toBeGreaterThanOrEqual(24);
+    unmount();
+    await settle();
+  });
 });

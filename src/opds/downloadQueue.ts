@@ -18,6 +18,11 @@ export interface DownloadJob {
   id: number;
   title: string;
   status: DownloadJobStatus;
+  /** OPDS entry this job was queued from. Correlates a job to an entry
+   * without leaking the entry object, so a view can show "downloading" for
+   * exactly the entry that started the job — titles can repeat across
+   * entries, comparing them is not identity. */
+  entryId: string;
   /** Bytes received so far (final size once done). */
   received: number;
   /** Total bytes when the server sent Content-Length. */
@@ -77,6 +82,7 @@ export class DownloadQueue {
       title: params.entry.title,
       status: 'queued',
       received: 0,
+      entryId: params.entry.id,
       entry: params.entry,
       auth: params.auth,
       db: params.db,
@@ -124,8 +130,8 @@ export class DownloadQueue {
   /** Snapshot of the public job list (stable copies, internals stripped). */
   snapshot(): DownloadJob[] {
     return this.jobs.map((job) => {
-      const { id, title, status, received, total, error, result } = job;
-      return { id, title, status, received, total, error, result };
+      const { id, title, status, entryId, received, total, error, result } = job;
+      return { id, title, status, entryId, received, total, error, result };
     });
   }
 

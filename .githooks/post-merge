@@ -1,0 +1,22 @@
+#!/bin/sh
+# post-merge: refresh the local graphify dependency graph after `git pull`.
+#
+# Same contract as post-checkout (background, non-fatal, skips without
+# graphify): the pulled code changes invalidate the local graph cache, and a
+# stale graph reports edges that no longer exist. See post-checkout for the
+# rationale on why this is a local hook rather than a CI step.
+
+[ -d src ] || exit 0
+command -v graphify >/dev/null 2>&1 || exit 0
+
+mkdir -p graphify-out 2>/dev/null || true
+
+if command -v flock >/dev/null 2>&1; then
+  ( flock -n 9 || exit 0
+    graphify update . >>graphify-out/.refresh.log 2>&1
+  ) 9>graphify-out/.refresh.lock >/dev/null 2>&1 &
+else
+  ( graphify update . >>graphify-out/.refresh.log 2>&1 & ) >/dev/null 2>&1 &
+fi
+
+exit 0

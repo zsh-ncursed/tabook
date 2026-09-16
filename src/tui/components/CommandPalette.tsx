@@ -103,8 +103,13 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element {
       setCursor(0);
       return;
     }
-    // Navigation: arrows + Ctrl+N/P. Everything else (j/k included) types.
-    if (keyName === 'up' || keyName === 'ctrl+p') {
+    // Navigation: arrows, Ctrl+P (up) / Ctrl+N (down), plus Ctrl+K (up).
+    // Everything else (j/k included) types — descriptions contain those
+    // letters (":goto — Jump to a page"), so j/k cannot navigate here.
+    // Ctrl+J would be the natural vim partner for Ctrl+K, but terminals send
+    // the LF byte for it and ink reads that as Enter, so it confirms the
+    // highlighted entry instead of moving the cursor.
+    if (keyName === 'up' || keyName === 'ctrl+p' || keyName === 'ctrl+k') {
       setCursor((c) => Math.max(0, c - 1));
       return;
     }
@@ -173,7 +178,7 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element {
             </Box>
           </Box>
           <Text color={theme.colors.dim} dimColor>
-            type to filter · ↑/↓ move · enter run/open · esc close
+            type to filter · ↑/↓ or ctrl+n/p move · enter run/open · esc close
           </Text>
         </Box>
       </Box>

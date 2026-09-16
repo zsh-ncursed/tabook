@@ -22,6 +22,7 @@ export interface KeyEvent {
 }
 
 export function resolveKeyName(input: string, key: KeyEvent['key']): string | null {
+  // Основные клавиши управления курсором и навигации
   if (key.escape) return 'escape';
   if (key.return) return 'enter';
   if (key.backspace) return 'backspace';
@@ -33,11 +34,25 @@ export function resolveKeyName(input: string, key: KeyEvent['key']): string | nu
   if (key.downArrow) return 'down';
   if (key.leftArrow) return 'left';
   if (key.rightArrow) return 'right';
+
+  // Комбинации с Ctrl (только для букв)
   if (key.ctrl && input.length === 1 && /^[a-zA-Z]$/.test(input)) {
     return `ctrl+${input.toLowerCase()}`;
   }
+
+  // Пробел и другие символы
   if (input === ' ') return 'space';
+  // LF is Enter in terminal terms: ink sets key.return only for CR ('\r'), so
+  // a terminal (or Ctrl+J, which sends the same byte) would otherwise leak a
+  // raw '\n' into text inputs — e.g. corrupting the command palette query.
+  if (input === '\n') return 'enter';
+  if (input.length === 1 && /^[Ff][1-9]$/.test(input)) {
+    return `f${input.toLowerCase().replace('f', '')}`;
+  }
   if (input !== '' && input !== '\t') return input;
+
+  // Логирование необработанных клавиш (для отладки)
+  // console.warn(`Неизвестная клавиша: ${input}, ${JSON.stringify(key)}`);
   return null;
 }
 
@@ -46,11 +61,31 @@ export interface ActionResolver {
   feed(keyName: string): KeyAction | undefined;
 }
 
+// Key names resolveKeyName emits for special keys, i.e. NOT
+// character-by-character combos. Used to tell real 2-char combos ('gg') apart
+// from 2-char named keys ('up', 'tab') when buffering sequences.
+const NAMED_KEYS: ReadonlySet<string> = new Set([
+  'up',
+  'down',
+  'left',
+  'right',
+  'pageup',
+  'pagedown',
+  'enter',
+  'escape',
+  'backspace',
+  'delete',
+  'tab',
+  'space',
+]);
+
 export function createActionResolver(config: Config): ActionResolver {
   const keymap = new Map<string, KeyAction>();
   for (const [key, action] of Object.entries(config.keybindings)) {
     keymap.set(key, action);
   }
+
+  // Для отслеживания последовательностей клавиш
   const sequence: string[] = [];
 
   const lookup = (keys: string[]): KeyAction | undefined => {
@@ -64,32 +99,37 @@ export function createActionResolver(config: Config): ActionResolver {
     feed(keyName: string): KeyAction | undefined {
       const candidate = [...sequence, keyName];
       const direct = lookup([keyName]);
-      // Only consider multi-key matches as combos.  A single-key lookup
-      // (candidate.length === 1) is the same as `direct` — it must not
-      // bypass the prefix check below, otherwise a key bound to both a
-      // single action and a combo prefix (e.g. g → scroll_down + gg →
-      // go_to_start) fires the single action AND the combo on gg.
+
+      // Проверка на совпадение с комбинацией
       const combo = candidate.length > 1 ? lookup(candidate) : undefined;
       if (combo !== undefined) {
-        sequence.length = 0;
+        sequence.length = 0; // Очистка буфера после выполнения комбинации
         return combo;
       }
-      // Check if this key is a prefix of any longer combo.  If so, buffer
-      // it and suppress the direct single-key action — otherwise pressing
-      // e.g. 'g' (bound to scroll_down) before 'g' (completing 'gg') would
-      // fire both the single-key action AND the combo.
-      // Only vim-style character-by-character combos (like 'gg') are
-      // prefixable.  Named keys ('down', 'pageup') and modifier combos
-      // ('ctrl+d') are NOT multi-key sequences.  Real combos are always
-      // exactly 2 characters of printable input; named keys are 4+ chars.
+
+      // Is this key the first half of a two-keystroke combo (like 'gg')?
+      // Only literal 2-character bindings count: named keys ('up', 'tab') are
+      // also 2 chars and contain no '+', so without the exclusion 'u' would
+      // look like the prefix of a 'up' combo, get buffered and never fire.
+      // This stayed hidden while OPDS verbs were hardcoded above the resolver;
+      // routing 'u' through the keymap exposed it.
       const isPrefix =
         keyName.length === 1 &&
-        [...keymap.keys()].some((k) => k.startsWith(keyName) && k.length === 2 && !k.includes('+'));
+        [...keymap.keys()].some(
+          (k) => k.startsWith(keyName) && k.length === 2 && !k.includes('+') && !NAMED_KEYS.has(k),
+        );
+
+      // A non-prefix key breaks any pending combo: drop the buffered keys
+      // before deciding. Without this reset, 'g' then 'j' leaves 'g'
+      // buffered and the next 'g' wrongly completes 'gg' → go_to_start.
       sequence.length = 0;
+
       if (isPrefix) {
         sequence.push(keyName);
-        return undefined; // wait for the next key
+        return undefined; // Буферизуем клавишу для ожидания следующей
       }
+
+      // Если комбинация не найдена, возвращаем действие для текущей клавиши
       return direct;
     },
   };
@@ -134,6 +174,11 @@ export function actionLabel(action: KeyAction): string {
     toggle_recent: 'Toggle recent books',
     toggle_continue: 'Toggle continue reading',
     zoom_image: 'Zoom image',
+    opds_download: 'Download book (OPDS)',
+    opds_downloads: 'Downloads queue (OPDS)',
+    opds_next_page: 'Next feed page (OPDS)',
+    opds_prev_page: 'Previous feed page (OPDS)',
+    opds_catalogs: 'Switch catalog (OPDS)',
   };
   return labels[action] ?? action;
 }

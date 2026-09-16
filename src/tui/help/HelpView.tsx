@@ -3,7 +3,8 @@ import { Box, Text, useInput } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { Config, KeyAction } from '../../config/defaults.js';
 import { KEY_ACTIONS } from '../../config/defaults.js';
-import { actionLabel, createActionResolver, resolveKeyName } from '../keymap.js';
+import { actionLabel, createActionResolver, resolveKeyName, keyForAction } from '../keymap.js';
+import { opdsKeyFor } from '../opds/opdsKeymap.js';
 import { useTerminalSize } from '../useTerminalSize.js';
 import { Modal } from '../components/Modal.js';
 import { forceRedraw } from '../screenRefresh.js';
@@ -110,10 +111,25 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
         OPDS Catalogs (in :opds view)
       </Text>
     </Box>,
+    // The feed verbs resolve through the same configurable keymap as
+    // everything else, so their keys are derived from the layered OPDS
+    // keymap rather than hardcoded — this text stays true after rebinding.
     <Text key="opds-text" color={theme.colors.dim} dimColor>
-      j/k — navigate · enter/l — open entry/download · d — queue download (sequential, background) ·
-      x — downloads queue · / — search · u/h — up · n/p — next/prev page · c — switch catalog · esc
-      — back · q — quit
+      {(() => {
+        const k = (action: KeyAction): string => keyForAction(config, action) ?? '—';
+        const o = (action: KeyAction): string => opdsKeyFor(config, action) ?? '—';
+        return [
+          `${k('move_cursor_down')}/${k('move_cursor_up')} — navigate`,
+          `${k('select')}/${k('move_cursor_right')} — open entry`,
+          `${o('opds_download')} — queue download (sequential, background)`,
+          `${o('opds_downloads')} — downloads queue`,
+          `${k('search')} — search`,
+          `${k('back')}/${k('move_cursor_left')} — up`,
+          `${o('opds_next_page')}/${o('opds_prev_page')} — next/prev page`,
+          `${o('opds_catalogs')} — switch catalog`,
+          `${k('help')} — help · ${k('quit')} — quit`,
+        ].join(' · ');
+      })()}
     </Text>,
   ];
 

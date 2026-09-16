@@ -128,6 +128,16 @@ Actions you can bind to:
 | `toggle_justify`      | `J`                   | Toggle text justify              |
 | `toggle_wide`         | `W`                   | Toggle wide screen               |
 | `toggle_recent`       | `R`                   | Toggle recent books              |
+| `opds_download`       | `d` (in OPDS)         | Queue a download (OPDS)          |
+| `opds_downloads`      | `x` (in OPDS)         | Open the downloads queue (OPDS)  |
+| `opds_next_page`      | `n` (in OPDS)         | Next feed page (OPDS)            |
+| `opds_prev_page`      | `p` (in OPDS)         | Previous feed page (OPDS)        |
+| `opds_catalogs`       | `c` (in OPDS)         | Back to the catalog list (OPDS)  |
+
+The five `opds_*` actions are only meaningful in the OPDS view. They are
+layered on top of your global bindings for that view, so the classic letters
+keep working there even though `d` means "delete from library" elsewhere —
+and you can rebind them to any key, e.g. `D = "opds_download"`.
 
 `ctrl+d` / `ctrl+u` are bound to `page_down` / `page_up` by default.
 `ctrl+p` opens the **command palette** — type to fuzzy-filter every command

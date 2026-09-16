@@ -72,8 +72,10 @@ export function StatusBar(props: {
     .filter((s): s is string => s !== null);
   const hintRaw = data.message ?? (statusbar.right.includes('hint') ? data.hint : null);
   const barWidth = 10;
-  // Padding: 2 spaces (lead + trail) + optional progress bar + percentage + mode indicator
-  const modeSpace = data.mode ? 6 : 0; // ' [MODE] '
+  // Padding: 2 spaces (lead + trail) + optional progress bar + percentage + mode indicator.
+  // Derived from the actual label: modes can be long (' [BOOKMARK-EDIT]'), and
+  // a fixed budget would under-reserve space and let the hint wrap the bar.
+  const modeSpace = data.mode ? data.mode.length + 3 : 0; // ' [MODE]'
   const barSpace = showBar ? barWidth + 6 : 0; // '█░...' + ' XX%'
   const leftStr = left.join(' · ');
   const coreStr = rightCore.join(' · ');

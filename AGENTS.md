@@ -52,6 +52,23 @@ also owns the SQLite DB via rusqlite) attached to the GitHub Release.
   absolute `/usr/lib/tabook` path, so run `node <dir>/tabook.bundle.mjs`
   directly from the extracted layout).
 
+## Code graph (graphify)
+
+`graphify-out/` holds a local dependency graph of the codebase (nodes, edges,
+communities) — the fastest way to see what a change actually touches. It is a
+**gitignored local cache**, never committed and never produced by CI, so its
+freshness is maintained locally:
+
+- The `post-checkout`/`post-merge` hooks in `.githooks/` rebuild it in the
+  background after a branch switch or `git pull` (non-fatal, skipped when
+  `graphify` isn't installed). They are enabled by the `prepare` script, same
+  as the pre-commit format check.
+- Manual refresh: `graphify update .` (no LLM cost). Do this before trusting
+  the graph if you suspect drift — check `Built from commit` at the top of
+  `graphify-out/GRAPH_REPORT.md` against `git rev-parse HEAD`.
+- A stale graph is worse than no graph: it reports edges that no longer exist
+  while looking authoritative. Verify the commit, don't trust blindly.
+
 ## Commands
 
 - Lint: `npm run lint`

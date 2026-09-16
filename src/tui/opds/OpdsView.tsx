@@ -4,6 +4,7 @@ import type { Theme } from '../../themes/themes.js';
 import type { Config, KeyAction } from '../../config/defaults.js';
 import type { LibraryDb, CatalogRecord } from '../../db/db.js';
 import { createActionResolver, resolveKeyName, keyForAction } from '../keymap.js';
+import { opdsKeybindings, opdsKeyFor } from './opdsKeymap.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TextPrompt } from '../components/TextPrompt.js';
 import { Spinner } from '../components/Spinner.js';
@@ -91,10 +92,14 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   const queue = useDownloadQueue();
   const imageLayer = useImageLayer();
   const [width, height] = useTerminalSize();
-  // Navigation keys resolve through the configurable keymap like every other
-  // view; only feed-specific verbs (d download, n next page, c catalogs, u
-  // back) stay on fixed keys — they have no KeyAction.
-  const resolver = useMemo(() => createActionResolver(config), [config]);
+  // All keys — navigation AND the feed verbs (d/x/n/p/c/u) — resolve through
+  // the configurable keymap. The feed verbs are layered on top of the user's
+  // global bindings for this view only (opdsKeybindings), so they can be
+  // rebound in config.toml while still defaulting to their classic letters.
+  const resolver = useMemo(
+    () => createActionResolver({ ...config, keybindings: opdsKeybindings(config) }),
+    [config],
+  );
   const [mode, setMode] = useState<Mode>('catalog-list');
   const [catalogs, setCatalogs] = useState<CatalogRecord[]>([]);
   const [catalogCursor, setCatalogCursor] = useState(0);
@@ -497,50 +502,43 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       }
 
       if (mode === 'browsing') {
-        // Feed-specific verbs without a KeyAction (shown in the status bar /
-        // Help): d queue download, x downloads panel, n/p next/prev feed page,
-        // c catalog list, u back alias.
-        if (keyName === 'd' && rows[cursor]?.kind === 'entry') {
-          const entry = rows[cursor]!.entry;
-          if (entry.isAcquisition) {
-            enqueueDownload(entry);
-          }
-          return;
-        }
-        if (keyName === 'x') {
-          setDownloadsReturn('browsing');
-          setDownloadsCursor(0);
-          setMode('downloads');
-          forceRedraw();
-          return;
-        }
-        if (keyName === 'n') {
-          if (currentFeed?.nextHref) {
-            void loadFeed(currentFeed.nextHref, currentFeed?.url, activeCatalog);
-          }
-          return;
-        }
-        if (keyName === 'p') {
-          if (currentFeed?.prevHref) {
-            void loadFeed(currentFeed.prevHref, currentFeed?.url, activeCatalog);
-          }
-          return;
-        }
-        if (keyName === 'c') {
-          saveCurrentPosition();
-          setFeedStack([]);
-          setActiveCatalog(null);
-          setMode('catalog-list');
-          setRefreshTrigger((r) => r + 1);
-          forceRedraw();
-          return;
-        }
-        if (keyName === 'u') {
-          goBack();
-          return;
-        }
+        // Feed verbs resolve through the same keymap as navigation now
+        // (opds_download / opds_downloads / opds_next_page / opds_prev_page /
+        // opds_catalogs), rebound in config.toml; 'back' covers the 'u' alias.
         const action = resolver.feed(keyName);
         switch (action) {
+          case 'opds_download':
+            if (rows[cursor]?.kind === 'entry') {
+              const entry = rows[cursor]!.entry;
+              if (entry.isAcquisition) {
+                enqueueDownload(entry);
+              }
+            }
+            break;
+          case 'opds_downloads':
+            setDownloadsReturn('browsing');
+            setDownloadsCursor(0);
+            setMode('downloads');
+            forceRedraw();
+            break;
+          case 'opds_next_page':
+            if (currentFeed?.nextHref) {
+              void loadFeed(currentFeed.nextHref, currentFeed?.url, activeCatalog);
+            }
+            break;
+          case 'opds_prev_page':
+            if (currentFeed?.prevHref) {
+              void loadFeed(currentFeed.prevHref, currentFeed?.url, activeCatalog);
+            }
+            break;
+          case 'opds_catalogs':
+            saveCurrentPosition();
+            setFeedStack([]);
+            setActiveCatalog(null);
+            setMode('catalog-list');
+            setRefreshTrigger((r) => r + 1);
+            forceRedraw();
+            break;
           case 'move_cursor_down':
           case 'move_cursor_up':
           case 'go_to_start':
@@ -582,22 +580,19 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       }
 
       if (mode === 'entry-detail') {
-        // d stays a fixed download verb (no KeyAction).
-        if (keyName === 'd') {
-          if (selectedEntry) {
-            enqueueDownload(selectedEntry);
-          }
-          return;
-        }
-        if (keyName === 'x') {
-          setDownloadsReturn('entry-detail');
-          setDownloadsCursor(0);
-          setMode('downloads');
-          forceRedraw();
-          return;
-        }
         const action = resolver.feed(keyName);
         switch (action) {
+          case 'opds_download':
+            if (selectedEntry) {
+              enqueueDownload(selectedEntry);
+            }
+            break;
+          case 'opds_downloads':
+            setDownloadsReturn('entry-detail');
+            setDownloadsCursor(0);
+            setMode('downloads');
+            forceRedraw();
+            break;
           case 'select':
           case 'move_cursor_right':
             if (selectedEntry) {
@@ -874,7 +869,9 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
       ) : mode === 'entry-detail' && selectedEntry ? (
         <Box flexDirection="column">
           <EntryDetail entry={selectedEntry} theme={theme} width={width} height={height} />
-          {currentJob?.title === selectedEntry.title ? (
+          {/* Compare by entry id, not title: two entries can share a title
+             and a title match would show the spinner for the wrong entry. */}
+          {currentJob?.entryId === selectedEntry.id ? (
             <Box paddingX={2}>
               <Spinner label="Downloading" theme={theme} />
             </Box>
@@ -955,11 +952,15 @@ export function OpdsView(props: OpdsViewProps): React.JSX.Element {
   );
 }
 
-// Status bar hint for the current mode. Resolves keymap-bound actions from
-// config; feed-specific verbs (d/x/n/p/c/u) stay hardcoded because they
-// live outside the configurable keymap.
+// Status bar hint for the current mode. All actions — including the feed
+// verbs (d/x/n/p/c) — resolve from the layered OPDS keymap, so the hint stays
+// truthful after rebinding them in config.toml.
 function statusHint(mode: Mode, config: Config): string {
   const k = (action: KeyAction): string => keyForAction(config, action) ?? '';
+  const ok = (action: KeyAction): string => opdsKeyFor(config, action) ?? '';
+  // Build "key label" entries, dropping any whose key is unbound.
+  const entry = (key: string | undefined, label: string): string | null =>
+    key ? `${key} ${label}` : null;
   const nav = [k('move_cursor_down'), k('move_cursor_up')].filter(Boolean).join('/');
   const sel = k('select');
   const help = k('help');
@@ -967,26 +968,41 @@ function statusHint(mode: Mode, config: Config): string {
   const search = k('search');
   switch (mode) {
     case 'catalog-list':
-      return [nav, `${sel} open`, help, k('quit')].filter(Boolean).join(' · ');
+      return [nav, entry(sel, 'open'), entry(help, 'help'), entry(k('quit'), 'quit')]
+        .filter(Boolean)
+        .join(' · ');
     case 'browsing':
       return [
         nav,
-        `${sel}/l open`,
-        'd download',
-        'x downloads',
-        `${search} search`,
-        'u/h up',
-        'n next',
-        'p prev',
-        'c catalogs',
-        help,
-      ].join(' · ');
-    case 'entry-detail':
-      return [`${sel}/d/l download`, 'x downloads', `${back}/esc back`, help].join(' · ');
+        entry(sel, '/l open'),
+        entry(ok('opds_download'), 'download'),
+        entry(ok('opds_downloads'), 'downloads'),
+        entry(search, 'search'),
+        entry(back, '/h up'),
+        entry(ok('opds_next_page'), 'next'),
+        entry(ok('opds_prev_page'), 'prev'),
+        entry(ok('opds_catalogs'), 'catalogs'),
+        entry(help, 'help'),
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    case 'entry-detail': {
+      const dl = ok('opds_download');
+      return [
+        entry(sel, dl ? `/${dl}/l download` : '/l download'),
+        entry(ok('opds_downloads'), 'downloads'),
+        entry(back, '/esc back'),
+        entry(help, 'help'),
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    }
     case 'downloads':
-      return [nav, `${sel} open done`, 'd cancel', 'x/esc close', help].join(' · ');
+      return [nav, entry(sel, 'open done'), 'd cancel', 'x/esc close', entry(help, 'help')]
+        .filter(Boolean)
+        .join(' · ');
     case 'error':
-      return [help, `${back} back`].filter(Boolean).join(' · ');
+      return [entry(help, 'help'), entry(back, 'back')].filter(Boolean).join(' · ');
     default:
       return '';
   }

@@ -88,4 +88,17 @@ describe('createActionResolver', () => {
     expect(r.feed('g')).toBeUndefined();
     expect(r.feed('g')).toBe('go_to_start');
   });
+
+  it('does not treat a 2-char named key as a combo prefix', () => {
+    // 'up' is a named key, not a 'u'+'p' combo. Before the fix, 'u' looked
+    // like the prefix of the 'up' "combo" and was swallowed — which broke
+    // the OPDS 'u' = back verb once it routed through the resolver.
+    const config = defaultConfig();
+    config.keybindings.u = 'back';
+    const r = createActionResolver(config);
+    expect(r.feed('u')).toBe('back');
+    // And a real prefix still buffers correctly.
+    expect(r.feed('g')).toBeUndefined();
+    expect(r.feed('g')).toBe('go_to_start');
+  });
 });

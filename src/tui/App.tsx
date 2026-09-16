@@ -72,11 +72,7 @@ export function App(props: AppProps): React.JSX.Element {
 
   const theme = useMemo(() => {
     const t = THEMES[themeName];
-    if (!t) {
-      notify(`Unknown theme "${themeName}", using default`);
-      return THEMES[defaultConfig().theme]!;
-    }
-    return t;
+    return t ?? THEMES[defaultConfig().theme]!;
   }, [themeName]);
 
   // SGR mouse reporting. Click mode (button events only) in lists lets the
@@ -142,6 +138,16 @@ export function App(props: AppProps): React.JSX.Element {
   const notify = useCallback((text: string): void => {
     setMessage({ text, key: Date.now() });
   }, []);
+
+  // Fall back to the default theme when the configured/selected name is
+  // unknown (bad config value, stale --theme override). Notifying the user
+  // lives in an effect rather than in the theme useMemo above: calling
+  // setState from a useMemo body is a render-phase side effect, and notify
+  // is declared below that useMemo, so that path would have thrown a
+  // temporal-dead-zone ReferenceError instead of warning the user.
+  useEffect(() => {
+    if (!THEMES[themeName]) notify(`Unknown theme "${themeName}", using default`);
+  }, [themeName, notify]);
 
   const persistConfig = useCallback(
     (newTheme: string): void => {
@@ -407,7 +413,18 @@ export function App(props: AppProps): React.JSX.Element {
   }, [commandPaletteOpen, db, libraryRefresh]);
 
   return (
-    <Box flexDirection="column" width="100%" height="100%">
+    // ponytail: the root must ALWAYS be at least the terminal height. Ink has
+    // two paint paths: when the frame is SHORTER than the screen it writes
+    // incrementally via logUpdate (erase N previous lines + new frame); when
+    // the frame is TALLER it wipes the whole screen first. A frame that is
+    // sometimes short and sometimes tall (dialog opens → closes) leaves
+    // logUpdate's line counter stale, so the erase under-clears and the tail
+    // of the old, taller frame stays on screen — stale book rows and dialog
+    // borders the user can still see after the action completed. minHeight
+    // keeps every frame ≥ the screen height, so it always takes the
+    // full-clear path and nothing stale can survive a redraw. minHeight (not
+    // height) so a genuinely taller frame still grows instead of clipping.
+    <Box flexDirection="column" width="100%" minHeight={height}>
       {screen === 'library' ? (
         <LibraryView
           db={db}

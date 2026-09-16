@@ -106,6 +106,31 @@ describe('CommandPalette', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('ctrl+k moves the cursor up like ctrl+p', async () => {
+    const onRun = vi.fn();
+    const { stdin } = renderPalette({ screen: 'library', onRun });
+    await settle();
+    stdin.write('\u001b[B'); // down to :theme
+    await settle();
+    stdin.write('\x0b'); // ctrl+k — back up to :open
+    await settle();
+    stdin.write('\r');
+    await settle();
+    expect(onRun).toHaveBeenCalledWith(':open');
+  });
+
+  it('treats the LF byte (Ctrl+J) as Enter, not as a typed newline', async () => {
+    // Ctrl+J sends the same byte as Enter. Before resolveKeyName mapped LF,
+    // it slipped through as a raw char and corrupted the query instead of
+    // confirming the selection.
+    const onRun = vi.fn();
+    const { stdin } = renderPalette({ screen: 'library', onRun });
+    await settle();
+    stdin.write('\n');
+    await settle();
+    expect(onRun).toHaveBeenCalledWith(':open');
+  });
+
   it('backspace edits the query', async () => {
     const { stdin, lastFrame } = renderPalette();
     await settle();

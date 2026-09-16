@@ -1,0 +1,30 @@
+#!/bin/sh
+# post-checkout: refresh the local graphify dependency graph.
+#
+# graphify-out/ is a gitignored LOCAL cache of the code graph (nodes, edges,
+# communities). Nothing in CI or git keeps it fresh, so without this hook the
+# graph silently drifts to an older commit and reports stale edges — which is
+# worse than no graph at all, because it looks authoritative.
+#
+# Rules:
+#  - always exit 0: optional tooling must never block or fail a checkout
+#  - rebuild in the background so checkout returns instantly
+#  - skip when this isn't a source tree or graphify isn't installed
+
+[ -d src ] || exit 0
+command -v graphify >/dev/null 2>&1 || exit 0
+
+mkdir -p graphify-out 2>/dev/null || true
+
+# Serialize refreshes when flock is available: two concurrent `graphify update`
+# runs would interleave writes to graph.json. flock -n fails fast instead of
+# queuing, so a rapid succession of checkouts only triggers one rebuild.
+if command -v flock >/dev/null 2>&1; then
+  ( flock -n 9 || exit 0
+    graphify update . >>graphify-out/.refresh.log 2>&1
+  ) 9>graphify-out/.refresh.lock >/dev/null 2>&1 &
+else
+  ( graphify update . >>graphify-out/.refresh.log 2>&1 & ) >/dev/null 2>&1 &
+fi
+
+exit 0

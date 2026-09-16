@@ -441,6 +441,30 @@ function feedResponse(xml: string): Response {
   } as unknown as Response;
 }
 
+// Two acquisition entries that share a title: identifying the download by
+// title would match the wrong entry's detail.
+function sameTitleFeedXml(): string {
+  return `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>https://example.com/opds</id>
+  <title>Same Title Feed</title>
+  <updated>2026-01-01T00:00:00Z</updated>
+  <link rel="self" href="https://example.com/opds" type="application/atom+xml;profile=opds-catalog;kind=navigation"/>
+  <entry>
+    <id>https://example.com/books/a</id>
+    <title>Same Title</title>
+    <updated>2026-01-01T00:00:00Z</updated>
+    <link rel="http://opds-spec.org/acquisition" type="text/fb2+xml" href="https://example.com/books/a.fb2"/>
+  </entry>
+  <entry>
+    <id>https://example.com/books/b</id>
+    <title>Same Title</title>
+    <updated>2026-01-01T00:00:00Z</updated>
+    <link rel="http://opds-spec.org/acquisition" type="text/fb2+xml" href="https://example.com/books/b.fb2"/>
+  </entry>
+</feed>`;
+}
+
 // A streaming response whose body stays open until the test closes the
 // controller — lets us observe the mid-download state.
 function deferredStreamResponse(
@@ -459,22 +483,103 @@ function deferredStreamResponse(
   );
 }
 
-describe('OpdsView — download queue', () => {
-  function setup(
-    opts: {
-      downloads?: (url: string) => Response;
-    } = {},
-  ) {
+describe('OpdsView — remappable feed verbs', () => {
+  // The feed verbs (d/x/n/p/c/u) used to be hardcoded. They now resolve
+  // through the layered OPDS keymap, so a rebinding in config must work —
+  // and the global meaning of a shared letter must NOT leak into this view.
+  it('a rebound download verb queues via the new key', async () => {
+    setup({
+      downloads: () => mockResponse(FB2_SAMPLE, { headers: { 'content-type': 'text/fb2+xml' } }),
+    });
+    const cfg = defaultConfig();
+    // Rebind download to 'D'; 'd' stays delete_from_library globally.
+    cfg.keybindings.D = 'opds_download';
+    process.env.XDG_CACHE_HOME = dir;
+    const { stdin } = render(<OpdsView {...makeProps({ config: cfg })} />);
+    await settle();
+    stdin.write('\r'); // open catalog
+    await new Promise((r) => setTimeout(r, 200));
+    stdin.write('j'); // Book Two (acquisition)
+    await new Promise((r) => setTimeout(r, 100));
+    stdin.write('D'); // the rebound verb
+    await new Promise((r) => setTimeout(r, 400));
+    expect(db.listBooks()).toHaveLength(1);
+  });
+
+  it("'d' downloads in OPDS even though it deletes in the library", async () => {
+    // The layered keymap must override the global binding in this view, not
+    // the other way round.
+    setup({
+      downloads: () => mockResponse(FB2_SAMPLE, { headers: { 'content-type': 'text/fb2+xml' } }),
+    });
+    process.env.XDG_CACHE_HOME = dir;
+    const { stdin } = render(<OpdsView {...makeProps()} />);
+    await settle();
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 200));
+    stdin.write('j');
+    await new Promise((r) => setTimeout(r, 100));
+    stdin.write('d');
+    await new Promise((r) => setTimeout(r, 400));
+    expect(db.listBooks()).toHaveLength(1);
+  });
+
+  it('shows the download spinner only for the entry actually queued (id, not title)', async () => {
+    // Two acquisition entries share a title. Queue entry A, then open B's
+    // detail: the spinner must NOT appear there — a title match would
+    // wrongly show it, since the running job has the same title.
     db.addCatalog({ name: 'Test', url: 'https://example.com/opds' });
+    const streamState: { controller: ReadableStreamDefaultController<Uint8Array> | null } = {
+      controller: null,
+    };
     const fetchMock = vi.fn(async (url: unknown) => {
       const u = String(url);
-      if (u === 'https://example.com/opds') return feedResponse(queueFeedXml());
-      return opts.downloads?.(u) ?? mockResponse(FB2_SAMPLE);
+      if (u === 'https://example.com/opds') return feedResponse(sameTitleFeedXml());
+      return deferredStreamResponse(FB2_SAMPLE, (c) => {
+        streamState.controller = c;
+      });
     });
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
-    return fetchMock;
-  }
+    process.env.XDG_CACHE_HOME = dir;
+    const { stdin, lastFrame } = render(<OpdsView {...makeProps()} />);
+    await settle();
+    stdin.write('\r'); // open catalog (entry A is on top)
+    await new Promise((r) => setTimeout(r, 200));
+    stdin.write('d'); // queue A's download — stays in-flight (stream open)
+    await new Promise((r) => setTimeout(r, 100));
+    stdin.write('\r'); // open A's detail
+    await new Promise((r) => setTimeout(r, 100));
+    expect(lastFrame() ?? '').toContain('Downloading');
+    stdin.write('\u001b'); // back to browsing
+    await new Promise((r) => setTimeout(r, 100));
+    stdin.write('j'); // entry B (same title, different id)
+    await new Promise((r) => setTimeout(r, 100));
+    stdin.write('\r'); // open B's detail
+    await new Promise((r) => setTimeout(r, 100));
+    expect(lastFrame() ?? '').not.toContain('Downloading');
+    streamState.controller?.close();
+    await new Promise((r) => setTimeout(r, 300));
+  });
+});
 
+// Shared fixture for download scenarios: a catalog whose feed lists books,
+// with a pluggable handler for the acquisition URLs.
+function setup(
+  opts: {
+    downloads?: (url: string) => Response;
+  } = {},
+) {
+  db.addCatalog({ name: 'Test', url: 'https://example.com/opds' });
+  const fetchMock = vi.fn(async (url: unknown) => {
+    const u = String(url);
+    if (u === 'https://example.com/opds') return feedResponse(queueFeedXml());
+    return opts.downloads?.(u) ?? mockResponse(FB2_SAMPLE);
+  });
+  globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+  return fetchMock;
+}
+
+describe('OpdsView — download queue', () => {
   it('d queues a download, shows progress, and input stays live', async () => {
     const streamState: { controller: ReadableStreamDefaultController<Uint8Array> | null } = {
       controller: null,
