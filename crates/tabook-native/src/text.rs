@@ -61,6 +61,9 @@ pub fn display_width_inner(input: &str) -> i32 {
     width
 }
 
+// A flat lookup table of the HTML5 named entities; a giant match is the
+// most readable form for a data table.
+#[allow(clippy::too_many_lines)]
 fn named_entity(name: &str) -> Option<&'static str> {
     Some(match name {
         "amp" => "&",
@@ -237,13 +240,13 @@ fn is_noncharacter(code: u32) -> bool {
                 | 0xdffff
                 | 0xefffe
                 | 0xeffff
-                | 0x10fffe
-                | 0x10ffff
+                | 0x0010_fffe
+                | 0x0010_ffff
         )
 }
 
 fn safe_code_point(code: u32) -> char {
-    if code <= 0x10ffff && !(0xd800..=0xdfff).contains(&code) && !is_noncharacter(code) {
+    if code <= 0x0010_ffff && !(0xd800..=0xdfff).contains(&code) && !is_noncharacter(code) {
         char::from_u32(code).unwrap_or('\u{fffd}')
     } else {
         '\u{fffd}'
@@ -310,15 +313,21 @@ pub fn normalize_whitespace_inner(input: &str) -> String {
     out
 }
 
-static BR: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"(?i)<br\s*/?>").unwrap());
+static BR: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?i)<br\s*/?>").unwrap());
 static CLOSE_BLOCK: std::sync::LazyLock<Regex> =
     std::sync::LazyLock::new(|| Regex::new(r"(?i)</(p|div|blockquote|h[1-6]|li)>").unwrap());
-static LI_OPEN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"(?i)<li[^>]*>").unwrap());
-static BLOCK_OPEN: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"(?i)</?(p|div|blockquote|h[1-6]|ul|ol|hr|tr|table)[^>]*>").unwrap());
-static ANY_TAG: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
-static BLANKS: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
-static TRAIL_WS: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"[ \t]+$").unwrap());
+static LI_OPEN: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?i)<li[^>]*>").unwrap());
+static BLOCK_OPEN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?i)</?(p|div|blockquote|h[1-6]|ul|ol|hr|tr|table)[^>]*>").unwrap()
+});
+static ANY_TAG: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
+static BLANKS: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
+static TRAIL_WS: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"[ \t]+$").unwrap());
 
 pub fn strip_html_inner(html: &str) -> String {
     let s1 = BR.replace_all(html, "\n");

@@ -24,7 +24,9 @@ jobs:
 
       - name: Cargo clippy
         run: cargo clippy --no-default-features --manifest-path crates/tabook-native/Cargo.toml -- -D warnings
-        continue-on-error: true
+
+      - name: Cargo fmt
+        run: cargo fmt --manifest-path crates/tabook-native/Cargo.toml --check
 
       # Compile the napi layer (default features) without needing npm/
       # @napi-rs/cli — cargo test/clippy use --no-default-features to stay

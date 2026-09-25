@@ -80,10 +80,7 @@ pub fn scan_library_folder(db: &LibraryDb, root: &str) -> Result<ScanSummary, St
     let seen: std::collections::HashSet<String> = files.iter().cloned().collect();
     let total = files.len() as i32;
 
-    let attached_at_start = db
-        .get_library_folder_by_path(root)
-        .unwrap_or(None)
-        .is_some();
+    let attached_at_start = db.get_library_folder_by_path(root).is_some();
 
     let mut summary = ScanSummary {
         total,
@@ -101,12 +98,7 @@ pub fn scan_library_folder(db: &LibraryDb, root: &str) -> Result<ScanSummary, St
         .collect();
 
     for file in &files {
-        if attached_at_start
-            && db
-                .get_library_folder_by_path(root)
-                .unwrap_or(None)
-                .is_none()
-        {
+        if attached_at_start && db.get_library_folder_by_path(root).is_none() {
             break;
         }
         match scan_one_file(db, file, root) {
@@ -141,7 +133,7 @@ pub fn scan_library_folder(db: &LibraryDb, root: &str) -> Result<ScanSummary, St
     }
 
     // Record scan completion
-    if let Ok(Some(folder)) = db.get_library_folder_by_path(root) {
+    if let Some(folder) = db.get_library_folder_by_path(root) {
         let _ = db.set_folder_scanned_at(folder.id, chrono_now_ms());
     }
 
@@ -176,9 +168,8 @@ pub fn folder_needs_rescan(db: &LibraryDb, folder: &LibraryFolderRecord) -> bool
     let Some(last_scanned_at) = folder.last_scanned_at else {
         return true;
     };
-    let stat = match std::fs::metadata(&folder.path) {
-        Ok(s) => s,
-        Err(_) => return false,
+    let Ok(stat) = std::fs::metadata(&folder.path) else {
+        return false;
     };
     if !stat.is_dir() {
         return false;
@@ -278,7 +269,6 @@ mod tests {
         // After scan, no rescan needed
         let folder = db
             .get_library_folder_by_path(dir.to_string_lossy().as_ref())
-            .unwrap()
             .unwrap();
         assert!(!folder_needs_rescan(&db, &folder));
         // Add a new file → needs rescan. Set its mtime explicitly to a time

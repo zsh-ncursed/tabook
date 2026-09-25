@@ -161,11 +161,7 @@ fn search_in_block_raw(fb: &FoldedBlock, query: &str) -> Vec<(usize, usize)> {
         // allowing overlapping matches). Byte-slicing folded[start + 1..]
         // panics when the char at `start` is multi-byte (Cyrillic 'с' is
         // 2 bytes) — real crash: "start byte index 284 is not a char boundary".
-        let next_start = start
-            + fb.folded[start..]
-                .chars()
-                .next()
-                .map_or(1, char::len_utf8);
+        let next_start = start + fb.folded[start..].chars().next().map_or(1, char::len_utf8);
         if next_start >= fb.folded.len() {
             break;
         }

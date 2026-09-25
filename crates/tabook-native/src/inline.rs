@@ -38,7 +38,7 @@ fn parse_element(node: &XmlNode, tag: &str) -> Vec<Inline> {
             let href = attr_of(Some(node), "href").unwrap_or_default();
             vec![Inline::link(href, parse_children(&kids))]
         }
-        "span" => parse_children(&kids),
+        // "span" and unknown tags both parse children inline (fall through).
         "strong" | "b" => vec![Inline::style("bold", parse_children(&kids))],
         "emphasis" | "em" | "i" => vec![Inline::style("italic", parse_children(&kids))],
         "strikethrough" | "strike" | "s" | "del" => {
@@ -54,13 +54,12 @@ pub fn plain_of(inlines: &[Inline]) -> String {
     let mut out = String::new();
     for inline in inlines {
         match inline.kind.as_str() {
-            "text" => out.push_str(inline.text.as_deref().unwrap_or("")),
+            "text" | "code" => out.push_str(inline.text.as_deref().unwrap_or("")),
             "bold" | "italic" | "underline" | "strike" | "link" => {
                 if let Some(children) = &inline.children {
                     out.push_str(&plain_of(children));
                 }
             }
-            "code" => out.push_str(inline.text.as_deref().unwrap_or("")),
             "image" => out.push_str(inline.alt.as_deref().unwrap_or("")),
             "lineBreak" => out.push('\n'),
             _ => {}

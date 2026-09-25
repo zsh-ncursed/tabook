@@ -96,6 +96,9 @@ fn parse_nodes(
     }
 }
 
+// Dispatch over every supported XHTML tag; one arm per tag mirrors the
+// TS converter. Kept flat deliberately for parity readability.
+#[allow(clippy::too_many_lines)]
 fn parse_node(
     blocks: &mut Vec<Block>,
     id_to_block: &mut HashMap<String, i32>,

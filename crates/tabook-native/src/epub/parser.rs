@@ -68,6 +68,10 @@ fn posix_dirname(p: &str) -> String {
     }
 }
 
+// Long because metadata, manifest, spine and cover discovery mirror the
+// TS parse_opf section by section; splitting would break the 1:1 parity
+// the parity tests rely on.
+#[allow(clippy::too_many_lines)]
 fn parse_opf(zip: &ZipArchive, opf_path: &str) -> Result<OpfData, String> {
     let text = read_text_file(zip, opf_path)?;
     let children = parse_xml_inner(&text)?;
@@ -379,15 +383,13 @@ pub fn parse_epub_buffer_inner(data: &[u8], file_path: &str) -> Result<ParsedBoo
         }
     }
     if toc_links.is_empty() {
+        let nav_re = regex::Regex::new(r"(?i)nav\.x?html$").unwrap();
         for item in opf.manifest.values() {
-            if item.media_type == "application/xhtml+xml" {
-                let re = regex::Regex::new(r"(?i)nav\.x?html$").unwrap();
-                if re.is_match(&item.href) {
-                    if let Ok(links) = parse_nav_doc(&zip, &item.href, &opf_dir) {
-                        toc_links.extend(links);
-                    }
-                    break;
+            if item.media_type == "application/xhtml+xml" && nav_re.is_match(&item.href) {
+                if let Ok(links) = parse_nav_doc(&zip, &item.href, &opf_dir) {
+                    toc_links.extend(links);
                 }
+                break;
             }
         }
     }
@@ -397,11 +399,11 @@ pub fn parse_epub_buffer_inner(data: &[u8], file_path: &str) -> Result<ParsedBoo
     let mut file_to_block: HashMap<String, i32> = HashMap::new();
     let mut block_index = 0i32;
 
+    let xhtml_re = regex::Regex::new(r"(?i)\.x?html?$").unwrap();
     for idref in &opf.spine {
         let Some(item) = opf.manifest.get(idref) else {
             continue;
         };
-        let xhtml_re = regex::Regex::new(r"(?i)\.x?html?$").unwrap();
         if !xhtml_re.is_match(&item.href)
             && !item.media_type.contains("html")
             && !item.media_type.contains("xml")
@@ -458,7 +460,7 @@ pub fn parse_epub_buffer_inner(data: &[u8], file_path: &str) -> Result<ParsedBoo
         .unwrap_or_default();
     if metadata.title.is_empty() {
         let dot = filename.rfind('.').unwrap_or(filename.len());
-        metadata.title = filename[..dot].to_owned();
+        filename[..dot].clone_into(&mut metadata.title);
     }
 
     Ok(ParsedBook {
@@ -494,7 +496,7 @@ pub fn parse_epub_metadata_inner(data: &[u8], file_path: &str) -> Result<BookMet
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         let dot = filename.rfind('.').unwrap_or(filename.len());
-        metadata.title = filename[..dot].to_owned();
+        filename[..dot].clone_into(&mut metadata.title);
     }
     Ok(metadata)
 }

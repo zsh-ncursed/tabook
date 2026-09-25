@@ -121,10 +121,16 @@ impl LibraryDb {
         Ok(db)
     }
 
+    // Kept as a method on purpose: the napi class exposes close() to TS.
+    #[allow(clippy::unused_self)]
     pub fn close(&self) {
         // Connection is dropped when LibraryDb is dropped; explicit close not needed.
     }
 
+    // A linear chain of `if version < N` migration steps mirroring the TS
+    // fallback one-to-one; splitting it would scatter the schema across
+    // helpers and make reviewing a migration harder.
+    #[allow(clippy::too_many_lines)]
     fn migrate(&self) -> Result<(), String> {
         let conn = self.conn.lock().unwrap();
         let version: i32 = conn
@@ -394,23 +400,21 @@ impl LibraryDb {
         Ok(())
     }
 
-    pub fn get_progress(&self, book_id: i32) -> Result<Option<ProgressRecord>, String> {
+    pub fn get_progress(&self, book_id: i32) -> Option<ProgressRecord> {
         let conn = self.conn.lock().unwrap();
-        let row = conn
-            .query_row(
-                "SELECT book_id, position, percent, updated_at FROM reading_progress WHERE book_id = ?",
-                params![book_id],
-                |r| {
-                    Ok(ProgressRecord {
-                        book_id: r.get(0)?,
-                        position: r.get(1)?,
-                        percent: r.get(2)?,
-                        updated_at: r.get(3)?,
-                    })
-                },
-            )
-            .ok();
-        Ok(row)
+        conn.query_row(
+            "SELECT book_id, position, percent, updated_at FROM reading_progress WHERE book_id = ?",
+            params![book_id],
+            |r| {
+                Ok(ProgressRecord {
+                    book_id: r.get(0)?,
+                    position: r.get(1)?,
+                    percent: r.get(2)?,
+                    updated_at: r.get(3)?,
+                })
+            },
+        )
+        .ok()
     }
 
     // ---- Bookmarks ----
@@ -445,24 +449,22 @@ impl LibraryDb {
         Ok(rows)
     }
 
-    pub fn get_bookmark(&self, id: i32) -> Result<Option<BookmarkRecord>, String> {
+    pub fn get_bookmark(&self, id: i32) -> Option<BookmarkRecord> {
         let conn = self.conn.lock().unwrap();
-        let row = conn
-            .query_row(
-                "SELECT id, book_id, position, label, created_at FROM bookmarks WHERE id = ?",
-                params![id],
-                |r| {
-                    Ok(BookmarkRecord {
-                        id: r.get(0)?,
-                        book_id: r.get(1)?,
-                        position: r.get(2)?,
-                        label: r.get(3)?,
-                        created_at: r.get(4)?,
-                    })
-                },
-            )
-            .ok();
-        Ok(row)
+        conn.query_row(
+            "SELECT id, book_id, position, label, created_at FROM bookmarks WHERE id = ?",
+            params![id],
+            |r| {
+                Ok(BookmarkRecord {
+                    id: r.get(0)?,
+                    book_id: r.get(1)?,
+                    position: r.get(2)?,
+                    label: r.get(3)?,
+                    created_at: r.get(4)?,
+                })
+            },
+        )
+        .ok()
     }
 
     pub fn delete_bookmark(&self, id: i32) -> Result<bool, String> {
@@ -571,9 +573,9 @@ impl LibraryDb {
         Ok(())
     }
 
-    pub fn get_stats(&self, book_id: i32) -> Result<SessionStats, String> {
+    pub fn get_stats(&self, book_id: i32) -> SessionStats {
         let conn = self.conn.lock().unwrap();
-        let row = conn
+        conn
             .query_row(
                 "SELECT COUNT(*),
                  COALESCE(SUM(CASE WHEN ended_at IS NOT NULL THEN
@@ -596,8 +598,7 @@ impl LibraryDb {
                 total_seconds: 0,
                 total_pages: 0,
                 last_read_at: None,
-            });
-        Ok(row)
+            })
     }
 
     // ---- OPDS Catalogs ----
@@ -639,44 +640,40 @@ impl LibraryDb {
         Ok(rows)
     }
 
-    pub fn get_catalog(&self, id: i32) -> Result<Option<CatalogRecord>, String> {
+    pub fn get_catalog(&self, id: i32) -> Option<CatalogRecord> {
         let conn = self.conn.lock().unwrap();
-        let row = conn
-            .query_row(
-                "SELECT id, name, url, username, password FROM opds_catalogs WHERE id = ?",
-                params![id],
-                |r| {
-                    Ok(CatalogRecord {
-                        id: r.get(0)?,
-                        name: r.get(1)?,
-                        url: r.get(2)?,
-                        username: r.get(3)?,
-                        password: r.get(4)?,
-                    })
-                },
-            )
-            .ok();
-        Ok(row)
+        conn.query_row(
+            "SELECT id, name, url, username, password FROM opds_catalogs WHERE id = ?",
+            params![id],
+            |r| {
+                Ok(CatalogRecord {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    url: r.get(2)?,
+                    username: r.get(3)?,
+                    password: r.get(4)?,
+                })
+            },
+        )
+        .ok()
     }
 
-    pub fn get_catalog_by_name(&self, name: &str) -> Result<Option<CatalogRecord>, String> {
+    pub fn get_catalog_by_name(&self, name: &str) -> Option<CatalogRecord> {
         let conn = self.conn.lock().unwrap();
-        let row = conn
-            .query_row(
-                "SELECT id, name, url, username, password FROM opds_catalogs WHERE name = ?",
-                params![name],
-                |r| {
-                    Ok(CatalogRecord {
-                        id: r.get(0)?,
-                        name: r.get(1)?,
-                        url: r.get(2)?,
-                        username: r.get(3)?,
-                        password: r.get(4)?,
-                    })
-                },
-            )
-            .ok();
-        Ok(row)
+        conn.query_row(
+            "SELECT id, name, url, username, password FROM opds_catalogs WHERE name = ?",
+            params![name],
+            |r| {
+                Ok(CatalogRecord {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    url: r.get(2)?,
+                    username: r.get(3)?,
+                    password: r.get(4)?,
+                })
+            },
+        )
+        .ok()
     }
 
     /// Partial update matching the TS `updateCatalog(id, fields)`: only the
@@ -766,26 +763,21 @@ impl LibraryDb {
         Ok(rows)
     }
 
-    pub fn get_library_folder_by_path(
-        &self,
-        path: &str,
-    ) -> Result<Option<LibraryFolderRecord>, String> {
+    pub fn get_library_folder_by_path(&self, path: &str) -> Option<LibraryFolderRecord> {
         let conn = self.conn.lock().unwrap();
-        let row = conn
-            .query_row(
-                "SELECT id, path, added_at, last_scanned_at FROM library_folders WHERE path = ?",
-                params![path],
-                |r| {
-                    Ok(LibraryFolderRecord {
-                        id: r.get(0)?,
-                        path: r.get(1)?,
-                        added_at: r.get(2)?,
-                        last_scanned_at: r.get(3)?,
-                    })
-                },
-            )
-            .ok();
-        Ok(row)
+        conn.query_row(
+            "SELECT id, path, added_at, last_scanned_at FROM library_folders WHERE path = ?",
+            params![path],
+            |r| {
+                Ok(LibraryFolderRecord {
+                    id: r.get(0)?,
+                    path: r.get(1)?,
+                    added_at: r.get(2)?,
+                    last_scanned_at: r.get(3)?,
+                })
+            },
+        )
+        .ok()
     }
 
     pub fn set_folder_scanned_at(&self, id: i32, scanned_at_ms: i64) -> Result<(), String> {
@@ -867,7 +859,10 @@ fn row_to_book(r: &rusqlite::Row) -> rusqlite::Result<BookRecord> {
     let genres: Vec<String> = if genres_raw.is_empty() {
         Vec::new()
     } else {
-        genres_raw.split('\n').map(std::borrow::ToOwned::to_owned).collect()
+        genres_raw
+            .split('\n')
+            .map(std::borrow::ToOwned::to_owned)
+            .collect()
     };
     let authors: Vec<Author> = authors_raw
         .split('\n')
@@ -875,8 +870,14 @@ fn row_to_book(r: &rusqlite::Row) -> rusqlite::Result<BookRecord> {
         .map(|l| {
             let parts: Vec<&str> = l.split('\t').collect();
             Author {
-                first_name: parts.first().map(std::string::ToString::to_string).unwrap_or_default(),
-                last_name: parts.get(1).map(std::string::ToString::to_string).unwrap_or_default(),
+                first_name: parts
+                    .first()
+                    .map(std::string::ToString::to_string)
+                    .unwrap_or_default(),
+                last_name: parts
+                    .get(1)
+                    .map(std::string::ToString::to_string)
+                    .unwrap_or_default(),
                 middle_name: parts
                     .get(2)
                     .filter(|s| !s.is_empty())
@@ -1034,7 +1035,7 @@ mod tests {
             .add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None)
             .unwrap();
         db.set_progress(id, 500, 50.0).unwrap();
-        let p = db.get_progress(id).unwrap().unwrap();
+        let p = db.get_progress(id).unwrap();
         assert_eq!(p.position, 500);
         assert_eq!(p.percent, 50.0);
     }
@@ -1056,12 +1057,12 @@ mod tests {
     #[test]
     fn get_bookmark() {
         let db = test_db();
-        assert!(db.get_bookmark(1).unwrap().is_none());
+        assert!(db.get_bookmark(1).is_none());
         let id = db
             .add_book("/a.fb2", "a.fb2", "fb2", 100, &sample_metadata(), None)
             .unwrap();
         let bm_id = db.add_bookmark(id, 100, "label").unwrap();
-        let bm = db.get_bookmark(bm_id).unwrap().unwrap();
+        let bm = db.get_bookmark(bm_id).unwrap();
         assert_eq!(bm.label, "label");
         assert_eq!(bm.book_id, id);
     }
@@ -1127,7 +1128,7 @@ mod tests {
             .unwrap();
         let sid = db.start_session(id).unwrap();
         db.end_session(sid, 5).unwrap();
-        let stats = db.get_stats(id).unwrap();
+        let stats = db.get_stats(id);
         assert_eq!(stats.session_count, 1);
         assert_eq!(stats.total_pages, 5);
     }
@@ -1151,7 +1152,7 @@ mod tests {
     #[test]
     fn get_catalog_and_by_name() {
         let db = test_db();
-        assert!(db.get_catalog(1).unwrap().is_none());
+        assert!(db.get_catalog(1).is_none());
         let id = db
             .add_catalog(
                 "Gutenberg",
@@ -1160,11 +1161,11 @@ mod tests {
                 None,
             )
             .unwrap();
-        let by_id = db.get_catalog(id).unwrap().unwrap();
+        let by_id = db.get_catalog(id).unwrap();
         assert_eq!(by_id.name, "Gutenberg");
-        let by_name = db.get_catalog_by_name("Gutenberg").unwrap().unwrap();
+        let by_name = db.get_catalog_by_name("Gutenberg").unwrap();
         assert_eq!(by_name.id, id);
-        assert!(db.get_catalog_by_name("Nope").unwrap().is_none());
+        assert!(db.get_catalog_by_name("Nope").is_none());
     }
 
     #[test]
@@ -1176,7 +1177,7 @@ mod tests {
         // Partial update: only name changes, credentials stay.
         db.update_catalog(id, Some("New"), None, None, None)
             .unwrap();
-        let cat = db.get_catalog(id).unwrap().unwrap();
+        let cat = db.get_catalog(id).unwrap();
         assert_eq!(cat.name, "New");
         assert_eq!(cat.url, "https://old/opds");
         assert_eq!(cat.username.as_deref(), Some("u"));
@@ -1184,13 +1185,13 @@ mod tests {
         // Credentials update only.
         db.update_catalog(id, None, None, Some("u2"), Some("p2"))
             .unwrap();
-        let cat = db.get_catalog(id).unwrap().unwrap();
+        let cat = db.get_catalog(id).unwrap();
         assert_eq!(cat.username.as_deref(), Some("u2"));
         assert_eq!(cat.password.as_deref(), Some("p2"));
         assert_eq!(cat.name, "New");
         // No-op with no fields.
         db.update_catalog(id, None, None, None, None).unwrap();
-        let cat = db.get_catalog(id).unwrap().unwrap();
+        let cat = db.get_catalog(id).unwrap();
         assert_eq!(cat.url, "https://old/opds");
     }
 
@@ -1202,10 +1203,7 @@ mod tests {
         assert_eq!(folders.len(), 1);
         assert_eq!(folders[0].id, id);
         db.set_folder_scanned_at(id, 1234567890).unwrap();
-        let folder = db
-            .get_library_folder_by_path("/home/user/books")
-            .unwrap()
-            .unwrap();
+        let folder = db.get_library_folder_by_path("/home/user/books").unwrap();
         assert_eq!(folder.last_scanned_at, Some(1234567890));
     }
 

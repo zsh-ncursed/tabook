@@ -10,7 +10,6 @@ use crate::model::ParsedBook;
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
-
 const MAX_CACHED_BOOKS: usize = 4;
 
 struct BookCache {
@@ -73,10 +72,17 @@ pub fn parse_book_file_inner(file_path: &str) -> Result<ParsedBook, String> {
 
 pub fn detect_format_inner(data: &[u8], name: &str) -> Result<String, String> {
     let lower = name.to_lowercase();
-    if lower.ends_with(".fb2") || lower.ends_with(".fb2.zip") {
+    if lower.ends_with(".fb2.zip") {
         return Ok("fb2".into());
     }
-    if lower.ends_with(".epub") {
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    if ext.eq_ignore_ascii_case("fb2") {
+        return Ok("fb2".into());
+    }
+    if ext.eq_ignore_ascii_case("epub") {
         return Ok("epub".into());
     }
     if crate::encoding::is_zip_buffer_inner(data) {

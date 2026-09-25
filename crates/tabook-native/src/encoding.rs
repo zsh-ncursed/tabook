@@ -60,13 +60,12 @@ pub fn decode_xml_buffer_inner(data: &[u8]) -> String {
         data
     };
     let enc = match encoding.as_str() {
-        "utf-8" => encoding_rs::UTF_8,
         "utf-16le" => encoding_rs::UTF_16LE,
         "utf-16be" => encoding_rs::UTF_16BE,
         "windows-1251" => encoding_rs::WINDOWS_1251,
-        "windows-1252" => encoding_rs::WINDOWS_1252,
+        "windows-1252" | "iso-8859-1" => encoding_rs::WINDOWS_1252, // iso-8859-1: closest available
         "koi8-r" => encoding_rs::KOI8_R,
-        "iso-8859-1" => encoding_rs::WINDOWS_1252, // closest available
+        // utf-8 and anything unrecognized decode as UTF-8 with replacement.
         _ => encoding_rs::UTF_8,
     };
     let (cow, _, _) = enc.decode(bytes);

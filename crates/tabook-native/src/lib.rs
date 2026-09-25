@@ -5,6 +5,18 @@
     clippy::missing_panics_doc,
     dead_code
 )]
+// The napi model uses i32 for indices/counts (matching the TS side, where
+// numbers are f64 anyway) while Rust slices/iterators are usize-based, so the
+// boundary converts between the two everywhere. These casts are deliberate
+// and pervasive (~150 sites); converting every one to i32::try_from would
+// obscure the parsers without adding safety — indices come from lengths of
+// parsed documents, and a >2^31-line book is beyond any realistic input.
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
 
 mod db;
 mod encoding;
@@ -959,8 +971,6 @@ impl LibraryDb {
     pub fn get_progress(&self, book_id: f64) -> Option<ProgressRecord> {
         self.inner
             .get_progress(book_id as i32)
-            .ok()
-            .flatten()
             .map(|p| ProgressRecord {
                 book_id: p.book_id,
                 position: p.position as f64,
@@ -995,17 +1005,13 @@ impl LibraryDb {
 
     #[napi]
     pub fn get_bookmark(&self, id: f64) -> Option<BookmarkRecord> {
-        self.inner
-            .get_bookmark(id as i32)
-            .ok()
-            .flatten()
-            .map(|b| BookmarkRecord {
-                id: b.id,
-                book_id: b.book_id,
-                position: b.position as f64,
-                label: b.label,
-                created_at: b.created_at,
-            })
+        self.inner.get_bookmark(id as i32).map(|b| BookmarkRecord {
+            id: b.id,
+            book_id: b.book_id,
+            position: b.position as f64,
+            label: b.label,
+            created_at: b.created_at,
+        })
     }
 
     #[napi]
@@ -1078,15 +1084,7 @@ impl LibraryDb {
 
     #[napi]
     pub fn get_stats(&self, book_id: f64) -> SessionStats {
-        let s = self
-            .inner
-            .get_stats(book_id as i32)
-            .unwrap_or(crate::db::SessionStats {
-                total_seconds: 0,
-                total_pages: 0,
-                session_count: 0,
-                last_read_at: None,
-            });
+        let s = self.inner.get_stats(book_id as i32);
         SessionStats {
             total_seconds: s.total_seconds as f64,
             total_pages: s.total_pages as f64,
@@ -1127,25 +1125,19 @@ impl LibraryDb {
 
     #[napi]
     pub fn get_catalog(&self, id: f64) -> Option<CatalogRecord> {
-        self.inner
-            .get_catalog(id as i32)
-            .ok()
-            .flatten()
-            .map(|c| CatalogRecord {
-                id: c.id,
-                name: c.name,
-                url: c.url,
-                username: c.username,
-                password: c.password,
-            })
+        self.inner.get_catalog(id as i32).map(|c| CatalogRecord {
+            id: c.id,
+            name: c.name,
+            url: c.url,
+            username: c.username,
+            password: c.password,
+        })
     }
 
     #[napi]
     pub fn get_catalog_by_name(&self, name: String) -> Option<CatalogRecord> {
         self.inner
             .get_catalog_by_name(&name)
-            .ok()
-            .flatten()
             .map(|c| CatalogRecord {
                 id: c.id,
                 name: c.name,
@@ -1209,8 +1201,6 @@ impl LibraryDb {
     pub fn get_library_folder_by_path(&self, path: String) -> Option<LibraryFolderRecord> {
         self.inner
             .get_library_folder_by_path(&path)
-            .ok()
-            .flatten()
             .map(|f| LibraryFolderRecord {
                 id: f.id,
                 path: f.path,

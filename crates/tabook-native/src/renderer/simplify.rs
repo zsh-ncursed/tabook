@@ -57,7 +57,6 @@ fn simplify_block(block: &Block) -> Vec<Block> {
                 Block::paragraph(children)
             })
             .collect(),
-        "image" | "empty" => Vec::new(),
         _ => Vec::new(),
     }
 }

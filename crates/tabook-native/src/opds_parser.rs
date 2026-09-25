@@ -174,6 +174,9 @@ fn parse_feed(node: &XmlNode) -> OpdsFeed {
     }
 }
 
+// Every OPDS entry field is extracted in a small inline block mirroring
+// the TS parser; splitting would scatter field handling.
+#[allow(clippy::too_many_lines)]
 fn parse_entry(node: &XmlNode) -> OpdsEntry {
     let id = text_of(first_child(Some(node), "id"));
     let title = text_of(first_child(Some(node), "title"));
@@ -278,7 +281,7 @@ fn parse_entry(node: &XmlNode) -> OpdsEntry {
             Some(s)
         }
     };
-    let publisher = {
+    let publisher_name = {
         let s = text_of(first_child(Some(node), "publisher"));
         if s.is_empty() {
             None
@@ -346,7 +349,7 @@ fn parse_entry(node: &XmlNode) -> OpdsEntry {
         categories,
         language,
         issued,
-        publisher,
+        publisher: publisher_name,
         identifier,
         rights,
         published,

@@ -23,21 +23,21 @@ impl XmlNode {
     pub fn tag(&self) -> &str {
         match self {
             XmlNode::Element { tag, .. } => tag,
-            _ => "",
+            XmlNode::Text(_) => "",
         }
     }
 
     pub fn children(&self) -> &[XmlNode] {
         match self {
             XmlNode::Element { children, .. } => children,
-            _ => &[],
+            XmlNode::Text(_) => &[],
         }
     }
 
     pub fn attrs(&self) -> &[XmlAttr] {
         match self {
             XmlNode::Element { attrs, .. } => attrs,
-            _ => &[],
+            XmlNode::Text(_) => &[],
         }
     }
 }

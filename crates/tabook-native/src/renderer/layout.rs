@@ -31,6 +31,9 @@ pub struct Char {
     pub offset: i32, // -1 for inserted hyphens
 }
 
+// Field-for-field mirror of the napi/TS StyledSpan shape; restructuring it
+// would complicate the boundary conversion for no gain.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug)]
 pub struct StyledSpan {
     pub text: String,
@@ -58,12 +61,15 @@ pub struct HighlightRange {
     pub end: i32,
 }
 
+/// Per-block highlight ranges supplier: block index → ranges, when present.
+type HighlightsFn = Box<dyn Fn(i32) -> Option<Vec<HighlightRange>> + Send + Sync>;
+
 pub struct LayoutOptions {
     pub typo: TypographyConfig,
     pub width: i32,
     pub justify: bool,
     pub hyphenation: bool,
-    pub get_highlights: Option<Box<dyn Fn(i32) -> Option<Vec<HighlightRange>> + Send + Sync>>,
+    pub get_highlights: Option<HighlightsFn>,
 }
 
 #[derive(Clone, Debug)]
@@ -80,94 +86,73 @@ fn style_key(s: u8) -> String {
     format!("{s:06b}")
 }
 
-pub fn inline_to_spans(inlines: &[Inline]) -> Vec<StyledSpan> {
-    let mut chars: Vec<Char> = Vec::new();
-    let mut offset = 0i32;
-    let push_chars = |chars: &mut Vec<Char>, text: &str, st: u8, offset: &mut i32| {
-        for ch in text.chars() {
-            chars.push(Char {
-                ch,
-                style: st,
-                offset: *offset,
-            });
-            *offset += 1;
-        }
-    };
-    fn walk(inlines: &[Inline], st: u8, chars: &mut Vec<Char>, offset: &mut i32) {
-        for inline in inlines {
-            match inline.kind.as_str() {
-                "text" => {
-                    let text = inline.text.as_deref().unwrap_or("");
-                    for ch in text.chars() {
-                        chars.push(Char {
-                            ch,
-                            style: st,
-                            offset: *offset,
-                        });
-                        *offset += 1;
-                    }
-                }
-                "bold" => {
-                    if let Some(children) = &inline.children {
-                        walk(children, st | BOLD, chars, offset);
-                    }
-                }
-                "italic" => {
-                    if let Some(children) = &inline.children {
-                        walk(children, st | ITALIC, chars, offset);
-                    }
-                }
-                "underline" => {
-                    if let Some(children) = &inline.children {
-                        walk(children, st | UNDERLINE, chars, offset);
-                    }
-                }
-                "strike" => {
-                    if let Some(children) = &inline.children {
-                        walk(children, st | STRIKE, chars, offset);
-                    }
-                }
-                "link" => {
-                    if let Some(children) = &inline.children {
-                        walk(children, st | LINK, chars, offset);
-                    }
-                }
-                "code" => {
-                    let text = inline.text.as_deref().unwrap_or("");
-                    for ch in text.chars() {
-                        chars.push(Char {
-                            ch,
-                            style: st,
-                            offset: *offset,
-                        });
-                        *offset += 1;
-                    }
-                }
-                "image" => {
-                    let alt = inline.alt.as_deref().unwrap_or("");
-                    for ch in alt.chars() {
-                        chars.push(Char {
-                            ch,
-                            style: st,
-                            offset: *offset,
-                        });
-                        *offset += 1;
-                    }
-                }
-                "lineBreak" => {
+fn walk_inlines_for_spans(inlines: &[Inline], st: u8, chars: &mut Vec<Char>, offset: &mut i32) {
+    for inline in inlines {
+        match inline.kind.as_str() {
+            "text" | "code" => {
+                let text = inline.text.as_deref().unwrap_or("");
+                for ch in text.chars() {
                     chars.push(Char {
-                        ch: ' ',
+                        ch,
                         style: st,
                         offset: *offset,
                     });
                     *offset += 1;
                 }
-                _ => {}
             }
+            "bold" => {
+                if let Some(children) = &inline.children {
+                    walk_inlines_for_spans(children, st | BOLD, chars, offset);
+                }
+            }
+            "italic" => {
+                if let Some(children) = &inline.children {
+                    walk_inlines_for_spans(children, st | ITALIC, chars, offset);
+                }
+            }
+            "underline" => {
+                if let Some(children) = &inline.children {
+                    walk_inlines_for_spans(children, st | UNDERLINE, chars, offset);
+                }
+            }
+            "strike" => {
+                if let Some(children) = &inline.children {
+                    walk_inlines_for_spans(children, st | STRIKE, chars, offset);
+                }
+            }
+            "link" => {
+                if let Some(children) = &inline.children {
+                    walk_inlines_for_spans(children, st | LINK, chars, offset);
+                }
+            }
+            "image" => {
+                let alt = inline.alt.as_deref().unwrap_or("");
+                for ch in alt.chars() {
+                    chars.push(Char {
+                        ch,
+                        style: st,
+                        offset: *offset,
+                    });
+                    *offset += 1;
+                }
+            }
+            "lineBreak" => {
+                chars.push(Char {
+                    ch: ' ',
+                    style: st,
+                    offset: *offset,
+                });
+                *offset += 1;
+            }
+            _ => {}
         }
     }
-    walk(inlines, EMPTY_STYLE, &mut chars, &mut offset);
-    let _ = push_chars;
+}
+
+pub fn inline_to_spans(inlines: &[Inline]) -> Vec<StyledSpan> {
+    let mut chars: Vec<Char> = Vec::new();
+    let mut offset = 0i32;
+    walk_inlines_for_spans(inlines, EMPTY_STYLE, &mut chars, &mut offset);
     chars_to_spans(&chars)
 }
 
@@ -449,8 +434,8 @@ fn spans_to_plain(spans: &[StyledSpan]) -> String {
 
 fn highlight_plain(text: &str, highlights: &[HighlightRange]) -> Vec<StyledSpan> {
     let mut chars = Vec::new();
-    let mut offset = 0i32;
-    for ch in text.chars() {
+    for (offset, ch) in text.chars().enumerate() {
+        let offset = offset as i32;
         let in_range = highlights
             .iter()
             .any(|h| offset >= h.start && offset < h.end);
@@ -459,7 +444,6 @@ fn highlight_plain(text: &str, highlights: &[HighlightRange]) -> Vec<StyledSpan>
             style: if in_range { HIGHLIGHT } else { EMPTY_STYLE },
             offset,
         });
-        offset += 1;
     }
     chars_to_spans(&chars)
 }
@@ -532,7 +516,7 @@ fn justify_line(line: &TextLine, content_width: i32) -> TextLine {
     let gaps = space_count;
     let base = slack / gaps;
     let extra = slack % gaps;
-    let mut spans: Vec<StyledSpan> = line.spans.to_vec();
+    let mut spans: Vec<StyledSpan> = line.spans.clone();
     let mut applied = 0i32;
     for span in &mut spans {
         if !span.text.contains(' ') {
@@ -563,7 +547,7 @@ fn justify_line(line: &TextLine, content_width: i32) -> TextLine {
     }
 }
 
-fn apply_justify(lines: &mut Vec<TextLine>, width: i32) {
+fn apply_justify(lines: &mut [TextLine], width: i32) {
     if lines.len() <= 1 {
         return;
     }
@@ -594,6 +578,9 @@ fn apply_justify(lines: &mut Vec<TextLine>, width: i32) {
     }
 }
 
+// One match arm per block type; the arms are the unit of parity with the
+// TS layout engine, so the function is kept whole.
+#[allow(clippy::too_many_lines)]
 pub fn layout_block(block: &Block, block_index: i32, opts: &LayoutOptions) -> Vec<TextLine> {
     let width = opts.width;
     let typo = &opts.typo;
@@ -608,11 +595,11 @@ pub fn layout_block(block: &Block, block_index: i32, opts: &LayoutOptions) -> Ve
     let block_index_local = block_index;
 
     let emit = |role: &str,
-                    spans: Vec<StyledSpan>,
-                    indent: i32,
-                    prefix: &str,
-                    char_offset: i32,
-                    lines: &mut Vec<TextLine>| {
+                spans: Vec<StyledSpan>,
+                indent: i32,
+                prefix: &str,
+                char_offset: i32,
+                lines: &mut Vec<TextLine>| {
         let all_empty = spans.is_empty() || spans.iter().all(|s| s.text.trim().is_empty());
         if all_empty {
             if role == "paragraph" || role == "listItem" || role == "quote" {
@@ -900,6 +887,10 @@ pub fn layout_block(block: &Block, block_index: i32, opts: &LayoutOptions) -> Ve
     lines
 }
 
+// Passes layout context through recursion (nesting level, offsets,
+// highlights); a context struct would just move the same list of
+// parameters to one more construction site.
+#[allow(clippy::too_many_arguments)]
 fn walk_list(
     list: &Block,
     level: i32,
@@ -973,6 +964,14 @@ fn walk_list(
     }
 }
 
+struct TableRow {
+    cells: Vec<String>,
+    is_header: bool,
+}
+
+// Column measurement + per-row rendering mirror the TS layout_table;
+// kept whole for parity review.
+#[allow(clippy::too_many_lines)]
 fn layout_table(
     block: &Block,
     block_index: i32,
@@ -988,11 +987,6 @@ fn layout_table(
     );
     if col_count == 0 {
         return;
-    }
-
-    struct TableRow {
-        cells: Vec<String>,
-        is_header: bool,
     }
 
     let mut all_rows: Vec<TableRow> = Vec::new();
@@ -1062,7 +1056,11 @@ fn layout_table(
                 wrapped_cells.push(wrapped.lines);
             }
         }
-        let row_height = wrapped_cells.iter().map(std::vec::Vec::len).max().unwrap_or(1);
+        let row_height = wrapped_cells
+            .iter()
+            .map(std::vec::Vec::len)
+            .max()
+            .unwrap_or(1);
         let row_height = std::cmp::max(1, row_height);
         for r in 0..row_height {
             let mut spans = Vec::new();

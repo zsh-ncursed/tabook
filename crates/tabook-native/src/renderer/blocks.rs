@@ -11,13 +11,12 @@ pub fn inline_text(inlines: &[Inline]) -> String {
 fn walk_inlines(inlines: &[Inline], out: &mut String) {
     for inline in inlines {
         match inline.kind.as_str() {
-            "text" => out.push_str(inline.text.as_deref().unwrap_or("")),
+            "text" | "code" => out.push_str(inline.text.as_deref().unwrap_or("")),
             "bold" | "italic" | "underline" | "strike" | "link" => {
                 if let Some(children) = &inline.children {
                     walk_inlines(children, out);
                 }
             }
-            "code" => out.push_str(inline.text.as_deref().unwrap_or("")),
             "image" => out.push_str(inline.alt.as_deref().unwrap_or("")),
             "lineBreak" => out.push(' '),
             _ => {}
@@ -77,7 +76,6 @@ pub fn block_to_plain_text(block: &Block) -> String {
             lines.join("\n")
         }
         "image" => block.alt.clone().unwrap_or_default(),
-        "empty" => String::new(),
         _ => String::new(),
     }
 }

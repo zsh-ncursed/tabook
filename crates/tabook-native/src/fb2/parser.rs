@@ -108,7 +108,7 @@ fn parse_metadata(root: &XmlNode, fallback_title: &str) -> BookMetadata {
         year: None,
     };
     let Some(info) = info else {
-        metadata.title = fallback_title.to_owned();
+        fallback_title.clone_into(&mut metadata.title);
         return metadata;
     };
     let book_title = text_of(first_child(Some(info), "book-title"));
@@ -222,13 +222,12 @@ fn plain_heading_text(inlines: &[Inline]) -> String {
     let mut out = String::new();
     for inline in inlines {
         match inline.kind.as_str() {
-            "text" => out.push_str(inline.text.as_deref().unwrap_or("")),
+            "text" | "code" => out.push_str(inline.text.as_deref().unwrap_or("")),
             "bold" | "italic" | "underline" | "strike" | "link" => {
                 if let Some(children) = &inline.children {
                     out.push_str(&plain_heading_text(children));
                 }
             }
-            "code" => out.push_str(inline.text.as_deref().unwrap_or("")),
             _ => {}
         }
     }
@@ -276,9 +275,7 @@ fn parse_poem(node: &XmlNode) -> Block {
             for sub in find_children(kid, "subtitle") {
                 current.push(normalize_inlines(parse_inlines(std::slice::from_ref(sub))));
             }
-        } else if tag == "v" {
-            current.push(normalize_inlines(parse_inlines(std::slice::from_ref(kid))));
-        } else if tag == "subtitle" {
+        } else if tag == "v" || tag == "subtitle" {
             current.push(normalize_inlines(parse_inlines(std::slice::from_ref(kid))));
         } else if tag == "title" {
             flush(&mut current, &mut stanzas);
@@ -362,13 +359,8 @@ fn emit_heading(
 }
 
 fn emit_block(state: &mut ParseState, block: Block) {
-    let blocks = match block {
-        Block { r#type: _, .. } => vec![block],
-    };
-    for b in blocks {
-        state.blocks.push(b);
-        state.block_index += 1;
-    }
+    state.blocks.push(block);
+    state.block_index += 1;
 }
 
 fn parse_container(state: &mut ParseState, nodes: &[XmlNode], depth: i32) {
@@ -499,13 +491,10 @@ pub fn parse_fb2_text(
 ) -> Result<ParsedBookResult, String> {
     let children = parse_xml_inner(xml_text)?;
     let (root, root_children) = find_root(&children)?;
-    let fallback_title = filename
-        .rsplit('.')
-        .nth(1)
-        .map_or(filename, |_| {
-            let dot = filename.rfind('.').unwrap_or(filename.len());
-            &filename[..dot]
-        });
+    let fallback_title = filename.rsplit('.').nth(1).map_or(filename, |_| {
+        let dot = filename.rfind('.').unwrap_or(filename.len());
+        &filename[..dot]
+    });
     let metadata = parse_metadata(root, fallback_title);
     let resources = collect_resources(&root_children);
     let mut state = ParseState {
@@ -559,7 +548,7 @@ fn parse_fb2_zip(data: &[u8], file_path: &str) -> Result<ParsedBook, String> {
     let entries: Vec<_> = zip
         .entries
         .iter()
-        .filter(|e| e.name.ends_with(".fb2") && !e.name.starts_with("__MACOSX"))
+        .filter(|e| e.name.to_lowercase().ends_with(".fb2") && !e.name.starts_with("__MACOSX"))
         .collect();
     if entries.is_empty() {
         return Err("ZIP archive does not contain an .fb2 file".into());
@@ -585,7 +574,7 @@ pub fn parse_fb2_metadata_inner(data: &[u8], file_path: &str) -> Result<BookMeta
         let entries: Vec<_> = zip
             .entries
             .iter()
-            .filter(|e| e.name.ends_with(".fb2") && !e.name.starts_with("__MACOSX"))
+            .filter(|e| e.name.to_lowercase().ends_with(".fb2") && !e.name.starts_with("__MACOSX"))
             .collect();
         if entries.is_empty() {
             return Err("ZIP archive does not contain an .fb2 file".into());
