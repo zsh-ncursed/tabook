@@ -1,42 +1,19 @@
-// Golden parity: database layer — NativeDbBackend (rusqlite through the napi
-// binding) vs SqliteDbBackend (better-sqlite3 fallback). Both run the
-// identical operation script against their own database file and every
-// record they return must match. Catches drift applied to only one side: a
-// column default, null-vs-undefined fields, derived text (authorsText /
-// seriesText), id ordering, cascade behavior.
+// Database layer golden script: NativeDbBackend (rusqlite through the napi
+// binding) runs the full operation script and the result is snapshotted.
+// The former better-sqlite3 backend it was parity-checked against is gone
+// (the Rust core is now the single DB implementation), so this file guards
+// the native behavior itself: any change to record shapes, id allocation,
+// derived text or cascade behavior shows up as a snapshot diff.
 import { describe, it, expect, afterAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { NativeDbBackend, SqliteDbBackend, type DbBackend, type SessionStats } from '../db/db.js';
+import { NativeDbBackend, type DbBackend, type SessionStats } from '../db/db.js';
 import type { BookMetadata } from '../formats/model.js';
 import { requireNative } from './helpers.js';
 
 // Guard the native binding so NativeDbBackend can open a database.
 requireNative();
-
-// Datetimes are wall-clock values written by SQL datetime('now') / the Rust
-// clock; the two backends run milliseconds apart so the *strings* differ
-// (and under load they can straddle a second boundary). Normalize both the
-// 'YYYY-MM-DD HH:MM:SS' (SQLite) and 'YYYY-MM-DDTHH:MM:SS' (ISO) forms to a
-// constant, and drop null/undefined (the backends legitimately differ in
-// optional-field presence, like the rest of the parity suite), before
-// comparing.
-function canonical(value: unknown): unknown {
-  if (typeof value === 'string') {
-    return /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(value) ? 'TIME' : value;
-  }
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value !== null && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (v === null || v === undefined) continue;
-      out[k] = canonical(v);
-    }
-    return out;
-  }
-  return value;
-}
 
 const META_A: BookMetadata = {
   title: 'Тестовая книга — Том I',
@@ -183,33 +160,44 @@ describe('parity: database backend', () => {
     for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
   });
 
-  it('native and fallback backends agree on the full operation script', () => {
+  it('native backend runs the full operation script consistently', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tabook-db-parity-'));
     dirs.push(dir);
     const natPath = path.join(dir, 'native.db');
-    const sqlPath = path.join(dir, 'fallback.db');
     const paths = { a: path.join(dir, 'book-a.fb2'), b: path.join(dir, 'book-b.epub') };
 
     const nat = new NativeDbBackend(natPath);
-    const sql = new SqliteDbBackend(sqlPath);
     try {
-      const natOut = script(nat, paths);
-      const sqlOut = script(sql, paths);
+      const out = script(nat, paths);
 
-      // Everything except the session stats compares field-for-field.
-      const { stats: natStats, ...natRest } = natOut;
-      const { stats: sqlStats, ...sqlRest } = sqlOut;
-      expect(canonical(natRest)).toEqual(canonical(sqlRest));
+      // Determinism spot-checks that the old cross-backend comparison
+      // covered indirectly: id allocation is sequential, the upsert keeps
+      // one row per path, and deletes report exact counts.
+      expect(out.bookIds).toEqual([1, 2]);
+      expect(out.removedByPaths).toBe(1);
+      expect(out.removedByRoot).toBe(1);
+      expect(out.bookAfterRemove).toBeUndefined();
+      expect(out.folderRemoved).toBe(true);
+      expect(out.foldersFinal).toEqual([]);
 
-      // totalSeconds is a wall-clock duration measured independently by each
-      // backend; allow a sub-second skew. The rest of the stats must match.
-      expect(sqlStats.totalPages).toBe(natStats.totalPages);
-      expect(sqlStats.sessionCount).toBe(natStats.sessionCount);
-      expect(canonical(sqlStats.lastReadAt)).toBe(canonical(natStats.lastReadAt));
-      expect(Math.abs(sqlStats.totalSeconds - natStats.totalSeconds)).toBeLessThanOrEqual(2);
+      // Derived text matches the structured authors/series.
+      const bookA = out.bookA as {
+        authorsText: string;
+        seriesText: string | null;
+        progressPercent: number | null;
+        progressPosition: number | null;
+      };
+      expect(bookA.authorsText).toBe('Петров Иван Сергеевич, jane, Author Solo');
+      expect(bookA.seriesText).toBe('Серия #3');
+      expect(bookA.progressPercent).toBeCloseTo(42);
+      expect(bookA.progressPosition).toBe(12345);
+
+      // Cascades: progress/bookmarks/sessions die with the book.
+      expect(out.progress).toBeDefined();
+      expect((out.bookmarks as unknown[]).length).toBeGreaterThan(0);
+      expect(out.stats.sessionCount).toBe(1);
     } finally {
       nat.close();
-      sql.close();
     }
   });
 });

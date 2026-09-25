@@ -55,6 +55,9 @@ mod tests {
 
     #[test]
     fn nested_dir() {
-        assert_eq!(resolve_href("OEBPS", "images/cover.jpg"), "OEBPS/images/cover.jpg");
+        assert_eq!(
+            resolve_href("OEBPS", "images/cover.jpg"),
+            "OEBPS/images/cover.jpg"
+        );
     }
 }

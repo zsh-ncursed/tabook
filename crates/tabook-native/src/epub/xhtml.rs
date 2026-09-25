@@ -12,14 +12,17 @@ use crate::model::{Block, Inline, ListItem};
 use crate::xml::{attr_of, children_of, find_children, full_text_of, normalize_tag, XmlNode};
 use std::collections::HashMap;
 
-pub fn parse_xhtml_blocks(
-    nodes: &[XmlNode],
-    base_dir: &str,
-) -> (Vec<Block>, HashMap<String, i32>) {
+pub fn parse_xhtml_blocks(nodes: &[XmlNode], base_dir: &str) -> (Vec<Block>, HashMap<String, i32>) {
     let mut blocks = Vec::new();
     let mut id_to_block = HashMap::new();
     let mut block_index = 0i32;
-    parse_nodes(&mut blocks, &mut id_to_block, &mut block_index, nodes, base_dir);
+    parse_nodes(
+        &mut blocks,
+        &mut id_to_block,
+        &mut block_index,
+        nodes,
+        base_dir,
+    );
     (blocks, id_to_block)
 }
 
@@ -106,7 +109,14 @@ fn parse_node(
     match tag.as_str() {
         "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
             let level = tag[1..].parse::<i32>().unwrap_or(1);
-            emit(blocks, block_index, Block::heading(level, normalize_inlines(parse_inlines(std::slice::from_ref(node)))));
+            emit(
+                blocks,
+                block_index,
+                Block::heading(
+                    level,
+                    normalize_inlines(parse_inlines(std::slice::from_ref(node))),
+                ),
+            );
             if let Some(id) = id {
                 id_to_block.insert(id, *block_index - 1);
             }
@@ -124,10 +134,10 @@ fn parse_node(
         }
         "pre" => {
             let raw = full_text_of(Some(node));
-            let inlines = if !raw.is_empty() {
-                vec![Inline::code(raw)]
-            } else {
+            let inlines = if raw.is_empty() {
                 Vec::new()
+            } else {
+                vec![Inline::code(raw)]
             };
             emit(blocks, block_index, Block::code(inlines));
             if let Some(id) = id {
@@ -135,7 +145,11 @@ fn parse_node(
             }
         }
         "blockquote" => {
-            emit(blocks, block_index, Block::quote(normalize_inlines(parse_inlines(std::slice::from_ref(node)))));
+            emit(
+                blocks,
+                block_index,
+                Block::quote(normalize_inlines(parse_inlines(std::slice::from_ref(node)))),
+            );
             if let Some(id) = id {
                 id_to_block.insert(id, *block_index - 1);
             }
@@ -160,8 +174,16 @@ fn parse_node(
         }
         "img" => {
             let src = attr_of(Some(node), "src").unwrap_or_default();
-            let resolved = if src.is_empty() { src } else { crate::href::resolve_href(base_dir, &src) };
-            emit(blocks, block_index, Block::image(resolved, attr_of(Some(node), "alt").unwrap_or_default()));
+            let resolved = if src.is_empty() {
+                src
+            } else {
+                crate::href::resolve_href(base_dir, &src)
+            };
+            emit(
+                blocks,
+                block_index,
+                Block::image(resolved, attr_of(Some(node), "alt").unwrap_or_default()),
+            );
             if let Some(id) = id {
                 id_to_block.insert(id, *block_index - 1);
             }
@@ -238,7 +260,8 @@ mod tests {
 
     #[test]
     fn parses_table() {
-        let nodes = parse_xml_inner("<table><tr><th>H</th></tr><tr><td>v</td></tr></table>").unwrap();
+        let nodes =
+            parse_xml_inner("<table><tr><th>H</th></tr><tr><td>v</td></tr></table>").unwrap();
         let (blocks, _) = parse_xhtml_blocks(&nodes, "");
         assert_eq!(blocks.len(), 1);
         let t = &blocks[0];
@@ -251,12 +274,17 @@ mod tests {
         // Bugfix test: <section id="s"> with a heading then paragraph.
         // The id should map to the heading (first content block), not the
         // trailing paragraph (which the buggy version assigned).
-        let nodes = parse_xml_inner("<section id=\"s\"><h1>Title</h1><p>Body</p></section>").unwrap();
+        let nodes =
+            parse_xml_inner("<section id=\"s\"><h1>Title</h1><p>Body</p></section>").unwrap();
         let (blocks, ids) = parse_xhtml_blocks(&nodes, "");
         assert!(blocks.len() >= 2);
         assert_eq!(blocks[0].r#type, "heading");
         assert_eq!(blocks[1].r#type, "paragraph");
-        assert_eq!(ids.get("s"), Some(&0), "id should map to first content block (heading), not last");
+        assert_eq!(
+            ids.get("s"),
+            Some(&0),
+            "id should map to first content block (heading), not last"
+        );
     }
 
     #[test]

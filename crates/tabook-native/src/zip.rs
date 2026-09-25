@@ -16,7 +16,8 @@ pub struct ZipArchive {
 impl ZipArchive {
     pub fn open(data: Vec<u8>) -> Result<Self, String> {
         let cursor = Cursor::new(&data);
-        let mut archive = zip::ZipArchive::new(cursor).map_err(|e| format!("Invalid ZIP archive: {e}"))?;
+        let mut archive =
+            zip::ZipArchive::new(cursor).map_err(|e| format!("Invalid ZIP archive: {e}"))?;
         let mut entries = Vec::with_capacity(archive.len());
         for i in 0..archive.len() {
             let entry = archive
@@ -34,7 +35,10 @@ impl ZipArchive {
                 size: entry.size() as u32,
             });
         }
-        Ok(ZipArchive { entries, bytes: data })
+        Ok(ZipArchive {
+            entries,
+            bytes: data,
+        })
     }
 
     pub fn read(&self, name: &str) -> Result<Vec<u8>, String> {
@@ -43,8 +47,7 @@ impl ZipArchive {
         let idx = (0..zip.len())
             .find(|&i| {
                 zip.by_index_raw(i)
-                    .map(|e| e.name() == name && !e.is_dir())
-                    .unwrap_or(false)
+                    .is_ok_and(|e| e.name() == name && !e.is_dir())
             })
             .ok_or_else(|| format!("ZIP entry not found: {name}"))?;
         let mut entry = zip

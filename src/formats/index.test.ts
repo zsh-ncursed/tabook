@@ -2,7 +2,14 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { detectFormat, parseBookFile, openBook, invalidateBookCache } from './index.js';
+import {
+  detectFormat,
+  parseBookFile,
+  openBook,
+  parseBookMetadata,
+  invalidateBookCache,
+} from './index.js';
+import { isNativeAvailable } from '../native.js';
 import { FB2_SAMPLE, buildEpub, makeFb2Zip } from './test-utils.js';
 
 describe('format detection', () => {
@@ -20,6 +27,34 @@ describe('format detection', () => {
   it('throws ParseError for unrecognized format', () => {
     const garbage = new TextEncoder().encode('this is not a book');
     expect(() => detectFormat(garbage, 'file.xyz')).toThrow();
+  });
+});
+
+describe('parseBookMetadata', () => {
+  it('extracts fb2 metadata (plain and zipped) without content', () => {
+    const plain = parseBookMetadata(Buffer.from(FB2_SAMPLE), '/tmp/x.fb2', 'fb2');
+    expect(plain.title).toBe('Test Book');
+    const zipped = parseBookMetadata(makeFb2Zip(FB2_SAMPLE), '/tmp/x.fb2.zip', 'fb2');
+    expect(zipped.title).toBe('Test Book');
+  });
+
+  it('extracts epub metadata', () => {
+    const md = parseBookMetadata(buildEpub(), '/tmp/x.epub', 'epub');
+    expect(md.title).toBe('Epub Book');
+  });
+
+  it('throws ParseError for broken input (native Err re-thrown)', () => {
+    const garbage = Buffer.from('this is not xml at all');
+    expect(() => parseBookMetadata(garbage, '/tmp/broken.fb2', 'fb2')).toThrow();
+  });
+
+  // Scanner performance relies on the native metadata fast paths; a silent
+  // regression to the TS implementations (e.g. a broken binding loader) would
+  // only show up as slow scans, never as a test failure.
+  it.skipIf(!isNativeAvailable())('uses the native fast path when the binding is available', () => {
+    expect(isNativeAvailable()).toBe(true);
+    const md = parseBookMetadata(Buffer.from(FB2_SAMPLE), '/tmp/x.fb2', 'fb2');
+    expect(md.title).toBe('Test Book');
   });
 });
 

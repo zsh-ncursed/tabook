@@ -10,7 +10,6 @@ use crate::model::ParsedBook;
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
-use once_cell::sync::Lazy;
 
 const MAX_CACHED_BOOKS: usize = 4;
 
@@ -18,7 +17,7 @@ struct BookCache {
     entries: VecDeque<(String, ParsedBook)>,
 }
 
-static BOOK_CACHE: Lazy<Mutex<BookCache>> = Lazy::new(|| {
+static BOOK_CACHE: std::sync::LazyLock<Mutex<BookCache>> = std::sync::LazyLock::new(|| {
     Mutex::new(BookCache {
         entries: VecDeque::with_capacity(MAX_CACHED_BOOKS),
     })
@@ -29,7 +28,7 @@ pub fn invalidate_book_cache_inner() {
 }
 
 fn cached_parse(data: &[u8], file_path: &str) -> Result<ParsedBook, String> {
-    let mut cache = BOOK_CACHE.lock().unwrap();
+    let cache = BOOK_CACHE.lock().unwrap();
     if let Some(pos) = cache.entries.iter().position(|(p, _)| p == file_path) {
         return Ok(cache.entries[pos].1.clone());
     }
@@ -39,12 +38,21 @@ fn cached_parse(data: &[u8], file_path: &str) -> Result<ParsedBook, String> {
     if cache.entries.len() >= MAX_CACHED_BOOKS {
         cache.entries.pop_front();
     }
-    cache.entries.push_back((file_path.to_owned(), book.clone()));
+    cache
+        .entries
+        .push_back((file_path.to_owned(), book.clone()));
     Ok(book)
 }
 
 fn dispatch_parse(data: &[u8], file_path: &str) -> Result<ParsedBook, String> {
-    let format = detect_format_inner(data, std::path::Path::new(file_path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().as_str())?;
+    let format = detect_format_inner(
+        data,
+        std::path::Path::new(file_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+            .as_str(),
+    )?;
     match format.as_str() {
         "fb2" => parse_fb2_buffer_inner(data, file_path),
         "epub" => parse_epub_buffer_inner(data, file_path),

@@ -33,7 +33,7 @@ fn find_root(children: &[XmlNode]) -> Result<(&XmlNode, Vec<XmlNode>), String> {
     Err("Not an FB2 document: missing <FictionBook> root element".into())
 }
 
-fn title_info<'a>(root: &'a XmlNode) -> Option<&'a XmlNode> {
+fn title_info(root: &XmlNode) -> Option<&XmlNode> {
     let description = first_child(Some(root), "description")?;
     first_child(Some(description), "title-info")
 }
@@ -469,7 +469,7 @@ fn parse_container(state: &mut ParseState, nodes: &[XmlNode], depth: i32) {
     }
 }
 
-fn select_main_body<'a>(root_children: &'a [XmlNode]) -> Vec<&'a XmlNode> {
+fn select_main_body(root_children: &[XmlNode]) -> Vec<&XmlNode> {
     let bodies: Vec<&XmlNode> = root_children
         .iter()
         .filter(|n| normalize_tag(n.tag()) == "body")
@@ -502,11 +502,10 @@ pub fn parse_fb2_text(
     let fallback_title = filename
         .rsplit('.')
         .nth(1)
-        .map(|_| {
+        .map_or(filename, |_| {
             let dot = filename.rfind('.').unwrap_or(filename.len());
             &filename[..dot]
-        })
-        .unwrap_or(filename);
+        });
     let metadata = parse_metadata(root, fallback_title);
     let resources = collect_resources(&root_children);
     let mut state = ParseState {

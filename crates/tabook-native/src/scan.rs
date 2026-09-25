@@ -23,7 +23,9 @@ pub fn resolve_folder_path(p: &str) -> String {
 
 fn expand_tilde(p: &str) -> String {
     if p == "~" {
-        return dirs::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or(p.to_owned());
+        return dirs::home_dir()
+            .map(|h| h.to_string_lossy().into_owned())
+            .unwrap_or(p.to_owned());
     }
     if p.starts_with("~/") || p.starts_with("~\\") {
         if let Some(home) = dirs::home_dir() {
@@ -41,7 +43,7 @@ fn is_book_file(name: &str) -> bool {
 pub fn walk_book_files(root: &str) -> Vec<String> {
     let mut files = Vec::new();
     let walker = WalkDir::new(root).follow_links(false);
-    for entry in walker.into_iter().filter_map(|e| e.ok()) {
+    for entry in walker.into_iter().filter_map(std::result::Result::ok) {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -68,10 +70,7 @@ pub fn walk_book_files(root: &str) -> Vec<String> {
     files
 }
 
-pub fn scan_library_folder(
-    db: &LibraryDb,
-    root: &str,
-) -> Result<ScanSummary, String> {
+pub fn scan_library_folder(db: &LibraryDb, root: &str) -> Result<ScanSummary, String> {
     let stat = std::fs::metadata(root).map_err(|_| format!("Folder not found: {root}"))?;
     if !stat.is_dir() {
         return Err(format!("Not a directory: {root}"));
@@ -81,7 +80,10 @@ pub fn scan_library_folder(
     let seen: std::collections::HashSet<String> = files.iter().cloned().collect();
     let total = files.len() as i32;
 
-    let attached_at_start = db.get_library_folder_by_path(root).unwrap_or(None).is_some();
+    let attached_at_start = db
+        .get_library_folder_by_path(root)
+        .unwrap_or(None)
+        .is_some();
 
     let mut summary = ScanSummary {
         total,
@@ -92,11 +94,19 @@ pub fn scan_library_folder(
         errors: Vec::new(),
     };
 
-    let existing: std::collections::HashSet<String> =
-        db.list_paths_by_library_root(root).unwrap_or_default().into_iter().collect();
+    let existing: std::collections::HashSet<String> = db
+        .list_paths_by_library_root(root)
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
 
     for file in &files {
-        if attached_at_start && db.get_library_folder_by_path(root).unwrap_or(None).is_none() {
+        if attached_at_start
+            && db
+                .get_library_folder_by_path(root)
+                .unwrap_or(None)
+                .is_none()
+        {
             break;
         }
         match scan_one_file(db, file, root) {
@@ -121,7 +131,11 @@ pub fn scan_library_folder(
     }
 
     // Remove vanished files
-    let vanished: Vec<String> = existing.iter().filter(|p| !seen.contains(*p)).cloned().collect();
+    let vanished: Vec<String> = existing
+        .iter()
+        .filter(|p| !seen.contains(*p))
+        .cloned()
+        .collect();
     if !vanished.is_empty() {
         summary.removed = db.remove_books_by_paths(&vanished).unwrap_or(0);
     }
@@ -147,7 +161,14 @@ fn scan_one_file(db: &LibraryDb, file: &str, root: &str) -> Result<bool, String>
         _ => return Err(format!("Unsupported format: {format}")),
     };
     let existing = db.get_book_by_path(file).unwrap_or(None);
-    db.add_book(file, &name, &format, data.len() as i64, &metadata, Some(root))?;
+    db.add_book(
+        file,
+        &name,
+        &format,
+        data.len() as i64,
+        &metadata,
+        Some(root),
+    )?;
     Ok(existing.is_none())
 }
 
@@ -163,8 +184,11 @@ pub fn folder_needs_rescan(db: &LibraryDb, folder: &LibraryFolderRecord) -> bool
         return false;
     }
 
-    let db_paths: std::collections::HashSet<String> =
-        db.list_paths_by_library_root(&folder.path).unwrap_or_default().into_iter().collect();
+    let db_paths: std::collections::HashSet<String> = db
+        .list_paths_by_library_root(&folder.path)
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
     let mut walked = std::collections::HashSet::new();
     let mut dirty = false;
     for file in walk_book_files(&folder.path) {
@@ -174,8 +198,7 @@ pub fn folder_needs_rescan(db: &LibraryDb, folder: &LibraryFolderRecord) -> bool
                 .modified()
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0);
+                .map_or(0, |d| d.as_millis() as i64);
             if mtime_ms > last_scanned_at {
                 dirty = true;
                 break;
@@ -196,8 +219,7 @@ pub fn folder_needs_rescan(db: &LibraryDb, folder: &LibraryFolderRecord) -> bool
 fn chrono_now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+        .map_or(0, |d| d.as_millis() as i64)
 }
 
 #[cfg(test)]
@@ -232,7 +254,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         make_fb2(&dir.join("book.fb2"));
         let db = LibraryDb::open(":memory:").unwrap();
-        db.add_library_folder(dir.to_string_lossy().as_ref()).unwrap();
+        db.add_library_folder(dir.to_string_lossy().as_ref())
+            .unwrap();
         let summary = scan_library_folder(&db, dir.to_string_lossy().as_ref()).unwrap();
         assert_eq!(summary.total, 1);
         assert_eq!(summary.added, 1);
@@ -248,10 +271,15 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         make_fb2(&dir.join("a.fb2"));
         let db = LibraryDb::open(":memory:").unwrap();
-        let fid = db.add_library_folder(dir.to_string_lossy().as_ref()).unwrap();
+        let fid = db
+            .add_library_folder(dir.to_string_lossy().as_ref())
+            .unwrap();
         let _ = scan_library_folder(&db, dir.to_string_lossy().as_ref()).unwrap();
         // After scan, no rescan needed
-        let folder = db.get_library_folder_by_path(dir.to_string_lossy().as_ref()).unwrap().unwrap();
+        let folder = db
+            .get_library_folder_by_path(dir.to_string_lossy().as_ref())
+            .unwrap()
+            .unwrap();
         assert!(!folder_needs_rescan(&db, &folder));
         // Add a new file → needs rescan. Set its mtime explicitly to a time
         // after the scan timestamp: filesystem mtime granularity is coarse (1s

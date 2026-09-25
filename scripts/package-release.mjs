@@ -37,9 +37,8 @@ if (!existsSync(nativeSrc)) {
 }
 
 // 2. Single-file JS bundle (everything except the native module). The DB
-// layer lives in Rust (rusqlite); better-sqlite3 is dev-only, so the bundle
-// must not resolve it at load time — src/db/db.ts loads it lazily via a
-// dynamic require, and esbuild leaves that call alone.
+// layer lives entirely in Rust (rusqlite) — there is no SQL implementation
+// in the bundle to stub out.
 console.log('[2/4] Bundling JS...');
 await build({
   entryPoints: [join(root, 'src/cli/main.ts')],
@@ -49,7 +48,7 @@ await build({
   target: 'node18',
   jsx: 'automatic',
   outfile: join(root, 'dist/tabook.bundle.mjs'),
-  external: ['@tabook/native', 'better-sqlite3'],
+  external: ['@tabook/native'],
   // ink eagerly runs connectToDevTools() at import; replace the ~10MB
   // react-devtools-core with a no-op stub (devtools are debug-only).
   alias: { 'react-devtools-core': join(root, 'scripts/devtools-stub.mjs') },

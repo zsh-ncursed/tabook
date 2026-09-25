@@ -26,12 +26,13 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
+    "prepare": "node scripts/setup-hooks.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:native": "cargo test --no-default-features --manifest-path crates/tabook-native/Cargo.toml",
-    "prepublishOnly": "npm run build"
+    "verify:npm": "node scripts/verify-npm-package.mjs",
+    "prepack": "npm run build && node scripts/prepare-npm.mjs"
   },
   "keywords": [
     "tui",

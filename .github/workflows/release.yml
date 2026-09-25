@@ -10,9 +10,10 @@ permissions:
 
 jobs:
   # Build the self-contained release tarball for both supported
-  # architectures. Each artifact contains the esbuild bundle, the Rust native
-  # module and the better-sqlite3 prebuild — nothing is compiled at install
-  # time, so the AUR package stays small and installs instantly.
+  # architectures. Each artifact contains the esbuild bundle and the Rust
+  # native module (which owns the DB layer via rusqlite) — nothing is
+  # compiled at install time, so the AUR package stays small and installs
+  # instantly.
   test:
     runs-on: ubuntu-latest
     steps:

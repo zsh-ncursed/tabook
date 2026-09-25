@@ -3,10 +3,9 @@
 //! Pure logic in `pub` functions (testable via `cargo test`).
 //! napi exports are thin wrappers, gated by `cfg(not(test))`.
 
-use once_cell::sync::Lazy;
 use regex::Regex;
 
-static WIDE_RANGES: Lazy<Vec<(u32, u32)>> = Lazy::new(|| {
+static WIDE_RANGES: std::sync::LazyLock<Vec<(u32, u32)>> = std::sync::LazyLock::new(|| {
     let mut v = vec![
         (0x1100, 0x115f),
         (0x2329, 0x232a),
@@ -205,33 +204,46 @@ fn is_noncharacter(code: u32) -> bool {
     if (code & 0xfffe) == 0xfffe {
         return true;
     }
-    (code >= 0xfdd0 && code <= 0xfdef)
+    (0xfdd0..=0xfdef).contains(&code)
         || matches!(
             code,
-            0xfffe | 0xffff
-                | 0x1fffe | 0x1ffff
-                | 0x2fffe | 0x2ffff
-                | 0x3fffe | 0x3ffff
-                | 0x4fffe | 0x4ffff
-                | 0x5fffe | 0x5ffff
-                | 0x6fffe | 0x6ffff
-                | 0x7fffe | 0x7ffff
-                | 0x8fffe | 0x8ffff
-                | 0x9fffe | 0x9ffff
-                | 0xafffe | 0xaffff
-                | 0xbfffe | 0xbffff
-                | 0xcfffe | 0xcffff
-                | 0xdfffe | 0xdffff
-                | 0xefffe | 0xeffff
-                | 0x10fffe | 0x10ffff
+            0xfffe
+                | 0xffff
+                | 0x1fffe
+                | 0x1ffff
+                | 0x2fffe
+                | 0x2ffff
+                | 0x3fffe
+                | 0x3ffff
+                | 0x4fffe
+                | 0x4ffff
+                | 0x5fffe
+                | 0x5ffff
+                | 0x6fffe
+                | 0x6ffff
+                | 0x7fffe
+                | 0x7ffff
+                | 0x8fffe
+                | 0x8ffff
+                | 0x9fffe
+                | 0x9ffff
+                | 0xafffe
+                | 0xaffff
+                | 0xbfffe
+                | 0xbffff
+                | 0xcfffe
+                | 0xcffff
+                | 0xdfffe
+                | 0xdffff
+                | 0xefffe
+                | 0xeffff
+                | 0x10fffe
+                | 0x10ffff
         )
 }
 
 fn safe_code_point(code: u32) -> char {
-    if code <= 0x10ffff
-        && !(code >= 0xd800 && code <= 0xdfff)
-        && !is_noncharacter(code)
-    {
+    if code <= 0x10ffff && !(0xd800..=0xdfff).contains(&code) && !is_noncharacter(code) {
         char::from_u32(code).unwrap_or('\u{fffd}')
     } else {
         '\u{fffd}'
@@ -252,7 +264,10 @@ pub fn decode_entities_standalone(input: &str) -> String {
                 // semi is the index of ';' within bytes[i..], so the entity
                 // body is input[i+1 .. i+semi] (between '&' and ';').
                 let inner = &input[i + 1..i + semi];
-                if let Some(rest) = inner.strip_prefix("#x").or_else(|| inner.strip_prefix("#X")) {
+                if let Some(rest) = inner
+                    .strip_prefix("#x")
+                    .or_else(|| inner.strip_prefix("#X"))
+                {
                     if let Ok(code) = u32::from_str_radix(rest, 16) {
                         out.push(safe_code_point(code));
                         i += semi + 1;
@@ -295,13 +310,15 @@ pub fn normalize_whitespace_inner(input: &str) -> String {
     out
 }
 
-static BR: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)<br\s*/?>").unwrap());
-static CLOSE_BLOCK: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)</(p|div|blockquote|h[1-6]|li)>").unwrap());
-static LI_OPEN: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)<li[^>]*>").unwrap());
-static BLOCK_OPEN: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)</?(p|div|blockquote|h[1-6]|ul|ol|hr|tr|table)[^>]*>").unwrap());
-static ANY_TAG: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^>]+>").unwrap());
-static BLANKS: Lazy<Regex> = Lazy::new(|| Regex::new(r"\n{3,}").unwrap());
-static TRAIL_WS: Lazy<Regex> = Lazy::new(|| Regex::new(r"[ \t]+$").unwrap());
+static BR: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"(?i)<br\s*/?>").unwrap());
+static CLOSE_BLOCK: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?i)</(p|div|blockquote|h[1-6]|li)>").unwrap());
+static LI_OPEN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"(?i)<li[^>]*>").unwrap());
+static BLOCK_OPEN: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?i)</?(p|div|blockquote|h[1-6]|ul|ol|hr|tr|table)[^>]*>").unwrap());
+static ANY_TAG: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
+static BLANKS: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
+static TRAIL_WS: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"[ \t]+$").unwrap());
 
 pub fn strip_html_inner(html: &str) -> String {
     let s1 = BR.replace_all(html, "\n");

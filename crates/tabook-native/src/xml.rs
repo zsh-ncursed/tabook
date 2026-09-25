@@ -176,7 +176,9 @@ pub fn first_child<'a>(node: Option<&'a XmlNode>, tag: &str) -> Option<&'a XmlNo
 }
 
 pub fn text_of(node: Option<&XmlNode>) -> String {
-    let Some(node) = node else { return String::new() };
+    let Some(node) = node else {
+        return String::new();
+    };
     let mut out = String::new();
     for kid in node.children() {
         if let XmlNode::Text(t) = kid {
@@ -187,7 +189,9 @@ pub fn text_of(node: Option<&XmlNode>) -> String {
 }
 
 pub fn full_text_of(node: Option<&XmlNode>) -> String {
-    let Some(node) = node else { return String::new() };
+    let Some(node) = node else {
+        return String::new();
+    };
     let mut out = String::new();
     collect_text(node, &mut out);
     crate::text::decode_entities_standalone(&out)
@@ -211,7 +215,10 @@ pub fn attributes_of(node: &XmlNode) -> Vec<(&str, &str)> {
 
 pub fn attr_of(node: Option<&XmlNode>, name: &str) -> Option<String> {
     node.and_then(|n| {
-        n.attrs().iter().find(|a| normalize_attr_name(&a.name) == name).map(|a| a.value.clone())
+        n.attrs()
+            .iter()
+            .find(|a| normalize_attr_name(&a.name) == name)
+            .map(|a| a.value.clone())
     })
 }
 

@@ -1,8 +1,8 @@
 //! Layout engine — Rust port of `src/renderer/layout.ts` (945 LOC).
 //!
-//! The core hot path: converts Blocks into wrapped, styled TextLines for
-//! rendering. Uses u8 bitflags for CharStyle (6 bools → 1 byte) instead of
-//! the TS object (~48 bytes/char). Bugfix: ensureLineCount(usize::MAX) uses
+//! The core hot path: converts Blocks into wrapped, styled `TextLines` for
+//! rendering. Uses u8 bitflags for `CharStyle` (6 bools → 1 byte) instead of
+//! the TS object (~48 bytes/char). Bugfix: `ensureLineCount(usize::MAX)` uses
 //! a safe guard instead of Infinity, preventing freeze on huge books.
 
 use crate::model::{Block, Inline};
@@ -85,7 +85,11 @@ pub fn inline_to_spans(inlines: &[Inline]) -> Vec<StyledSpan> {
     let mut offset = 0i32;
     let push_chars = |chars: &mut Vec<Char>, text: &str, st: u8, offset: &mut i32| {
         for ch in text.chars() {
-            chars.push(Char { ch, style: st, offset: *offset });
+            chars.push(Char {
+                ch,
+                style: st,
+                offset: *offset,
+            });
             *offset += 1;
         }
     };
@@ -95,7 +99,11 @@ pub fn inline_to_spans(inlines: &[Inline]) -> Vec<StyledSpan> {
                 "text" => {
                     let text = inline.text.as_deref().unwrap_or("");
                     for ch in text.chars() {
-                        chars.push(Char { ch, style: st, offset: *offset });
+                        chars.push(Char {
+                            ch,
+                            style: st,
+                            offset: *offset,
+                        });
                         *offset += 1;
                     }
                 }
@@ -127,19 +135,31 @@ pub fn inline_to_spans(inlines: &[Inline]) -> Vec<StyledSpan> {
                 "code" => {
                     let text = inline.text.as_deref().unwrap_or("");
                     for ch in text.chars() {
-                        chars.push(Char { ch, style: st, offset: *offset });
+                        chars.push(Char {
+                            ch,
+                            style: st,
+                            offset: *offset,
+                        });
                         *offset += 1;
                     }
                 }
                 "image" => {
                     let alt = inline.alt.as_deref().unwrap_or("");
                     for ch in alt.chars() {
-                        chars.push(Char { ch, style: st, offset: *offset });
+                        chars.push(Char {
+                            ch,
+                            style: st,
+                            offset: *offset,
+                        });
                         *offset += 1;
                     }
                 }
                 "lineBreak" => {
-                    chars.push(Char { ch: ' ', style: st, offset: *offset });
+                    chars.push(Char {
+                        ch: ' ',
+                        style: st,
+                        offset: *offset,
+                    });
                     *offset += 1;
                 }
                 _ => {}
@@ -194,7 +214,9 @@ pub fn apply_highlights(spans: &[StyledSpan], highlights: &[HighlightRange]) -> 
     let mut offset = 0i32;
     for span in spans {
         for ch in span.text.chars() {
-            let in_range = highlights.iter().any(|h| offset >= h.start && offset < h.end);
+            let in_range = highlights
+                .iter()
+                .any(|h| offset >= h.start && offset < h.end);
             chars.push(Char {
                 ch,
                 style: style_u8_from_span(span) | if in_range { HIGHLIGHT } else { 0 },
@@ -208,12 +230,24 @@ pub fn apply_highlights(spans: &[StyledSpan], highlights: &[HighlightRange]) -> 
 
 fn style_u8_from_span(s: &StyledSpan) -> u8 {
     let mut st = EMPTY_STYLE;
-    if s.bold { st |= BOLD; }
-    if s.italic { st |= ITALIC; }
-    if s.underline { st |= UNDERLINE; }
-    if s.strike { st |= STRIKE; }
-    if s.link { st |= LINK; }
-    if s.highlight { st |= HIGHLIGHT; }
+    if s.bold {
+        st |= BOLD;
+    }
+    if s.italic {
+        st |= ITALIC;
+    }
+    if s.underline {
+        st |= UNDERLINE;
+    }
+    if s.strike {
+        st |= STRIKE;
+    }
+    if s.link {
+        st |= LINK;
+    }
+    if s.highlight {
+        st |= HIGHLIGHT;
+    }
     st
 }
 
@@ -284,7 +318,10 @@ fn wrap_chars(chars: &[Char], max_width: i32, hyphenate: bool) -> Vec<Vec<Char>>
     // the line exactly (lastSpace == line.len()) leaves a stale width >= max,
     // so every subsequent char overflows and gets flushed on its own line —
     // text suddenly renders vertically (real reports: Кaku FB2, '"пролила"').
-    let flush_line = |line: &mut Vec<Char>, lines: &mut Vec<Vec<Char>>, width: &mut i32, last_space: &mut i32| {
+    let flush_line = |line: &mut Vec<Char>,
+                      lines: &mut Vec<Vec<Char>>,
+                      width: &mut i32,
+                      last_space: &mut i32| {
         let mut end = line.len();
         while end > 0 && line[end - 1].ch == ' ' {
             end -= 1;
@@ -306,7 +343,10 @@ fn wrap_chars(chars: &[Char], max_width: i32, hyphenate: bool) -> Vec<Vec<Char>>
                 lines.push(line[..ls].to_vec());
                 let remainder = line[ls + 1..].to_vec();
                 line = remainder;
-                width = line.iter().map(|c| display_width_inner(&c.ch.to_string())).sum();
+                width = line
+                    .iter()
+                    .map(|c| display_width_inner(&c.ch.to_string()))
+                    .sum();
                 last_space = -1;
             } else if hyphenate
                 && char.ch != ' '
@@ -316,12 +356,19 @@ fn wrap_chars(chars: &[Char], max_width: i32, hyphenate: bool) -> Vec<Vec<Char>>
             {
                 let keep = hyphen_break_at(&line, std::cmp::max(1, max_width - 1));
                 let kept = line[..keep].to_vec();
-                let last_style = kept.last().map(|c| c.style).unwrap_or(EMPTY_STYLE);
+                let last_style = kept.last().map_or(EMPTY_STYLE, |c| c.style);
                 let mut hyphen_line = kept;
-                hyphen_line.push(Char { ch: '-', style: last_style, offset: -1 });
+                hyphen_line.push(Char {
+                    ch: '-',
+                    style: last_style,
+                    offset: -1,
+                });
                 lines.push(hyphen_line);
                 line = line[keep..].to_vec();
-                width = line.iter().map(|c| display_width_inner(&c.ch.to_string())).sum();
+                width = line
+                    .iter()
+                    .map(|c| display_width_inner(&c.ch.to_string()))
+                    .sum();
                 last_space = -1;
             } else {
                 flush_line(&mut line, &mut lines, &mut width, &mut last_space);
@@ -340,8 +387,14 @@ fn wrap_chars(chars: &[Char], max_width: i32, hyphenate: bool) -> Vec<Vec<Char>>
     lines
 }
 
-fn slice_highlights(highlights: Option<&[HighlightRange]>, base: i32, length: i32) -> Vec<HighlightRange> {
-    let Some(hls) = highlights else { return Vec::new() };
+fn slice_highlights(
+    highlights: Option<&[HighlightRange]>,
+    base: i32,
+    length: i32,
+) -> Vec<HighlightRange> {
+    let Some(hls) = highlights else {
+        return Vec::new();
+    };
     if base < 0 {
         return Vec::new();
     }
@@ -365,7 +418,12 @@ struct PartCounter {
 
 impl PartCounter {
     fn new(skip_empty: bool, separator: String) -> Self {
-        Self { offset: 0, pending: false, skip_empty, separator }
+        Self {
+            offset: 0,
+            pending: false,
+            skip_empty,
+            separator,
+        }
     }
     fn push(&mut self, text: &str) -> i32 {
         if self.skip_empty && text.is_empty() {
@@ -393,8 +451,14 @@ fn highlight_plain(text: &str, highlights: &[HighlightRange]) -> Vec<StyledSpan>
     let mut chars = Vec::new();
     let mut offset = 0i32;
     for ch in text.chars() {
-        let in_range = highlights.iter().any(|h| offset >= h.start && offset < h.end);
-        chars.push(Char { ch, style: if in_range { HIGHLIGHT } else { EMPTY_STYLE }, offset });
+        let in_range = highlights
+            .iter()
+            .any(|h| offset >= h.start && offset < h.end);
+        chars.push(Char {
+            ch,
+            style: if in_range { HIGHLIGHT } else { EMPTY_STYLE },
+            offset,
+        });
         offset += 1;
     }
     chars_to_spans(&chars)
@@ -408,7 +472,12 @@ fn merge_span_lines(lines: &[Vec<StyledSpan>]) -> Vec<StyledSpan> {
     result
 }
 
-fn find_offset_of_line(spans: &[StyledSpan], line: &[StyledSpan], base_offset: i32, line_text: &str) -> i32 {
+fn find_offset_of_line(
+    spans: &[StyledSpan],
+    line: &[StyledSpan],
+    base_offset: i32,
+    line_text: &str,
+) -> i32 {
     if line_text.trim().is_empty() {
         return base_offset;
     }
@@ -430,7 +499,10 @@ fn find_offset_of_line(spans: &[StyledSpan], line: &[StyledSpan], base_offset: i
     if needle.is_empty() || plain_chars.len() - start < needle.len() {
         return base_offset;
     }
-    if let Some(pos) = plain_chars[start..].windows(needle.len()).position(|w| w == needle) {
+    if let Some(pos) = plain_chars[start..]
+        .windows(needle.len())
+        .position(|w| w == needle)
+    {
         return (start + pos) as i32;
     }
     base_offset
@@ -460,7 +532,7 @@ fn justify_line(line: &TextLine, content_width: i32) -> TextLine {
     let gaps = space_count;
     let base = slack / gaps;
     let extra = slack % gaps;
-    let mut spans: Vec<StyledSpan> = line.spans.iter().map(|s| s.clone()).collect();
+    let mut spans: Vec<StyledSpan> = line.spans.to_vec();
     let mut applied = 0i32;
     for span in &mut spans {
         if !span.text.contains(' ') {
@@ -469,7 +541,7 @@ fn justify_line(line: &TextLine, content_width: i32) -> TextLine {
         let mut out = String::new();
         for ch in span.text.chars() {
             if ch == ' ' {
-                let pad = base + if applied < extra { 1 } else { 0 };
+                let pad = base + i32::from(applied < extra);
                 applied += 1;
                 out.push(' ');
                 for _ in 0..pad {
@@ -496,8 +568,16 @@ fn apply_justify(lines: &mut Vec<TextLine>, width: i32) {
         return;
     }
     let justifiable: &[&str] = &[
-        "paragraph", "heading1", "heading2", "heading3",
-        "heading4", "heading5", "heading6", "quote", "epigraph", "annotation",
+        "paragraph",
+        "heading1",
+        "heading2",
+        "heading3",
+        "heading4",
+        "heading5",
+        "heading6",
+        "quote",
+        "epigraph",
+        "annotation",
     ];
     let mut last_content_idx = lines.len() as i32 - 1;
     while last_content_idx >= 0 && lines[last_content_idx as usize].role == "empty" {
@@ -518,10 +598,7 @@ pub fn layout_block(block: &Block, block_index: i32, opts: &LayoutOptions) -> Ve
     let width = opts.width;
     let typo = &opts.typo;
     let justify = opts.justify;
-    let highlights = opts
-        .get_highlights
-        .as_ref()
-        .and_then(|f| f(block_index));
+    let highlights = opts.get_highlights.as_ref().and_then(|f| f(block_index));
     let mut lines: Vec<TextLine> = Vec::new();
 
     let line_spacing = typo.line_spacing;
@@ -530,7 +607,12 @@ pub fn layout_block(block: &Block, block_index: i32, opts: &LayoutOptions) -> Ve
     let hyphenation = typo.hyphenation;
     let block_index_local = block_index;
 
-    let mut emit = |role: &str, spans: Vec<StyledSpan>, indent: i32, prefix: &str, char_offset: i32, lines: &mut Vec<TextLine>| {
+    let emit = |role: &str,
+                    spans: Vec<StyledSpan>,
+                    indent: i32,
+                    prefix: &str,
+                    char_offset: i32,
+                    lines: &mut Vec<TextLine>| {
         let all_empty = spans.is_empty() || spans.iter().all(|s| s.text.trim().is_empty());
         if all_empty {
             if role == "paragraph" || role == "listItem" || role == "quote" {
@@ -660,7 +742,14 @@ pub fn layout_block(block: &Block, block_index: i32, opts: &LayoutOptions) -> Ve
             let wrapped = wrap_spans(&spans, width - 4, hls, hyphenation);
             let mut running = 0i32;
             for i in 0..wrapped.lines.len() {
-                emit("quote", wrapped.lines[i].clone(), 4, "", running, &mut lines);
+                emit(
+                    "quote",
+                    wrapped.lines[i].clone(),
+                    4,
+                    "",
+                    running,
+                    &mut lines,
+                );
                 running += wrapped.original_lengths[i];
             }
             if justify {
@@ -674,7 +763,14 @@ pub fn layout_block(block: &Block, block_index: i32, opts: &LayoutOptions) -> Ve
             let wrapped = wrap_spans(&spans, width - 6, hls, hyphenation);
             let mut running = 0i32;
             for i in 0..wrapped.lines.len() {
-                emit("epigraph", wrapped.lines[i].clone(), 6, "", running, &mut lines);
+                emit(
+                    "epigraph",
+                    wrapped.lines[i].clone(),
+                    6,
+                    "",
+                    running,
+                    &mut lines,
+                );
                 running += wrapped.original_lengths[i];
             }
             if justify {
@@ -688,7 +784,14 @@ pub fn layout_block(block: &Block, block_index: i32, opts: &LayoutOptions) -> Ve
             let wrapped = wrap_spans(&spans, width, hls, hyphenation);
             let mut running = 0i32;
             for i in 0..wrapped.lines.len() {
-                emit("annotation", wrapped.lines[i].clone(), 0, "", running, &mut lines);
+                emit(
+                    "annotation",
+                    wrapped.lines[i].clone(),
+                    0,
+                    "",
+                    running,
+                    &mut lines,
+                );
                 running += wrapped.original_lengths[i];
             }
             if justify {
@@ -697,7 +800,16 @@ pub fn layout_block(block: &Block, block_index: i32, opts: &LayoutOptions) -> Ve
         }
         "list" => {
             let mut offsets = PartCounter::new(true, "\n".to_owned());
-            walk_list(block, 0, width, hyphenation, highlights.as_deref(), &mut offsets, &mut lines, block_index);
+            walk_list(
+                block,
+                0,
+                width,
+                hyphenation,
+                highlights.as_deref(),
+                &mut offsets,
+                &mut lines,
+                block_index,
+            );
         }
         "poem" => {
             let mut offsets = PartCounter::new(false, "\n".to_owned());
@@ -717,11 +829,22 @@ pub fn layout_block(block: &Block, block_index: i32, opts: &LayoutOptions) -> Ve
                     let spans = inline_to_spans(verse);
                     let plain = spans_to_plain(&spans);
                     let start = offsets.push(&plain);
-                    let hls = slice_highlights(highlights.as_deref(), start, plain.chars().count() as i32);
+                    let hls = slice_highlights(
+                        highlights.as_deref(),
+                        start,
+                        plain.chars().count() as i32,
+                    );
                     let wrapped = wrap_spans(&spans, width - 6, &hls, hyphenation);
                     let mut running = 0i32;
                     for i in 0..wrapped.lines.len() {
-                        emit("poemLine", wrapped.lines[i].clone(), 6, "", std::cmp::max(0, start) + running, &mut lines);
+                        emit(
+                            "poemLine",
+                            wrapped.lines[i].clone(),
+                            6,
+                            "",
+                            std::cmp::max(0, start) + running,
+                            &mut lines,
+                        );
                         running += wrapped.original_lengths[i];
                     }
                 }
@@ -732,7 +855,11 @@ pub fn layout_block(block: &Block, block_index: i32, opts: &LayoutOptions) -> Ve
         }
         "image" => {
             let alt = block.alt.clone().unwrap_or_default();
-            let display_alt = if alt.is_empty() { "image".to_owned() } else { alt };
+            let display_alt = if alt.is_empty() {
+                "image".to_owned()
+            } else {
+                alt
+            };
             let text = format!("[Image: {display_alt}]");
             let indent = std::cmp::max(0, (width - text.chars().count() as i32) / 2);
             lines.push(TextLine {
@@ -787,7 +914,11 @@ fn walk_list(
     let mut counter = 1i32;
     let ordered = list.ordered.unwrap_or(false);
     for item in items {
-        let marker = if ordered { format!("{counter}.") } else { "-".to_owned() };
+        let marker = if ordered {
+            format!("{counter}.")
+        } else {
+            "-".to_owned()
+        };
         if ordered {
             counter += 1;
         }
@@ -827,7 +958,16 @@ fn walk_list(
         }
         for nested in &item.nested {
             if nested.r#type == "list" {
-                walk_list(nested, level + 1, width, hyphenation, highlights, offsets, lines, block_index);
+                walk_list(
+                    nested,
+                    level + 1,
+                    width,
+                    hyphenation,
+                    highlights,
+                    offsets,
+                    lines,
+                    block_index,
+                );
             }
         }
     }
@@ -844,7 +984,7 @@ fn layout_table(
     let rows = block.rows.as_deref().unwrap_or(&[]);
     let col_count = std::cmp::max(
         headers.len(),
-        rows.iter().map(|r| r.len()).max().unwrap_or(0),
+        rows.iter().map(std::vec::Vec::len).max().unwrap_or(0),
     );
     if col_count == 0 {
         return;
@@ -875,7 +1015,7 @@ fn layout_table(
     for c in 0..col_count {
         let mut max_len = 0i32;
         for row in &all_rows {
-            let cell = row.cells.get(c).map(|s| s.as_str()).unwrap_or("");
+            let cell = row.cells.get(c).map_or("", std::string::String::as_str);
             max_len = std::cmp::max(max_len, cell.chars().count() as i32);
         }
         col_widths.push(std::cmp::min(avail_per_col, std::cmp::max(4, max_len)));
@@ -886,14 +1026,14 @@ fn layout_table(
         let mut cell_start_offsets = Vec::new();
         if !row.is_header {
             for c in 0..col_count {
-                let cell = row.cells.get(c).map(|s| s.as_str()).unwrap_or("");
+                let cell = row.cells.get(c).map_or("", std::string::String::as_str);
                 cell_start_offsets.push(running);
                 running += cell.chars().count() as i32 + 1;
             }
         }
         let mut wrapped_cells: Vec<Vec<Vec<StyledSpan>>> = Vec::with_capacity(col_count);
         for c in 0..col_count {
-            let cell = row.cells.get(c).map(|s| s.as_str()).unwrap_or("");
+            let cell = row.cells.get(c).map_or("", std::string::String::as_str);
             let cw = col_widths[c];
             if row.is_header {
                 let wrapped = wrap_spans(
@@ -912,13 +1052,17 @@ fn layout_table(
                 );
                 wrapped_cells.push(wrapped.lines);
             } else {
-                let hls = slice_highlights(highlights, cell_start_offsets[c], cell.chars().count() as i32);
+                let hls = slice_highlights(
+                    highlights,
+                    cell_start_offsets[c],
+                    cell.chars().count() as i32,
+                );
                 let highlighted = highlight_plain(cell, &hls);
                 let wrapped = wrap_spans(&highlighted, cw, &[], false);
                 wrapped_cells.push(wrapped.lines);
             }
         }
-        let row_height = wrapped_cells.iter().map(|ws| ws.len()).max().unwrap_or(1);
+        let row_height = wrapped_cells.iter().map(std::vec::Vec::len).max().unwrap_or(1);
         let row_height = std::cmp::max(1, row_height);
         for r in 0..row_height {
             let mut spans = Vec::new();
@@ -936,7 +1080,7 @@ fn layout_table(
                 }
                 let text = cell_line.map(|cl| spans_to_plain(cl)).unwrap_or_default();
                 let cw = col_widths[c] as usize;
-                let padded = format!("{:<width$}", text, width = cw);
+                let padded = format!("{text:<cw$}");
                 if let Some(cl) = cell_line {
                     spans.extend(cl.iter().cloned());
                     let pad_len = cw.saturating_sub(text.chars().count());
@@ -975,10 +1119,18 @@ fn layout_table(
                 }
             }
             if line_char_offset < 0 {
-                line_char_offset = if row.is_header { 0 } else { cell_start_offsets.first().copied().unwrap_or(0) };
+                line_char_offset = if row.is_header {
+                    0
+                } else {
+                    cell_start_offsets.first().copied().unwrap_or(0)
+                };
             }
             lines.push(TextLine {
-                role: if row.is_header { "tableHeader".into() } else { "tableCell".into() },
+                role: if row.is_header {
+                    "tableHeader".into()
+                } else {
+                    "tableCell".into()
+                },
                 spans,
                 indent: 0,
                 prefix: String::new(),
@@ -1005,7 +1157,8 @@ pub struct BookLayout {
     // The napi boundary cannot carry Box<dyn Fn> closures, so highlights are
     // fed as data instead of a getHighlights callback. Layout reads the map
     // through the get_highlights closure installed in `new`.
-    pub highlights: std::sync::Arc<parking_lot::Mutex<std::collections::HashMap<i32, Vec<HighlightRange>>>>,
+    pub highlights:
+        std::sync::Arc<parking_lot::Mutex<std::collections::HashMap<i32, Vec<HighlightRange>>>>,
 }
 
 impl BookLayout {
@@ -1013,7 +1166,10 @@ impl BookLayout {
         let block_count = blocks.len() as i32;
         let mut block_starts = vec![-1i32; blocks.len() + 1];
         block_starts[0] = 0;
-        let block_text: Vec<String> = blocks.iter().map(|b| crate::renderer::blocks::block_to_plain_text(b)).collect();
+        let block_text: Vec<String> = blocks
+            .iter()
+            .map(crate::renderer::blocks::block_to_plain_text)
+            .collect();
         let mut block_char_starts = vec![0i32; blocks.len() + 1];
         let mut acc = 0i32;
         for (i, t) in block_text.iter().enumerate() {
@@ -1021,17 +1177,17 @@ impl BookLayout {
             acc += t.chars().count() as i32;
         }
         block_char_starts[blocks.len()] = acc;
-        let highlights = std::sync::Arc::new(parking_lot::Mutex::new(
-            std::collections::HashMap::new(),
-        ));
+        let highlights =
+            std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
         // If the caller did not provide a highlight closure (napi constructor
         // never does), install one that reads the shared highlights map so
         // set_highlights can update ranges after construction.
         let get_highlights = opts.get_highlights.or_else(|| {
             let h = std::sync::Arc::clone(&highlights);
-            Some(Box::new(
-                move |i| h.lock().get(&i).cloned(),
-            ) as Box<dyn Fn(i32) -> Option<Vec<HighlightRange>> + Send + Sync>)
+            Some(Box::new(move |i| h.lock().get(&i).cloned())
+                as Box<
+                    dyn Fn(i32) -> Option<Vec<HighlightRange>> + Send + Sync,
+                >)
         });
         let opts = LayoutOptions {
             typo: opts.typo,
@@ -1057,7 +1213,10 @@ impl BookLayout {
     /// Replace the per-block highlight ranges (search results). The map is
     /// consulted lazily during layout, so only blocks actually rendered pay
     /// the lookup cost.
-    pub fn set_highlights(&mut self, highlights: std::collections::HashMap<i32, Vec<HighlightRange>>) {
+    pub fn set_highlights(
+        &mut self,
+        highlights: std::collections::HashMap<i32, Vec<HighlightRange>>,
+    ) {
         *self.highlights.lock() = highlights;
     }
 
@@ -1165,14 +1324,22 @@ impl BookLayout {
         let chars: Vec<char> = text.chars().collect();
         let start = (local.max(0) as usize).min(chars.len());
         let end = (start.saturating_add(length.max(0) as usize)).min(chars.len());
-        chars[start..end].iter().collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ")
+        chars[start..end]
+            .iter()
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     pub fn estimate_line_count(&self) -> i32 {
         if self.opts.width <= 0 {
             return 1;
         }
-        std::cmp::max(1, (self.total_chars as f64 / (self.opts.width as f64 * 0.8)).ceil() as i32)
+        std::cmp::max(
+            1,
+            (f64::from(self.total_chars) / (f64::from(self.opts.width) * 0.8)).ceil() as i32,
+        )
     }
 
     pub fn block_start_line(&mut self, block_index: i32) -> Option<i32> {
@@ -1194,7 +1361,10 @@ impl BookLayout {
     }
 
     pub fn block_char_start(&self, block_index: i32) -> i32 {
-        self.block_char_starts.get(block_index as usize).copied().unwrap_or(0)
+        self.block_char_starts
+            .get(block_index as usize)
+            .copied()
+            .unwrap_or(0)
     }
 
     pub fn line_for_char_offset(&mut self, char_offset: i32) -> i32 {
@@ -1420,9 +1590,17 @@ mod tests {
             highlight: false,
         }];
         let wrapped = wrap_spans(&spans, 95, &[], false);
-        assert!(wrapped.lines.len() <= 4, "expected a few wrapped lines, got {}", wrapped.lines.len());
+        assert!(
+            wrapped.lines.len() <= 4,
+            "expected a few wrapped lines, got {}",
+            wrapped.lines.len()
+        );
         // Content is lossless: every original char appears, in order.
-        let joined: String = wrapped.lines.iter().flat_map(|l| l.iter().map(|s| s.text.clone())).collect();
+        let joined: String = wrapped
+            .lines
+            .iter()
+            .flat_map(|l| l.iter().map(|s| s.text.clone()))
+            .collect();
         let without_spaces: String = joined.chars().filter(|c| *c != ' ').collect();
         let expected: String = text.chars().filter(|c| *c != ' ').collect();
         assert_eq!(without_spaces, expected);

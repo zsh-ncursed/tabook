@@ -68,3 +68,12 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # The npm package must be self-contained: `npm pack` vendors the Rust
+      # binding into dist/node_modules/@tabook/native (scripts/prepare-npm.mjs)
+      # and this installs the packed tarball like a user would, proving the CLI
+      # boots on the native module and the DB layer (rusqlite) works. Guards the
+      # 0.5.x regression where the packed package had no binding at all and
+      # `tabook` died on startup with "better-sqlite3 is not installed".
+      - name: Verify the npm package
+        run: npm run verify:npm

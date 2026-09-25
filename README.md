@@ -24,7 +24,7 @@ vim-like controls. Built with TypeScript, React + Ink and a native Rust core
   OPDS catalog browser (thumbnails next to each entry).
 - **Image zoom** (`z`): enlarge the illustration on the current page ~2.5× to
   inspect it, then press `Esc` to restore it in place.
-- A local library backed by SQLite (stored in the native core via bundled rusqlite): metadata, reading progress, bookmarks, reading sessions and history.
+- A local library backed by SQLite owned by the Rust core (bundled rusqlite): metadata, reading progress, bookmarks, reading sessions and history.
 - Attach local folders as libraries (`:library add ~/books`) — recursive scans import metadata in bulk, and attached folders are auto-rescanned (mtime-based, async) when you enter the library if their files changed.
 - Browse online book catalogs over **OPDS** (`:opds add <name> <url>`) — search, navigate and download books straight to the library. Search (`/`) works from any feed: the OpenSearch link is discovered on the catalog root when a sub-feed omits it. Downloads run in a **background queue**: press `d` on several books and they download one after another while you keep browsing, with per-file progress in the status bar and a queue panel (`x`). Project Gutenberg and Flibusta are pre-seeded on first run.
 - Full-text search inside the current book with highlighted matches (`/`, `n`, `N`).
@@ -72,6 +72,30 @@ needed). Images work natively in kitty-family terminals; optional
 dependencies: `ueberzugpp` (images in terminals without native protocol
 support, e.g. alacritty, xterm — also inside tmux), `zenity` / `kdialog`
 (graphical file picker for `o`).
+
+### From the prebuilt npm package (no Rust toolchain)
+
+The npm registry does not carry `tabook` yet, but the package itself is
+self-contained and can be packed and installed locally. Packing needs no Rust
+toolchain and downloads nothing: `prepack` runs `tsc` for the JavaScript and
+vendors the Rust binding that is already in the repo (or freshly built by
+`npm run build:native`) into `dist/node_modules/@tabook/native` — the same
+module the AUR package ships, which also owns the SQLite database.
+
+```bash
+npm install                    # dev dependencies (tsc, types, vitest)
+npm pack                       # -> tabook-<version>.tgz
+npm install -g ./tabook-<version>.tgz
+tabook --version
+```
+
+The tarball carries the binding for the architecture it was packed on
+(linux x64 / arm64). On a triple it cannot load (musl/Alpine, macOS) the app
+falls back to the pure-TS implementations for parsing/layout/search — but the
+library database requires the Rust core (rusqlite) and fails with a clear
+error instead of degrading. On glibc Linux the binding always loads.
+`npm run verify:npm` packs, installs and smoke-tests the result (CLI boot,
+native binding, FB2 parsing, DB cycle); CI runs it on every push.
 
 ### From source
 
@@ -259,6 +283,7 @@ npm run lint                  # eslint
 npm run typecheck             # tsc --noEmit
 npm run build                 # compile to dist/
 npm run build:native          # compile the Rust core into the napi binding
+npm run verify:npm            # pack the npm tarball, install it, smoke-test it
 ```
 
 A pre-commit hook (`.githooks/pre-commit`) runs Prettier on staged files so

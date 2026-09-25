@@ -1,7 +1,7 @@
 //! Database layer — Rust port of `src/db/db.ts` (721 LOC).
 //!
-//! rusqlite with bundled SQLite. Migrations v1..v5. Prepared statements.
-//! Bugfix from audit: addBook uses last_insert_rowid() directly instead of
+//! rusqlite with bundled `SQLite`. Migrations v1..v5. Prepared statements.
+//! Bugfix from audit: addBook uses `last_insert_rowid()` directly instead of
 //! re-querying by path (race condition with UNIQUE constraint).
 
 use crate::model::{Author, BookMetadata, SeriesInfo};
@@ -867,7 +867,7 @@ fn row_to_book(r: &rusqlite::Row) -> rusqlite::Result<BookRecord> {
     let genres: Vec<String> = if genres_raw.is_empty() {
         Vec::new()
     } else {
-        genres_raw.split('\n').map(|s| s.to_owned()).collect()
+        genres_raw.split('\n').map(std::borrow::ToOwned::to_owned).collect()
     };
     let authors: Vec<Author> = authors_raw
         .split('\n')
@@ -875,16 +875,16 @@ fn row_to_book(r: &rusqlite::Row) -> rusqlite::Result<BookRecord> {
         .map(|l| {
             let parts: Vec<&str> = l.split('\t').collect();
             Author {
-                first_name: parts.first().map(|s| s.to_string()).unwrap_or_default(),
-                last_name: parts.get(1).map(|s| s.to_string()).unwrap_or_default(),
+                first_name: parts.first().map(std::string::ToString::to_string).unwrap_or_default(),
+                last_name: parts.get(1).map(std::string::ToString::to_string).unwrap_or_default(),
                 middle_name: parts
                     .get(2)
                     .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string()),
+                    .map(std::string::ToString::to_string),
                 nickname: parts
                     .get(3)
                     .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string()),
+                    .map(std::string::ToString::to_string),
             }
         })
         .collect();

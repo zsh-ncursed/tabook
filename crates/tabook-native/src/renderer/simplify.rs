@@ -22,9 +22,9 @@ fn simplify_block(block: &Block) -> Vec<Block> {
             .iter()
             .flat_map(simplify_item)
             .collect(),
-        "quote" | "epigraph" | "annotation" => vec![Block::paragraph(
-            block.children.clone().unwrap_or_default(),
-        )],
+        "quote" | "epigraph" | "annotation" => {
+            vec![Block::paragraph(block.children.clone().unwrap_or_default())]
+        }
         "poem" => block
             .stanzas
             .as_deref()

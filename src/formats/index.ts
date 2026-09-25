@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import { native, isNativeErrorResult } from '../native.js';
-import type { ParsedBook } from './model.js';
+import type { ParsedBook, BookMetadata } from './model.js';
 import { fileExtension, isZipBuffer } from './encoding.js';
-import { parseFb2Buffer } from './fb2/parser.js';
-import { parseEpubBuffer } from './epub/parser.js';
+import { ParseError } from '../utils/errors.js';
+import { parseFb2Buffer, parseFb2Metadata } from './fb2/parser.js';
+import { parseEpubBuffer, parseEpubMetadata } from './epub/parser.js';
 
 // Re-export types (unchanged)
 export type { ParsedBook, BookMetadata, Block, Inline, TocEntry } from './model.js';
@@ -38,6 +39,32 @@ export function detectFormatTs(data: Uint8Array, name: string): 'fb2' | 'epub' {
   if (head.includes('<FictionBook')) return 'fb2';
   if (head.trimStart().startsWith('<?xml') && head.includes('<FictionBook')) return 'fb2';
   throw new Error(`Cannot determine format of "${name}" — expected .fb2 or .epub`);
+}
+
+// Metadata-only parse used by the folder scanner (src/db/scan.ts). Gated on
+// native like detectFormat/parseBookFile: the Rust metadata fast paths skip
+// content-block building and base64 decoding, which is the difference between
+// a multi-second and a near-instant scan of a large folder. The TS parsers
+// remain the fallback when the binding is unavailable.
+export function parseBookMetadata(
+  data: Uint8Array,
+  filePath: string,
+  format: 'fb2' | 'epub',
+): BookMetadata {
+  if (native) {
+    const result =
+      format === 'fb2'
+        ? native.parseFb2Metadata(Buffer.from(data), filePath)
+        : native.parseEpubMetadata(Buffer.from(data), filePath);
+    // napi-rs returns Err as a value instead of throwing; re-throw as a
+    // ParseError so scanner error reporting (messageOf) matches the TS
+    // parsers' behavior.
+    if (isNativeErrorResult(result)) {
+      throw new ParseError(result.message ?? String(result));
+    }
+    return result;
+  }
+  return format === 'fb2' ? parseFb2Metadata(data, filePath) : parseEpubMetadata(data, filePath);
 }
 
 export function invalidateBookCache(): void {

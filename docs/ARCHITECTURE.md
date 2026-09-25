@@ -25,7 +25,7 @@ src/
   index.ts          Public package entry (re-exports for embedding)
   cli/              Commander arg parsing, Ink render, process lifecycle
   config/           Defaults, TOML parsing, keybinding normalization
-  db/               SQLite facade (native rusqlite; better-sqlite3 dev fallback)
+  db/               SQLite facade over the Rust core (rusqlite; no TS fallback)
   formats/          Format parsers and the shared document model
     model.ts        Block / Inline types shared by all parsers
     inline.ts       Inline-style parsing (bold, italic, links, ...)
@@ -168,10 +168,13 @@ core paths are covered there.
 
 ## Database
 
-`src/db/db.ts` exposes a `LibraryDb` facade. With the native module present it
-delegates to the rusqlite-backed `LibraryDb` in the Rust core; otherwise it
-falls back to a better-sqlite3 implementation (kept for development and for
-runners without a prebuilt `.node`):
+The database is owned by the Rust core: the schema, migrations (v1..v5) and
+all statements live in `crates/tabook-native/src/db.rs` behind a rusqlite
+(bundled SQLite) connection. `src/db/db.ts` is a thin TS adapter (`LibraryDb`
+→ `NativeDbBackend`) that maps napi records to the TS shapes, encrypts OPDS
+catalog passwords at rest (`catalogCrypto.ts`) and fails fast with a build
+hint when the binding is unavailable — there is deliberately no second SQL
+implementation to keep in sync. The tables:
 
 - **books** — metadata, file path, added/updated timestamps.
 - **bookmarks** — position (char offset), label, created_at.

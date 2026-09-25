@@ -27,10 +27,51 @@ function nativePackageId(): string {
   return '@tabook/native';
 }
 
+// Detect a stubbed resolution. tsconfig.json maps "@tabook/native" to
+// src/native-types.d.ts via `paths` for the *type checker*. tsx applies the
+// same mapping to runtime require() (vite/vitest does not), so under
+// `npm run dev` require() used to return the empty .d.ts module instead of
+// the binding — `native` was a truthy {} and every `if (native)` branch
+// called a missing function ("native.openLibraryDb is not a function").
+// A real napi binding always exports at least hello(); anything else is not
+// the binding and must be treated as unavailable.
+function looksLikeNativeBinding(mod: unknown): mod is typeof NativeTypes {
+  return (
+    typeof mod === 'object' &&
+    mod !== null &&
+    typeof (mod as { hello?: unknown }).hello === 'function'
+  );
+}
+
 // Try CJS require first (works in vitest, works in the release bundle through
 // the banner's createRequire), then dynamic import (works in ESM-only envs).
 try {
-  native = require(nativePackageId()) as typeof NativeTypes;
+  const required = require(nativePackageId()) as unknown;
+  if (looksLikeNativeBinding(required)) {
+    native = required;
+  } else {
+    // Dev-environment stub (tsconfig paths → .d.ts): load error, but keep the
+    // dynamic-import fallback below a chance to resolve the real binding.
+    loadError = `require('@tabook/native') resolved to a non-binding stub (tsconfig paths mapping?)`;
+    readyPromise = import(nativePackageId())
+      .then((mod) => {
+        // ESM-importing a CJS module yields { default: exports }; unwrap it.
+        const modNative = (mod as { default?: unknown }).default ?? mod;
+        if (looksLikeNativeBinding(modNative)) {
+          native = modNative;
+          loadError = null;
+          return true;
+        }
+        console.error(`[tabook] ${loadError} — falling back to pure-TS implementations.`);
+        native = null;
+        return false;
+      })
+      .catch(() => {
+        console.error(`[tabook] ${loadError} — falling back to pure-TS implementations.`);
+        native = null;
+        return false;
+      });
+  }
 } catch (syncErr) {
   // CJS failed (ESM-only env); try dynamic import. Track the promise so
   // callers can await readiness instead of racing it.
@@ -39,7 +80,13 @@ try {
     .then((mod) => {
       // ESM-importing a CJS module yields { default: exports }; unwrap it.
       const modNative = (mod as { default?: unknown }).default ?? mod;
-      native = (modNative as typeof NativeTypes) ?? null;
+      if (!looksLikeNativeBinding(modNative)) {
+        loadError = `native module unavailable — require: ${syncReason}; import resolved to a non-binding stub`;
+        console.error(`[tabook] ${loadError} — falling back to pure-TS implementations.`);
+        native = null;
+        return false;
+      }
+      native = modNative;
       return native !== null;
     })
     .catch((asyncErr) => {

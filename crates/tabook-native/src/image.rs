@@ -24,7 +24,11 @@ pub fn image_to_png_inner(data: &[u8]) -> Result<ImageToPngData, String> {
         img.write_to(&mut cursor, image::ImageFormat::Png)
             .map_err(|e| format!("cannot encode PNG: {e}"))?;
     }
-    Ok(ImageToPngData { data: png, width, height })
+    Ok(ImageToPngData {
+        data: png,
+        width,
+        height,
+    })
 }
 
 #[cfg(test)]
@@ -40,24 +44,36 @@ mod tests {
 
     #[test]
     fn png_round_trip() {
-        let img =
-            image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(2, 3, image::Rgba([255, 0, 0, 255])));
+        let img = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            2,
+            3,
+            image::Rgba([255, 0, 0, 255]),
+        ));
         let png = encode(img, image::ImageFormat::Png);
         let out = image_to_png_inner(&png).expect("png decode");
         assert_eq!((out.width, out.height), (2, 3));
         // Re-encoded output must still be a PNG (magic bytes).
-        assert_eq!(&out.data[..8], &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        assert_eq!(
+            &out.data[..8],
+            &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+        );
     }
 
     #[test]
     fn jpeg_is_converted_to_png() {
-        let img =
-            image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(4, 2, image::Rgb([10, 200, 30])));
+        let img = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            4,
+            2,
+            image::Rgb([10, 200, 30]),
+        ));
         let jpeg = encode(img, image::ImageFormat::Jpeg);
         assert_ne!(&jpeg[..3], &[0x89, 0x50, 0x4e]);
         let out = image_to_png_inner(&jpeg).expect("jpeg decode");
         assert_eq!((out.width, out.height), (4, 2));
-        assert_eq!(&out.data[..8], &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        assert_eq!(
+            &out.data[..8],
+            &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+        );
     }
 
     #[test]

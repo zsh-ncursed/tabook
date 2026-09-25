@@ -40,9 +40,7 @@ fn read_text_file(zip: &ZipArchive, entry_name: &str) -> Result<String, String> 
 }
 
 fn find_node<'a>(children: &'a [XmlNode], tag: &str) -> Option<&'a XmlNode> {
-    children
-        .iter()
-        .find(|n| normalize_tag(n.tag()) == tag)
+    children.iter().find(|n| normalize_tag(n.tag()) == tag)
 }
 
 fn parse_container(zip: &ZipArchive) -> Result<String, String> {
@@ -73,8 +71,8 @@ fn posix_dirname(p: &str) -> String {
 fn parse_opf(zip: &ZipArchive, opf_path: &str) -> Result<OpfData, String> {
     let text = read_text_file(zip, opf_path)?;
     let children = parse_xml_inner(&text)?;
-    let package_node = find_node(&children, "package")
-        .ok_or("Invalid EPUB OPF: missing <package>")?;
+    let package_node =
+        find_node(&children, "package").ok_or("Invalid EPUB OPF: missing <package>")?;
     let opf_dir = posix_dirname(opf_path);
 
     let metadata_node = first_child(Some(package_node), "metadata");
@@ -138,7 +136,8 @@ fn parse_opf(zip: &ZipArchive, opf_path: &str) -> Result<OpfData, String> {
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join("\n\n");
-        let publisher = normalize_whitespace_inner(&text_of(first_child(Some(md_node), "publisher")));
+        let publisher =
+            normalize_whitespace_inner(&text_of(first_child(Some(md_node), "publisher")));
         if !publisher.is_empty() {
             metadata.publisher = Some(publisher);
         }
@@ -225,7 +224,9 @@ struct TocLink {
 
 fn parse_nav_point(node: &XmlNode, opf_dir: &str, level: i32) -> TocLink {
     let nav_label = first_child(Some(node), "navLabel");
-    let label = normalize_whitespace_inner(&text_of(nav_label.and_then(|nl| first_child(Some(nl), "text"))));
+    let label = normalize_whitespace_inner(&text_of(
+        nav_label.and_then(|nl| first_child(Some(nl), "text")),
+    ));
     let content = first_child(Some(node), "content");
     let src = attr_of(content, "src").unwrap_or_default();
     let (file, fragment) = match src.find('#') {
@@ -249,9 +250,13 @@ fn parse_ncx(zip: &ZipArchive, ncx_href: &str, opf_dir: &str) -> Result<Vec<TocL
     let text = read_text_file(zip, ncx_href)?;
     let children = parse_xml_inner(&text)?;
     let ncx_node = find_node(&children, "ncx");
-    let Some(ncx_node) = ncx_node else { return Ok(Vec::new()) };
+    let Some(ncx_node) = ncx_node else {
+        return Ok(Vec::new());
+    };
     let nav_map = first_child(Some(ncx_node), "navMap");
-    let Some(nav_map) = nav_map else { return Ok(Vec::new()) };
+    let Some(nav_map) = nav_map else {
+        return Ok(Vec::new());
+    };
     Ok(find_children(nav_map, "navPoint")
         .iter()
         .map(|np| parse_nav_point(np, opf_dir, 1))
@@ -298,7 +303,9 @@ fn parse_nav_doc(zip: &ZipArchive, nav_href: &str, opf_dir: &str) -> Result<Vec<
     let children = parse_xml_inner(&text)?;
     let html = find_node(&children, "html");
     let body = html.and_then(|h| first_child(Some(h), "body"));
-    let Some(body) = body else { return Ok(Vec::new()) };
+    let Some(body) = body else {
+        return Ok(Vec::new());
+    };
     let mut nav_node = None;
     for nav in find_children(body, "nav") {
         if attr_of(Some(nav), "type").as_deref() == Some("toc") {
@@ -309,7 +316,9 @@ fn parse_nav_doc(zip: &ZipArchive, nav_href: &str, opf_dir: &str) -> Result<Vec<
     if nav_node.is_none() {
         nav_node = find_children(body, "nav").into_iter().next();
     }
-    let Some(nav_node) = nav_node else { return Ok(Vec::new()) };
+    let Some(nav_node) = nav_node else {
+        return Ok(Vec::new());
+    };
     let ol = first_child(Some(nav_node), "ol");
     let Some(ol) = ol else { return Ok(Vec::new()) };
     Ok(find_children(ol, "li")
@@ -339,7 +348,8 @@ fn flatten_toc(
             Some(f) => format!("{}#{}", link.href, f),
             None => link.href.clone(),
         };
-        let block_index = id_to_block.get(&with_frag)
+        let block_index = id_to_block
+            .get(&with_frag)
             .or_else(|| file_to_block.get(&link.href))
             .copied()
             .unwrap_or(0);
@@ -388,9 +398,14 @@ pub fn parse_epub_buffer_inner(data: &[u8], file_path: &str) -> Result<ParsedBoo
     let mut block_index = 0i32;
 
     for idref in &opf.spine {
-        let Some(item) = opf.manifest.get(idref) else { continue };
+        let Some(item) = opf.manifest.get(idref) else {
+            continue;
+        };
         let xhtml_re = regex::Regex::new(r"(?i)\.x?html?$").unwrap();
-        if !xhtml_re.is_match(&item.href) && !item.media_type.contains("html") && !item.media_type.contains("xml") {
+        if !xhtml_re.is_match(&item.href)
+            && !item.media_type.contains("html")
+            && !item.media_type.contains("xml")
+        {
             continue;
         }
         let doc_text = read_text_file(&zip, &item.href)
@@ -525,7 +540,10 @@ mod tests {
         assert_eq!(metadata.genres, vec!["Fiction"]);
         assert_eq!(metadata.lang.as_deref(), Some("en"));
         assert_eq!(metadata.isbn.as_deref(), Some("urn:isbn:9781234567890"));
-        assert_eq!(metadata.cover_key.as_deref(), Some("OEBPS/images/cover.jpg"));
+        assert_eq!(
+            metadata.cover_key.as_deref(),
+            Some("OEBPS/images/cover.jpg")
+        );
     }
 
     #[test]
@@ -554,7 +572,10 @@ mod tests {
         let data = build_epub();
         let book = parse_epub_buffer_inner(&data, "/test.epub").unwrap();
         assert!(!book.resources.is_empty());
-        let cover = book.resources.iter().find(|r| r.key == "OEBPS/images/cover.jpg");
+        let cover = book
+            .resources
+            .iter()
+            .find(|r| r.key == "OEBPS/images/cover.jpg");
         assert!(cover.is_some());
     }
 

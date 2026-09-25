@@ -2,8 +2,8 @@
 //!
 //! All structs are `#[napi(object)]`: napi-rs converts them to plain JS objects
 //! when returned across the boundary. The TS side consumes them as `Block`,
-//! `Inline`, etc., with identical field names (snake_case matches the existing
-//! TS types, which already use snake_case for block fields like `blockIndex`,
+//! `Inline`, etc., with identical field names (`snake_case` matches the existing
+//! TS types, which already use `snake_case` for block fields like `blockIndex`,
 //! `coverKey`).
 
 use napi_derive::napi;

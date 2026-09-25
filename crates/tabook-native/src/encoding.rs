@@ -19,7 +19,7 @@ pub fn detect_encoding_inner(data: &[u8]) -> String {
     if let Some(start) = head.find("encoding") {
         let after = &head[start..];
         if let Some(q_start) = after.find(['"', '\'']) {
-            let quote_char = &after[q_start..q_start + 1];
+            let quote_char = &after[q_start..=q_start];
             let rest = &after[q_start + 1..];
             if let Some(end) = rest.find(quote_char) {
                 let enc = &rest[..end];
@@ -130,7 +130,10 @@ mod tests {
     fn decode_windows1251() {
         // 0xC0 = 'А' in windows-1251; need XML declaration for detection.
         let xml = b"<?xml version=\"1.0\" encoding=\"windows-1251\"?><a>\xC0</a>";
-        assert_eq!(decode_xml_buffer_inner(xml), "<?xml version=\"1.0\" encoding=\"windows-1251\"?><a>\u{0410}</a>");
+        assert_eq!(
+            decode_xml_buffer_inner(xml),
+            "<?xml version=\"1.0\" encoding=\"windows-1251\"?><a>\u{0410}</a>"
+        );
     }
 
     #[test]

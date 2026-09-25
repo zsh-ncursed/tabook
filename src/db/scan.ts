@@ -1,10 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { LibraryDb, LibraryFolderRecord } from './db.js';
-import { detectFormat } from '../formats/index.js';
-import { parseFb2Metadata } from '../formats/fb2/parser.js';
-import { parseEpubMetadata } from '../formats/epub/parser.js';
-import type { BookMetadata } from '../formats/model.js';
+import { detectFormat, parseBookMetadata } from '../formats/index.js';
 import { expandTilde } from '../utils/paths.js';
 import { messageOf } from '../utils/errors.js';
 
@@ -153,8 +150,9 @@ export async function scanLibraryFolder(
       try {
         const data = fs.readFileSync(file);
         const format = detectFormat(data, path.basename(file));
-        const metadata: BookMetadata =
-          format === 'fb2' ? parseFb2Metadata(data, file) : parseEpubMetadata(data, file);
+        // Metadata-only parse via the formats gate (native fast path when the
+        // Rust core is available, TS parsers otherwise).
+        const metadata = parseBookMetadata(data, file, format);
         db.addBook({
           path: file,
           filename: path.basename(file),

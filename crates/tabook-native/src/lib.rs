@@ -43,6 +43,7 @@ use crate::model::{Author, Block, BookMetadata, ParsedBook, SeriesInfo};
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn hello() -> String {
     format!("tabook-native {}", env!("CARGO_PKG_VERSION"))
 }
@@ -50,42 +51,49 @@ pub fn hello() -> String {
 // text.rs
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn display_width(input: String) -> i32 {
     crate::text::display_width_inner(&input)
 }
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn decode_entities(input: String) -> String {
     crate::text::decode_entities_standalone(&input)
 }
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn normalize_whitespace(input: String) -> String {
     crate::text::normalize_whitespace_inner(&input)
 }
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn strip_html(html: String) -> String {
     crate::text::strip_html_inner(&html)
 }
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn truncate(input: String, max_length: i32, suffix: Option<String>) -> String {
     crate::text::truncate_inner(&input, max_length.max(0) as usize, suffix.as_deref())
 }
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn truncate_w(text: String, max: i32) -> String {
     crate::text::truncate_w_inner(&text, max)
 }
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn split_chars(input: String) -> Vec<String> {
     crate::text::split_chars_inner(&input)
 }
@@ -93,30 +101,35 @@ pub fn split_chars(input: String) -> Vec<String> {
 // encoding.rs
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn detect_encoding(data: Buffer) -> String {
     crate::encoding::detect_encoding_inner(&data)
 }
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn normalize_encoding(enc: String) -> String {
     crate::encoding::normalize_encoding_inner(&enc)
 }
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn decode_xml_buffer(data: Buffer) -> String {
     crate::encoding::decode_xml_buffer_inner(&data)
 }
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn file_extension(name: String) -> String {
     crate::encoding::file_extension_inner(&name)
 }
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn is_zip_buffer(data: Buffer) -> bool {
     crate::encoding::is_zip_buffer_inner(&data)
 }
@@ -196,7 +209,7 @@ pub fn parse_book_file(file_path: String) -> NapiResult<ParsedBook> {
 #[cfg(feature = "napi-runtime")]
 #[napi]
 pub fn invalidate_book_cache() {
-    crate::formats_index::invalidate_book_cache_inner()
+    crate::formats_index::invalidate_book_cache_inner();
 }
 
 // fb2/parser.rs
@@ -457,6 +470,7 @@ pub fn parse_opds_atom(text: String) -> NapiResult<OpdsFeed> {
 // search.rs
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn build_search_index(blocks: Vec<Block>) -> BookSearchIndex {
     let blocks_owned: Vec<crate::model::Block> = blocks;
     BookSearchIndex(crate::search::BookSearchIndex::new(&blocks_owned))
@@ -470,16 +484,19 @@ pub struct BookSearchIndex(pub(crate) crate::search::BookSearchIndex);
 #[napi]
 impl BookSearchIndex {
     #[napi(constructor)]
+    #[must_use]
     pub fn new(blocks: Vec<Block>) -> Self {
         BookSearchIndex(crate::search::BookSearchIndex::new(&blocks))
     }
 
     #[napi(getter)]
+    #[must_use]
     pub fn block_count(&self) -> i32 {
         self.0.block_count()
     }
 
     #[napi]
+    #[must_use]
     pub fn search(&self, query: String) -> Vec<SearchMatch> {
         self.0
             .search(&query)
@@ -493,6 +510,7 @@ impl BookSearchIndex {
     }
 
     #[napi]
+    #[must_use]
     pub fn block_highlights(&self, query: String, block_index: i32) -> Vec<HighlightRange> {
         self.0
             .block_highlights(&query, block_index)
@@ -507,6 +525,7 @@ impl BookSearchIndex {
     /// All block highlight ranges for a query in a single crossing (avoids
     /// per-block napi calls when the layout wrapper syncs highlights).
     #[napi]
+    #[must_use]
     pub fn highlight_ranges(&self, query: String) -> Vec<BlockHighlights> {
         self.0
             .highlight_ranges(&query)
@@ -602,6 +621,7 @@ pub struct TypographyConfigNapi {
 #[napi]
 impl BookLayout {
     #[napi(constructor)]
+    #[must_use]
     pub fn new(blocks: Vec<Block>, typo: TypographyConfigNapi, width: i32, justify: bool) -> Self {
         let opts = crate::renderer::layout::LayoutOptions {
             typo: crate::renderer::layout::TypographyConfig {
@@ -891,7 +911,7 @@ impl LibraryDb {
                 &metadata,
                 library_root.as_deref(),
             )
-            .map(|id| id as f64)
+            .map(f64::from)
             .map_err(NapiError::from_reason)
     }
 
@@ -953,7 +973,7 @@ impl LibraryDb {
     pub fn add_bookmark(&self, book_id: f64, position: f64, label: String) -> NapiResult<f64> {
         self.inner
             .add_bookmark(book_id as i32, position as i64, &label)
-            .map(|id| id as f64)
+            .map(f64::from)
             .map_err(NapiError::from_reason)
     }
 
@@ -1045,7 +1065,7 @@ impl LibraryDb {
     pub fn start_session(&self, book_id: f64) -> NapiResult<f64> {
         self.inner
             .start_session(book_id as i32)
-            .map(|id| id as f64)
+            .map(f64::from)
             .map_err(NapiError::from_reason)
     }
 
@@ -1085,7 +1105,7 @@ impl LibraryDb {
     ) -> NapiResult<f64> {
         self.inner
             .add_catalog(&name, &url, username.as_deref(), password.as_deref())
-            .map(|id| id as f64)
+            .map(f64::from)
             .map_err(NapiError::from_reason)
     }
 
@@ -1166,7 +1186,7 @@ impl LibraryDb {
     pub fn add_library_folder(&self, path: String) -> NapiResult<f64> {
         self.inner
             .add_library_folder(&path)
-            .map(|id| id as f64)
+            .map(f64::from)
             .map_err(NapiError::from_reason)
     }
 
@@ -1220,12 +1240,12 @@ impl LibraryDb {
 
     #[napi]
     pub fn remove_books_by_paths(&self, paths: Vec<String>) -> f64 {
-        self.inner.remove_books_by_paths(&paths).unwrap_or(0) as f64
+        f64::from(self.inner.remove_books_by_paths(&paths).unwrap_or(0))
     }
 
     #[napi]
     pub fn remove_books_by_library_root(&self, root: String) -> f64 {
-        self.inner.remove_books_by_library_root(&root).unwrap_or(0) as f64
+        f64::from(self.inner.remove_books_by_library_root(&root).unwrap_or(0))
     }
 }
 
@@ -1283,6 +1303,7 @@ pub struct ScanSummaryNapi {
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn walk_book_files(root: String) -> Vec<String> {
     crate::scan::walk_book_files(&root)
 }
@@ -1292,11 +1313,11 @@ pub fn walk_book_files(root: String) -> Vec<String> {
 pub fn scan_library_folder(db: &LibraryDb, root: String) -> NapiResult<ScanSummaryNapi> {
     crate::scan::scan_library_folder(&db.inner, &root)
         .map(|s| ScanSummaryNapi {
-            total: s.total as f64,
-            added: s.added as f64,
-            updated: s.updated as f64,
-            removed: s.removed as f64,
-            failed: s.failed as f64,
+            total: f64::from(s.total),
+            added: f64::from(s.added),
+            updated: f64::from(s.updated),
+            removed: f64::from(s.removed),
+            failed: f64::from(s.failed),
             errors: s.errors,
         })
         .map_err(NapiError::from_reason)
@@ -1316,6 +1337,7 @@ pub fn folder_needs_rescan(db: &LibraryDb, folder: LibraryFolderRecord) -> bool 
 
 #[cfg(feature = "napi-runtime")]
 #[napi]
+#[must_use]
 pub fn resolve_folder_path(p: String) -> String {
     crate::scan::resolve_folder_path(&p)
 }

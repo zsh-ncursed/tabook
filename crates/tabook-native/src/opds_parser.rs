@@ -1,6 +1,6 @@
 //! OPDS Atom parser — Rust port of `src/opds/parser.ts` (204 LOC).
 //!
-//! Parses OPDS Atom XML feeds into structured OpdsFeed. Used by the OPDS
+//! Parses OPDS Atom XML feeds into structured `OpdsFeed`. Used by the OPDS
 //! browser (TS HTTP client fetches, Rust parses).
 
 use crate::text::strip_html_inner;
@@ -111,7 +111,11 @@ fn parse_feed(node: &XmlNode) -> OpdsFeed {
     let title = text_of(first_child(Some(node), "title"));
     let subtitle = {
         let s = text_of(first_child(Some(node), "subtitle"));
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     };
     let updated = text_of(first_child(Some(node), "updated"));
 
@@ -176,31 +180,46 @@ fn parse_entry(node: &XmlNode) -> OpdsEntry {
     let updated = text_of(first_child(Some(node), "updated"));
     let summary = {
         let s = text_of(first_child(Some(node), "summary"));
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     };
     let content_node = first_child(Some(node), "content");
-    let content = content_node.and_then(|c| {
+    let content = content_node.map(|c| {
         let attrs = attributes_of(c);
-        let content_type = attrs.iter().find(|(k, _)| *k == "type").map(|(_, v)| v.to_string());
+        let content_type = attrs
+            .iter()
+            .find(|(k, _)| *k == "type")
+            .map(|(_, v)| v.to_string());
         let raw = full_text_of(Some(c));
         if let Some(ct) = content_type {
             let re = regex::Regex::new("(?i)html").unwrap();
             if re.is_match(&ct) {
-                Some(strip_html_inner(&raw))
+                strip_html_inner(&raw)
             } else {
-                Some(raw)
+                raw
             }
         } else {
-            Some(raw)
+            raw
         }
     });
     let rights = {
         let s = text_of(first_child(Some(node), "rights"));
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     };
     let published = {
         let s = text_of(first_child(Some(node), "published"));
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     };
 
     let authors: Vec<OpdsAuthor> = find_children(node, "author")
@@ -209,7 +228,11 @@ fn parse_entry(node: &XmlNode) -> OpdsEntry {
             name: text_of(first_child(Some(an), "name")),
             uri: {
                 let u = text_of(first_child(Some(an), "uri"));
-                if u.is_empty() { None } else { Some(u) }
+                if u.is_empty() {
+                    None
+                } else {
+                    Some(u)
+                }
             },
         })
         .collect();
@@ -218,28 +241,58 @@ fn parse_entry(node: &XmlNode) -> OpdsEntry {
         .iter()
         .map(|cn| {
             let attrs = attributes_of(cn);
-            let scheme = attrs.iter().find(|(k, _)| *k == "scheme").map(|(_, v)| v.to_string());
-            let term = attrs.iter().find(|(k, _)| *k == "term").map(|(_, v)| v.to_string()).unwrap_or_default();
-            let label = attrs.iter().find(|(k, _)| *k == "label").map(|(_, v)| v.to_string());
-            OpdsCategory { scheme, term, label }
+            let scheme = attrs
+                .iter()
+                .find(|(k, _)| *k == "scheme")
+                .map(|(_, v)| v.to_string());
+            let term = attrs
+                .iter()
+                .find(|(k, _)| *k == "term")
+                .map(|(_, v)| v.to_string())
+                .unwrap_or_default();
+            let label = attrs
+                .iter()
+                .find(|(k, _)| *k == "label")
+                .map(|(_, v)| v.to_string());
+            OpdsCategory {
+                scheme,
+                term,
+                label,
+            }
         })
         .collect();
 
     let language = {
         let s = text_of(first_child(Some(node), "language"));
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     };
     let issued = {
         let s = text_of(first_child(Some(node), "issued"));
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     };
     let publisher = {
         let s = text_of(first_child(Some(node), "publisher"));
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     };
     let identifier = {
         let s = text_of(first_child(Some(node), "identifier"));
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     };
 
     let links: Vec<OpdsLink> = find_children(node, "link")
@@ -265,14 +318,19 @@ fn parse_entry(node: &XmlNode) -> OpdsEntry {
         .find(|l| l.rel == "subsection" || l.rel == "http://opds-spec.org/subsection")
         .map(|l| l.href.clone())
         .or_else(|| {
-            links.iter().find(|l| {
-                !ACQUISITION_RELS.contains(&l.rel.as_str())
-                    && l.rel != "alternate"
-                    && l.rel != "http://opds-spec.org/image"
-                    && l.rel != "http://opds-spec.org/image/thumbnail"
-                    && l.rel != "related"
-                    && l.type_.as_deref().map(|t| t.contains("opds-catalog")).unwrap_or(false)
-            }).map(|l| l.href.clone())
+            links
+                .iter()
+                .find(|l| {
+                    !ACQUISITION_RELS.contains(&l.rel.as_str())
+                        && l.rel != "alternate"
+                        && l.rel != "http://opds-spec.org/image"
+                        && l.rel != "http://opds-spec.org/image/thumbnail"
+                        && l.rel != "related"
+                        && l.type_
+                            .as_deref()
+                            .is_some_and(|t| t.contains("opds-catalog"))
+                })
+                .map(|l| l.href.clone())
         });
 
     let is_acquisition = !acquisition_links.is_empty();
@@ -304,7 +362,12 @@ fn parse_entry(node: &XmlNode) -> OpdsEntry {
 
 fn parse_link(node: &XmlNode) -> Option<OpdsLink> {
     let attrs = attributes_of(node);
-    let get = |name: &str| attrs.iter().find(|(k, _)| *k == name).map(|(_, v)| (*v).to_owned());
+    let get = |name: &str| {
+        attrs
+            .iter()
+            .find(|(k, _)| *k == name)
+            .map(|(_, v)| (*v).to_owned())
+    };
     let rel = get("rel").unwrap_or_default();
     let href = get("href").unwrap_or_default();
     if href.is_empty() {

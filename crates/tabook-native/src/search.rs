@@ -51,7 +51,10 @@ fn fold_text(text: &str) -> FoldedBlock {
         }
         char_idx += 1;
     }
-    FoldedBlock { folded, fold_to_orig }
+    FoldedBlock {
+        folded,
+        fold_to_orig,
+    }
 }
 
 pub struct BookSearchIndex {
@@ -67,7 +70,10 @@ pub struct SearchMatch {
 
 impl BookSearchIndex {
     pub fn new(blocks: &[Block]) -> Self {
-        let folded = blocks.iter().map(|b| fold_text(&block_to_plain_text(b))).collect();
+        let folded = blocks
+            .iter()
+            .map(|b| fold_text(&block_to_plain_text(b)))
+            .collect();
         Self { folded }
     }
 
@@ -155,7 +161,11 @@ fn search_in_block_raw(fb: &FoldedBlock, query: &str) -> Vec<(usize, usize)> {
         // allowing overlapping matches). Byte-slicing folded[start + 1..]
         // panics when the char at `start` is multi-byte (Cyrillic 'с' is
         // 2 bytes) — real crash: "start byte index 284 is not a char boundary".
-        let next_start = start + fb.folded[start..].chars().next().map_or(1, |c| c.len_utf8());
+        let next_start = start
+            + fb.folded[start..]
+                .chars()
+                .next()
+                .map_or(1, char::len_utf8);
         if next_start >= fb.folded.len() {
             break;
         }
@@ -166,7 +176,11 @@ fn search_in_block_raw(fb: &FoldedBlock, query: &str) -> Vec<(usize, usize)> {
 
 pub fn normalize_query(query: &str) -> String {
     let folded = fold_text(query);
-    folded.folded.split_whitespace().collect::<Vec<_>>().join(" ")
+    folded
+        .folded
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[cfg(test)]
