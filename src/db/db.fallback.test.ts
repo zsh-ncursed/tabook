@@ -5,17 +5,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-vi.mock('../native.js', () => ({ native: null, isNativeErrorResult: () => false }));
+vi.mock('../native.js', () => ({
+  native: null,
+  isNativeErrorResult: () => false,
+  getNativeLoadError: () => null,
+}));
 
 import { LibraryDb } from './db.js';
-import type { BookMetadata } from '../formats/model.js';
-
-const metadata: BookMetadata = {
-  title: 'Fallback Book',
-  authors: [{ firstName: 'Ann', lastName: 'Lee' }],
-  genres: ['sf'],
-  annotation: '',
-};
+import { DatabaseError } from '../utils/errors.js';
 
 let dir: string;
 
@@ -27,25 +24,21 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-describe('LibraryDb better-sqlite3 fallback', () => {
-  it('performs a CRUD cycle', () => {
-    const db = new LibraryDb(path.join(dir, 'lib.sqlite'));
-    const id = db.addBook({
-      path: '/tmp/f.fb2',
-      filename: 'f.fb2',
-      format: 'fb2',
-      size: 1,
-      metadata,
-    });
-    expect(db.getBook(id)!.title).toBe('Fallback Book');
-    db.setProgress(id, 100, 5);
-    expect(db.getProgress(id)!.percent).toBe(5);
-    const bm = db.addBookmark(id, 10, 'm');
-    expect(db.getBookmark(bm)!.label).toBe('m');
-    const cat = db.addCatalog({ name: 'G', url: 'https://x' });
-    db.updateCatalog(cat, { name: 'G2' });
-    expect(db.getCatalogByName('G2')!.url).toBe('https://x');
-    db.close();
+describe('LibraryDb without the native core', () => {
+  it('fails fast instead of silently degrading (no TS fallback for the DB)', () => {
+    // The Rust core owns the schema and migrations: a missing binding must
+    // surface as a clear error, never as a partially-working database.
+    expect(() => new LibraryDb(path.join(dir, 'lib.sqlite'))).toThrow(DatabaseError);
+    expect(() => new LibraryDb(path.join(dir, 'lib.sqlite'))).toThrow(/@tabook\/native/);
+  });
+
+  it('reports the load error alongside the failure', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(() => new LibraryDb(path.join(dir, 'lib.sqlite'))).toThrow();
+    } finally {
+      err.mockRestore();
+    }
   });
 
   it('throws DatabaseError on unopenable path', () => {

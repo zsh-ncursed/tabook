@@ -21,3 +21,6 @@ graphify-out/
 .tts-venv/
 
 .tts-test.fb2
+.tts-xdg/
+:memory:.ses
+node:url
