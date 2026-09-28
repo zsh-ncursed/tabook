@@ -138,6 +138,48 @@ export const COMMANDS: CommandDef[] = [
     screens: ['library', 'reader'],
   },
   {
+    names: ['tts'],
+    usage: ':tts',
+    desc: 'Read aloud: play / pause from the current position',
+    screens: ['reader'],
+  },
+  {
+    names: ['tts'],
+    usage: ':tts stop',
+    desc: 'Stop reading aloud',
+    screens: ['reader'],
+  },
+  {
+    names: ['tts'],
+    usage: ':tts continue',
+    desc: 'Resume reading from the last saved position',
+    screens: ['reader'],
+  },
+  {
+    names: ['tts'],
+    usage: ':tts engines',
+    desc: 'List available TTS engines / voices',
+    screens: ['reader'],
+  },
+  {
+    names: ['tts'],
+    usage: ':tts voice <engine>[/<voice>]',
+    desc: 'Switch TTS engine and/or voice',
+    screens: ['reader'],
+  },
+  {
+    names: ['tts'],
+    usage: ':tts rate <n>',
+    desc: 'Set TTS playback rate (0.5-4.0)',
+    screens: ['reader'],
+  },
+  {
+    names: ['tts'],
+    usage: ':tts follow',
+    desc: 'Toggle follow-while-reading (scroll with the voice)',
+    screens: ['reader'],
+  },
+  {
     names: ['q', 'quit', 'exit'],
     usage: ':q / :quit',
     desc: 'Quit',
@@ -253,6 +295,7 @@ export function fuzzyMatchBooks(query: string, books: BookRecord[], limit = 25):
 
 export const OPDS_SUBS = ['add', 'remove', 'list'] as const;
 export const LIBRARY_SUBS = ['add', 'remove', 'list', 'scan'] as const;
+export const TTS_SUBS = ['stop', 'continue', 'engines', 'voice', 'rate', 'follow'] as const;
 
 /**
  * Returns the length of the command-name prefix that matches a valid command.
@@ -302,6 +345,11 @@ export function completeCommand(value: string, themeNames: () => string[]): stri
     const sub = (parts[1] ?? '').toLowerCase();
     const subs = LIBRARY_SUBS.filter((s) => s.startsWith(sub));
     if (subs.length === 1) return `:library ${subs[0]} `;
+  }
+  if (cmd === 'tts' && parts.length === 2) {
+    const sub = (parts[1] ?? '').toLowerCase();
+    const subs = TTS_SUBS.filter((s) => s.startsWith(sub));
+    if (subs.length === 1) return `:tts ${subs[0]} `;
   }
   if (cmd === 'theme' && parts.length === 2) {
     const prefix = (parts[1] ?? '').toLowerCase();

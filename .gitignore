@@ -15,3 +15,9 @@ target/
 # graphify code-graph artifacts (regenerated with `graphify update .`)
 graphify-out/
 .opencode/
+
+# TTS: локальные голоса piper и тестовый venv (не коммитим)
+.tts-models/
+.tts-venv/
+
+.tts-test.fb2

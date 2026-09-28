@@ -10,6 +10,7 @@ import { shellSplit } from '../utils/text.js';
 import { forceRedraw } from './screenRefresh.js';
 import { resolveFolderPath } from '../db/scan.js';
 import type { ReaderSession } from './reader/readerModel.js';
+import type { ReaderTtsController } from './reader/readerActions.js';
 
 export type AppScreen = 'library' | 'reader' | 'opds';
 
@@ -41,6 +42,8 @@ export interface CommandContext {
   setLiveConfig: (c: Config) => void;
   libraryCmdRef: { current: { sort?: SortField; group?: boolean } };
   prePickThemeRef: { current: string | null };
+  /** Контроллер TTS из ридера (reader view его предоставляет). */
+  tts?: ReaderTtsController;
 }
 
 export function runCommand(text: string, ctx: CommandContext): void {
@@ -68,6 +71,7 @@ export function runCommand(text: string, ctx: CommandContext): void {
     setLiveConfig,
     libraryCmdRef,
     prePickThemeRef,
+    tts,
   } = ctx;
   const parts = shellSplit(text.trim());
   const rawCmd = parts[0] ?? '';
@@ -151,6 +155,54 @@ export function runCommand(text: string, ctx: CommandContext): void {
     case 'css':
       notify('Respect publisher CSS is stored in config; the CSS engine arrives in a later stage');
       break;
+    case 'tts': {
+      if (!tts) {
+        notify('TTS disabled — set [tts] mode = "active" in config');
+        break;
+      }
+      const sub = args[0]?.toLowerCase();
+      if (!sub || sub === 'toggle' || sub === '') {
+        tts.play();
+      } else if (sub === 'stop') {
+        tts.stop();
+      } else if (sub === 'continue') {
+        // Возобновить с сохранённой позиции: читаем из БД и прокручиваем туда.
+        if (!session || session.bookId === null) {
+          notify('No book open');
+        } else {
+          const p = db.getProgress(session.bookId);
+          if (!p || p.position === null) {
+            notify('No saved reading position for this book');
+          } else {
+            session.goToCharOffset(p.position);
+            tts.play();
+            notify(`Resuming from ${p.percent ?? 0}%`);
+          }
+        }
+      } else if (sub === 'engines') {
+        notify('TTS engines: piper (local) · espeak (system fallback) — switch with :tts voice <engine>/<voice>');
+      } else if (sub === 'voice') {
+        const spec = args[1];
+        if (!spec) {
+          notify('Usage: :tts voice <engine>[/<voice>] — e.g. :tts voice piper/ru_RU-irina-medium');
+        } else {
+          notify(`TTS voice: ${spec} — configure [tts] in config.toml to set`);
+        }
+      } else if (sub === 'rate') {
+        const val = Number(args[1]);
+        if (!Number.isFinite(val) || val < 0.25 || val > 4) {
+          notify('Usage: :tts rate <0.25-4.0> — e.g. :tts rate 1.2');
+        } else {
+          notify(`TTS rate: ${val}x — configure [tts] in config.toml to set`);
+        }
+      } else if (sub === 'follow') {
+        const on = tts.toggleFollow();
+        notify(`Follow while reading: ${on ? 'on' : 'off'}`);
+      } else {
+        notify(`Unknown TTS subcommand: ${sub}. Try :tts stop | continue | engines`);
+      }
+      break;
+    }
     case 'search':
       if (session) {
         const query = args.join(' ');

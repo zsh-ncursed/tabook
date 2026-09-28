@@ -5,6 +5,7 @@ import { themeNames } from '../themes/themes.js';
 import { completeCommand as completeCommandFn, validCommandPrefixLength } from './commands.js';
 import { runCommand, type AppScreen, type CommandContext } from './runCommand.js';
 import type { ReaderSession } from './reader/readerModel.js';
+import type { ReaderTtsController } from './reader/readerActions.js';
 
 // Everything App.tsx feeds into the command dispatcher. Grouped here so App
 // stays a composition of hooks: it owns state and session/overlay handlers,
@@ -33,6 +34,8 @@ export interface UseAppCommandsParams {
   setCmdVersion: (fn: (v: number) => number) => void;
   setLiveConfig: (c: Config) => void;
   libraryCmdRef: { current: { sort?: SortField; group?: boolean } };
+  /** Контроллер TTS из ридера (если книга открыта). */
+  tts?: ReaderTtsController;
 }
 
 export function useAppCommands(params: UseAppCommandsParams): {
@@ -64,6 +67,7 @@ export function useAppCommands(params: UseAppCommandsParams): {
     setCmdVersion,
     setLiveConfig,
     libraryCmdRef,
+    tts,
   } = params;
 
   const run = useCallback(
@@ -92,6 +96,7 @@ export function useAppCommands(params: UseAppCommandsParams): {
         setCmdVersion,
         setLiveConfig,
         libraryCmdRef,
+        tts,
         // Set by runCommand on `:theme` (no args) and read back when the
         // picker closes; a fresh ref per invocation matches the pre-hook
         // behavior in App.tsx.

@@ -28,6 +28,12 @@ vim-like controls. Built with TypeScript, React + Ink and a native Rust core
 - Attach local folders as libraries (`:library add ~/books`) — recursive scans import metadata in bulk, and attached folders are auto-rescanned (mtime-based, async) when you enter the library if their files changed.
 - Browse online book catalogs over **OPDS** (`:opds add <name> <url>`) — search, navigate and download books straight to the library. Search (`/`) works from any feed: the OpenSearch link is discovered on the catalog root when a sub-feed omits it. Downloads run in a **background queue**: press `d` on several books and they download one after another while you keep browsing, with per-file progress in the status bar and a queue panel (`x`). Project Gutenberg and Flibusta are pre-seeded on first run.
 - Full-text search inside the current book with highlighted matches (`/`, `n`, `N`).
+- **Read books aloud** with a pluggable TTS architecture (`v` starts/pauses, `V`
+  stops): local neural voices via [Piper](https://github.com/rhasspy/piper)
+  (offline, any language — bring your own `.onnx` voice) with an `espeak-ng`
+  system fallback, animated braille progress in the status bar, and
+  `:tts continue` to resume from your last saved position. Engines are
+  self-contained modules — see [`docs/TTS.md`](docs/TTS.md).
 - Bookmarks (`b`) with text previews and a bookmark list (`B`). A bookmark can
   also be created from a mouse selection — the selected text becomes its label.
 - **Command palette** (`Ctrl+P`): fuzzy search over every command and binding —
@@ -173,6 +179,9 @@ the output of `--completion` into your shell's completion directory.
 | `t`                   | Table of contents                    |
 | `i`                   | Book info                            |
 | `z`                   | Zoom image (`Esc` to restore)        |
+| `v`                   | Read aloud — play / pause            |
+| `V`                   | Stop reading aloud                   |
+| `F`                   | Toggle follow-while-reading          |
 | `R`                   | Toggle recent books                  |
 | `J`                   | Toggle text justify                  |
 | `W`                   | Toggle wide screen                   |
@@ -209,6 +218,13 @@ the output of `--completion` into your shell's completion directory.
 | `:group`                 | Toggle group-by-series in the library                    |
 | `:goto <page>`           | Jump to a page number (`:goto 10%` also works)           |
 | `:simplified`            | Toggle simplified reading mode                           |
+| `:tts`                   | Read aloud — play / pause from the current position      |
+| `:tts continue`          | Resume reading aloud from the last saved position        |
+| `:tts stop`              | Stop reading aloud                                       |
+| `:tts engines`           | List available TTS engines                               |
+| `:tts voice <engine>/<voice>` | Switch engine and voice                            |
+| `:tts rate <n>`          | Set playback rate (0.25–4)                               |
+| `:tts follow`            | Toggle follow-while-reading                              |
 | `:search <query>`        | Search the current book                                  |
 | `:config init`           | Write a default config file                              |
 | `:config edit`           | Open the config in `$EDITOR` and reload it live          |
@@ -257,6 +273,12 @@ respect_publisher_css = true
 left = ["title"]                 # sections on the left: title
 right = ["percent", "page", "search", "hint", "downloads"]  # sections on the right
 show_progress_bar = true        # or false to show percent as text instead
+
+[tts]
+mode = "active"                  # read books aloud: v plays/pauses, V stops
+engine = "piper"                 # neural offline voices; espeak is the fallback
+voice = "ru_RU-irina-medium"     # any Piper voice — install it yourself, see docs/TTS.md
+command = ""                     # full path to the engine binary if not in PATH
 
 # Optional: match the theme to the terminal background at startup (OSC 11)
 auto_theme = false

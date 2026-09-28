@@ -20,6 +20,13 @@ import type { AppScreen } from './runCommand.js';
 import { useLibraryScanner } from './useLibraryScanner.js';
 import { enableMouseReporting, disableMouseReporting } from './mouse.js';
 import { useImageLayer } from './imageLayer.js';
+import {
+  createDefaultTtsManager,
+  buildChunks,
+  type TtsManager,
+} from '../tts/index.js';
+import type { ReaderTtsController } from './reader/readerActions.js';
+import { blockToPlainText } from '../renderer/blocks.js';
 import * as fs from 'node:fs';
 
 export interface AppProps {
@@ -69,6 +76,47 @@ export function App(props: AppProps): React.JSX.Element {
     path: string;
     count: number;
   } | null>(null);
+
+  // TTS: один менеджер на всё приложение (переживает смену книг).
+  const [ttsManager] = useState<TtsManager>(() =>
+    createDefaultTtsManager({ command: liveConfig.tts.command }),
+  );
+
+  // ReaderTtsController: собирает чанки из сессии и гоняет их через менеджер.
+  const ttsController: ReaderTtsController = useMemo<ReaderTtsController>(
+    () => ({
+      play() {
+        if (!session || session.book.content.length === 0) return;
+        const chunks = buildChunks(
+          {
+            blockCount: session.book.content.length,
+            blockText: (i) => blockToPlainText(session.book.content[i]!),
+            blockCharStart: (i) => session.blockCharStart(i),
+            blockRole: (i) => {
+              const b = session.book.content[i]!;
+              return b.type === 'empty' ? 'empty' : 'paragraph';
+            },
+          },
+          {
+            startChar: session.charOffset(),
+            maxChunkChars: liveConfig.tts.maxChunkChars,
+          },
+        );
+        if (chunks.chunks.length === 0) return;
+        ttsManager.play(chunks.chunks, {
+          engine: liveConfig.tts.engine,
+          voice: { voice: liveConfig.tts.voice, rate: liveConfig.tts.rate },
+        });
+      },
+      stop() {
+        ttsManager.stop();
+      },
+      toggleFollow() {
+        return !liveConfig.tts.follow;
+      },
+    }),
+    [session, liveConfig.tts, ttsManager],
+  );
 
   const theme = useMemo(() => {
     const t = THEMES[themeName];
@@ -315,6 +363,7 @@ export function App(props: AppProps): React.JSX.Element {
     setCmdVersion,
     setLiveConfig,
     libraryCmdRef,
+    tts: ttsController,
   });
 
   // :library remove confirmation — detach the folder and delete its books
@@ -478,6 +527,8 @@ export function App(props: AppProps): React.JSX.Element {
           validCommandPrefix={validCommandPrefix}
           inputDisabled={inputDisabled}
           message={message?.text}
+          ttsManager={ttsManager}
+          tts={ttsController}
         />
       ) : null}
       {openingBook ? (

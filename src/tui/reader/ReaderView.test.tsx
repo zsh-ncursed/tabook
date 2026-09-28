@@ -108,6 +108,26 @@ function makeProps(overrides: Partial<Parameters<typeof ReaderView>[0]> = {}) {
     onHelp: vi.fn(),
     runCommand: vi.fn(),
     completeCommand: vi.fn(() => null),
+    // TTS-моки: менеджер + контроллер (реальная работа тестируется отдельно).
+    ttsManager: {
+      onStatus: vi.fn(),
+      onAdvance: vi.fn(),
+      play: vi.fn(),
+      stop: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      toggle: vi.fn(),
+      dispose: vi.fn(),
+      getStatus: vi.fn(() => ({ state: 'idle' as const })),
+      resolveBackend: vi.fn(() => null),
+      register: vi.fn(),
+      engines: [],
+    } as unknown as Parameters<typeof ReaderView>[0]['ttsManager'],
+    tts: {
+      play: vi.fn(),
+      stop: vi.fn(),
+      toggleFollow: vi.fn(() => false),
+    } as unknown as Parameters<typeof ReaderView>[0]['tts'],
     ...overrides,
   };
 }

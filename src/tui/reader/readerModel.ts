@@ -27,6 +27,14 @@ export class ReaderSession {
     return this._bookId;
   }
   private blocks: Block[];
+  /** Публичный доступ к блокам книги (для TTS-интеграции). */
+  get bookBlocks(): Block[] {
+    return this.blocks;
+  }
+  /** Позиция начала блока в координатах книги (для TTS-интеграции). */
+  blockCharStart(i: number): number {
+    return this.layout.blockCharStart(i);
+  }
   private layout: BookLayout;
   private simplified: boolean;
   // Original blockIndex (as used by TOC entries, which index book.content) →

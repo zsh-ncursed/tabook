@@ -26,6 +26,24 @@ export interface ReaderActionContext {
   forceTick: () => void;
   openBookmarks: () => void;
   openToc: () => void;
+  /**
+   * Контроллер озвучки (TTS). Необязателен: если не передан, TTS-хоткеи
+   * превращаются в подсказку об отключённом TTS.
+   */
+  tts?: ReaderTtsController;
+}
+
+/**
+ * Минимальный контракт TTS для диспетчера чтения: ридер предоставляет реальную
+ * реализацию (см. ReaderView), чтобы диспетчер оставался легко тестируемым.
+ */
+export interface ReaderTtsController {
+  /** Играть/пауза с текущей позиции ридера. */
+  play(): void;
+  /** Остановить озвучку. */
+  stop(): void;
+  /** Переключить режим «следовать за звуком». */
+  toggleFollow(): boolean;
 }
 
 // Reading-mode action handling, extracted from the component so it can be
@@ -47,6 +65,7 @@ export function dispatchReaderAction(
     forceTick,
     openBookmarks,
     openToc,
+    tts,
   } = ctx;
   switch (action) {
     case 'move_cursor_down':
@@ -187,6 +206,26 @@ export function dispatchReaderAction(
     case 'move_cursor_right':
       // ponytail: horizontal scroll not implemented; no-op to keep keymap valid
       break;
+    case 'tts_play':
+      if (tts) {
+        tts.play();
+      } else {
+        notify('TTS disabled (set [tts] mode = "active")');
+      }
+      break;
+    case 'tts_stop':
+      tts?.stop();
+      break;
+    case 'tts_follow': {
+      if (!tts) {
+        notify('TTS disabled (set [tts] mode = "active")');
+        break;
+      }
+      const on = tts.toggleFollow();
+      notify(`Follow while reading: ${on ? 'on' : 'off'}`);
+      forceTick();
+      break;
+    }
     default:
       break;
   }
@@ -215,6 +254,7 @@ export function readerHint(mode: Mode, config: Config): string {
         keys('search'),
         keys('next_chapter'),
         keys('prev_chapter'),
+        keys('tts_play', 'tts_stop'),
         keys('help'),
         keys('quit'),
       ]

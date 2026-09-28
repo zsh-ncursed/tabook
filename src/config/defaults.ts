@@ -40,7 +40,10 @@ export type KeyAction =
   | 'opds_downloads'
   | 'opds_next_page'
   | 'opds_prev_page'
-  | 'opds_catalogs';
+  | 'opds_catalogs'
+  | 'tts_play'
+  | 'tts_stop'
+  | 'tts_follow';
 
 export const KEY_ACTIONS: readonly KeyAction[] = [
   'move_cursor_up',
@@ -85,6 +88,9 @@ export const KEY_ACTIONS: readonly KeyAction[] = [
   'opds_next_page',
   'opds_prev_page',
   'opds_catalogs',
+  'tts_play',
+  'tts_stop',
+  'tts_follow',
 ];
 
 export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
@@ -113,6 +119,9 @@ export const DEFAULT_KEYBINDINGS: Record<string, KeyAction> = {
   C: 'toggle_continue',
   J: 'toggle_justify',
   W: 'toggle_wide',
+  v: 'tts_play',
+  V: 'tts_stop',
+  F: 'tts_follow',
   d: 'delete_from_library',
   D: 'delete_file',
   t: 'toc',
@@ -150,7 +159,7 @@ export interface DisplayConfig {
 // (title, page, percent, ...); the config decides which sections are rendered
 // and on which side.
 export type StatusBarSection =
-  'title' | 'page' | 'percent' | 'search' | 'hint' | 'downloads' | 'mode';
+  'title' | 'page' | 'percent' | 'search' | 'hint' | 'downloads' | 'mode' | 'tts';
 
 export const STATUSBAR_SECTIONS: readonly StatusBarSection[] = [
   'title',
@@ -160,6 +169,7 @@ export const STATUSBAR_SECTIONS: readonly StatusBarSection[] = [
   'hint',
   'downloads',
   'mode',
+  'tts',
 ];
 
 export interface StatusBarConfig {
@@ -185,6 +195,27 @@ export interface Config {
   typography: TypographyConfig;
   display: DisplayConfig;
   statusbar: StatusBarConfig;
+  tts: TtsConfig;
+}
+
+/** Конфигурация озвучки текста (TTS). */
+export interface TtsConfig {
+  /** 'disabled' | 'active' — по умолчанию выключено (никаких процессов). */
+  mode: 'disabled' | 'active';
+  /** Логическое имя бэкенда: 'piper' | 'espeak' | ... */
+  engine: string;
+  /** Голос внутри бэкенда (например 'ru_RU-irina-medium'). */
+  voice: string;
+  /** Скорость воспроизведения (1.0 — норма). */
+  rate: number;
+  /** Граница чанка: 'paragraph' (по умолчанию) | 'page' | 'chapter'. */
+  unit: 'paragraph' | 'page' | 'chapter';
+  /** Максимум символов в чанке; длинные абзацы режутся по предложениям. */
+  maxChunkChars: number;
+  /** Прокручивать ли текст за звуком (follow-режим). */
+  follow: boolean;
+  /** Полный путь к бинарнику движка, если его нет в PATH (напр. venv piper). */
+  command: string;
 }
 
 export function defaultConfig(): Config {
@@ -211,6 +242,16 @@ export function defaultConfig(): Config {
       left: ['title'],
       right: ['percent', 'page', 'search', 'hint', 'downloads'],
       showProgressBar: true,
+    },
+    tts: {
+      mode: 'disabled',
+      engine: 'piper',
+      voice: 'ru_RU-irina-medium',
+      rate: 1,
+      unit: 'paragraph',
+      maxChunkChars: 2000,
+      follow: true,
+      command: '',
     },
   };
 }

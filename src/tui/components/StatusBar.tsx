@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import type { Theme } from '../../themes/themes.js';
 import type { StatusBarConfig, StatusBarSection } from '../../config/defaults.js';
+import type { TtsStatus } from '../../tts/types.js';
 
 function progressBar(percent: number, width: number): string {
   const filled = Math.round((percent / 100) * width);
@@ -22,6 +23,8 @@ export interface StatusBarData {
   message?: string;
   /** Current mode indicator (e.g. "SEARCH", "COMMAND") */
   mode?: string;
+  /** TTS playback state — rendered by TtsIndicator above the status bar. */
+  ttsStatus?: TtsStatus;
 }
 
 function renderSection(
@@ -46,6 +49,8 @@ function renderSection(
       return data.downloads ?? null;
     case 'mode':
       return data.mode ?? null;
+    case 'tts':
+      return null; // rendered by TtsIndicator above the status bar
     default:
       return null;
   }

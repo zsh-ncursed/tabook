@@ -6,6 +6,7 @@ import type {
   KeyAction,
   StatusBarConfig,
   StatusBarSection,
+  TtsConfig,
   TypographyConfig,
 } from './defaults.js';
 import { defaultConfig, KEY_ACTIONS, STATUSBAR_SECTIONS } from './defaults.js';
@@ -95,6 +96,7 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
     'typography',
     'display',
     'statusbar',
+    'tts',
   ]);
   for (const key of Object.keys(parsed)) {
     if (!knownTop.has(key)) {
@@ -165,7 +167,47 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
     config.statusbar = sb;
   }
 
+  if (parsed.tts && typeof parsed.tts === 'object') {
+    const t = parsed.tts as Record<string, unknown>;
+    const tts: TtsConfig = { ...config.tts };
+    if (t.mode === 'disabled' || t.mode === 'active') tts.mode = t.mode;
+    if (typeof t.engine === 'string' && t.engine.trim() !== '') tts.engine = t.engine.trim();
+    if (typeof t.voice === 'string' && t.voice.trim() !== '') tts.voice = t.voice.trim();
+    if (typeof t.rate === 'number') tts.rate = clampTtsNumber(t.rate, 0.25, 4, warnings, 'rate');
+    if (t.unit === 'paragraph' || t.unit === 'page' || t.unit === 'chapter') tts.unit = t.unit;
+    if (typeof t.max_chunk_chars === 'number')
+      tts.maxChunkChars = clampTtsNumber(
+        t.max_chunk_chars,
+        200,
+        20000,
+        warnings,
+        'max_chunk_chars',
+      );
+    if (typeof t.follow === 'boolean') tts.follow = t.follow;
+    if (typeof t.command === 'string' && t.command.trim() !== '')
+      tts.command = t.command.trim();
+    config.tts = tts;
+  }
+
   return config;
+}
+
+function clampTtsNumber(
+  value: number,
+  min: number,
+  max: number,
+  warnings: string[],
+  field: string,
+): number {
+  if (value < min) {
+    warnings.push(`Clamping tts.${field} from ${value} to ${min}`);
+    return min;
+  }
+  if (value > max) {
+    warnings.push(`Clamping tts.${field} from ${value} to ${max}`);
+    return max;
+  }
+  return value;
 }
 
 function parseStatusbarSections(
@@ -253,6 +295,16 @@ export function serializeConfig(config: Config): string {
       left: config.statusbar.left,
       right: config.statusbar.right,
       show_progress_bar: config.statusbar.showProgressBar,
+    },
+    tts: {
+      mode: config.tts.mode,
+      engine: config.tts.engine,
+      voice: config.tts.voice,
+      rate: config.tts.rate,
+      unit: config.tts.unit,
+      max_chunk_chars: config.tts.maxChunkChars,
+      follow: config.tts.follow,
+      command: config.tts.command,
     },
   };
   return stringifyTomlLib(out);

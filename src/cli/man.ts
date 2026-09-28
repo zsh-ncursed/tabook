@@ -46,6 +46,9 @@ const KEY_ACTION_DESC: Record<string, string> = {
   toggle_recent: 'toggle the recent view',
   toggle_continue: 'toggle continue-reading',
   zoom_image: 'zoom the image',
+  tts_play: 'read aloud (play / pause)',
+  tts_stop: 'stop reading aloud',
+  tts_follow: 'toggle follow-while-reading',
 };
 
 // Keys are printed literally (e.g. `ctrl+d`, `]`, `gg`); only backslashes and

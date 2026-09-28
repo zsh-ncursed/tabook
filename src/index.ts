@@ -10,3 +10,23 @@ export { parseEpubBuffer } from './formats/epub/parser.js';
 export { BookLayout, wrapSpans, layoutBlock } from './renderer/layout.js';
 export { simplifyBlocks } from './renderer/simplify.js';
 export { BookSearchIndex } from './search/index.js';
+export {
+  TtsManager,
+  createDefaultTtsManager,
+  SystemPlayer,
+  buildChunks,
+  PiperBackend,
+  EspeakBackend,
+  commandAvailable,
+} from './tts/index.js';
+export type {
+  TtsBackend,
+  AudioPlayer,
+  WavSource,
+  TtsChunk,
+  TtsStatus,
+  TtsCapabilities,
+  TtsVoiceOptions,
+  ChunkSource,
+  ChunkBuildOptions,
+} from './tts/index.js';

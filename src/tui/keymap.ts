@@ -179,6 +179,9 @@ export function actionLabel(action: KeyAction): string {
     opds_next_page: 'Next feed page (OPDS)',
     opds_prev_page: 'Previous feed page (OPDS)',
     opds_catalogs: 'Switch catalog (OPDS)',
+    tts_play: 'Read aloud (play / pause)',
+    tts_stop: 'Stop reading aloud',
+    tts_follow: 'Toggle follow-while-reading',
   };
   return labels[action] ?? action;
 }

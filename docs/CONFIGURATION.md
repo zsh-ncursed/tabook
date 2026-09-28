@@ -141,6 +141,9 @@ Actions you can bind to:
 | `toggle_justify`      | `J`                   | Toggle text justify              |
 | `toggle_wide`         | `W`                   | Toggle wide screen               |
 | `toggle_recent`       | `R`                   | Toggle recent books              |
+| `tts_play`            | `v`                   | Read aloud — play / pause        |
+| `tts_stop`            | `V`                   | Stop reading aloud               |
+| `tts_follow`          | `F`                   | Toggle follow-while-reading      |
 | `opds_download`       | `d` (in OPDS)         | Queue a download (OPDS)          |
 | `opds_downloads`      | `x` (in OPDS)         | Open the downloads queue (OPDS)  |
 | `opds_next_page`      | `n` (in OPDS)         | Next feed page (OPDS)            |
@@ -206,10 +209,60 @@ Available sections:
 | `search`    | Active in-book search query                       |
 | `hint`      | Context-aware key hints for the current view      |
 | `downloads` | Active OPDS download progress (e.g. `↓ 45% Book`) |
+| `tts`       | Text-to-speech indicator (animated while reading aloud) |
 
 Unknown section names are ignored with a warning. The legacy
 `display.show_progress_bar` key is still accepted as an alias for
 `statusbar.show_progress_bar`.
+
+### `[tts]`
+
+Text-to-speech (reading books aloud). Off by default — no processes are spawned
+unless you start playback. See [docs/TTS.md](TTS.md) for the full design and
+how to add new voices/engines.
+
+| Key               | Default               | Meaning                                          |
+| ----------------- | --------------------- | ------------------------------------------------ |
+| `mode`            | `"disabled"`          | `"active"` to enable; `"disabled"` does nothing  |
+| `engine`          | `"piper"`             | Backend id: `piper` (neural, offline), `espeak` (system fallback) |
+| `voice`           | `"ru_RU-irina-medium"`| Voice inside the engine (piper: a `.onnx` voice name or path) |
+| `rate`            | `1.0`                 | Playback rate, clamped to `[0.25, 4]`            |
+| `unit`            | `"paragraph"`         | Chunk boundary: `paragraph` \| `page` \| `chapter` |
+| `max_chunk_chars` | `2000`                | Max chunk length; long paragraphs split at sentence boundaries (clamped `[200, 20000]`) |
+| `follow`          | `true`               | Follow the voice while reading (auto-scroll) — see TTS.md |
+| `command`         | `""`                  | Full path to the engine binary when auto-detection can't find it |
+
+Quick start (local, offline, no quality compromises):
+
+```toml
+[tts]
+mode = "active"
+engine = "piper"
+voice = "ru_RU-irina-medium"
+```
+
+Then open a book and press `v` (or `:tts`). Playback pauses/resumes with `v`,
+stops with `V`; `:tts continue` resumes from the last saved reading position.
+
+**Prerequisites.** Install the engine and a voice yourself — tabook never
+downloads anything:
+
+```sh
+pipx install piper-tts                    # engine (provides the `piper` binary)
+# Russian voice (61 MB), or pick any from rhasspy/piper-voices:
+curl -L -o ru_RU-irina-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
+curl -L -o ru_RU-irina-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+```
+
+The binary and models are auto-detected in `~/.local/bin`, pipx venvs, `.venv`,
+`.tts-venv`, `~/.local/share/piper[/{voices,models}]`, `~/.config/piper`,
+`~/piper-voices`, `~/tts-models`, `.tts-models`, and next to the tabook install.
+If auto-detection fails, set `command` (binary) and/or the `PIPER_MODELS_DIR`
+environment variable (voices), or point `voice` at the full `.onnx` path.
+
+Follow/karaoke highlighting is tracked in docs/TTS.md as Stage 2.
 
 ## CLI overrides
 

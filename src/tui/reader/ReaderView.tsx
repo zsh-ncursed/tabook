@@ -29,6 +29,9 @@ import {
 import { dispatchReaderAction, readerHint } from './readerActions.js';
 import { useTocBookmarks } from './useTocBookmarks.js';
 import { InfoModal } from './InfoModal.js';
+import type { TtsManager, TtsStatus } from '../../tts/index.js';
+import type { ReaderTtsController } from './readerActions.js';
+import { TtsIndicator } from '../components/TtsIndicator.js';
 
 export interface ReaderViewProps {
   session: ReaderSession;
@@ -46,6 +49,10 @@ export interface ReaderViewProps {
   validCommandPrefix?: (value: string) => number;
   inputDisabled?: boolean;
   message?: string;
+  /** TTS-менеджер (владеет App — общий для команд и хоткеев). */
+  ttsManager: TtsManager;
+  /** TTS-контроллер для хоткеев (play/stop/toggleFollow). */
+  tts: ReaderTtsController;
 }
 
 export function ReaderView(props: ReaderViewProps): React.JSX.Element {
@@ -65,9 +72,18 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     validCommandPrefix,
     inputDisabled = false,
     message,
+    ttsManager,
+    tts: ttsController,
   } = props;
   const imageLayer = useImageLayer();
   const [width, height] = useTerminalSize();
+  const [ttsStatus, setTtsStatus] = useState<TtsStatus>({ state: 'idle' });
+
+  // Подписка на статус TTS-менеджера (для индикатора в статус-баре).
+  useEffect(() => {
+    ttsManager.onStatus((s) => setTtsStatus(s));
+  }, [ttsManager]);
+
   const [mode, setModeState] = useState<Mode>('reading');
   // Mirrors `mode` but is updated synchronously so a multi-keypress chunk
   // (e.g. "t\u001b") that opens a modal and then presses Esc in the same
@@ -130,6 +146,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       forceTick,
       openBookmarks: tocBm.openBookmarks,
       openToc: tocBm.openToc,
+      tts: ttsController,
     });
   };
 
@@ -341,6 +358,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     hint: readerHint(mode, config),
     mode: mode === 'reading' ? undefined : mode.toUpperCase(),
     message,
+    ttsStatus,
   };
 
   return (
@@ -446,6 +464,13 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
 
       {mode === 'info' ? (
         <InfoModal session={session} db={db} config={config} theme={theme} />
+      ) : null}
+
+      {/* Индикатор озвучки: брайль-спиннер/иконки над статус-баром */}
+      {ttsStatus.state !== 'idle' ? (
+        <Box paddingX={1}>
+          <TtsIndicator status={ttsStatus} theme={theme} />
+        </Box>
       ) : null}
 
       <StatusBar theme={theme} statusbar={config.statusbar} data={statusData} width={width} />
