@@ -12,12 +12,15 @@ interface PlayerDef {
   args: (path: string) => string[];
 }
 const PLAYER_CANDIDATES: PlayerDef[] = [
-  // paplay — пульсовый плеер (есть и в PulseAudio, и в PipeWire-pulse).
-  { cmd: 'paplay', args: (p) => [p] },
-  // aplay — ALSA (работает и через pulse/PipeWire-ALSA).
-  { cmd: 'aplay', args: (p) => ['-q', p] },
-  // ffplay — есть почти всегда, если ставили ffmpeg.
+  // ffplay — часть ffmpeg, есть почти везде (десктоп, серверы, контейнеры,
+  // Termux, Android). Работает с PulseAudio, PipeWire, ALSA через соответствующие
+  // устройства. -nodisp убирает видео-окно, -autoexit завершает сам.
   { cmd: 'ffplay', args: (p) => ['-nodisp', '-autoexit', '-loglevel', 'quiet', p] },
+  // paplay — пульсовый плеер (PulseAudio / PipeWire-pulse). Fallback на десктопе,
+  // когда ffplay недоступен.
+  { cmd: 'paplay', args: (p) => [p] },
+  // aplay — ALSA, работает только при наличии alsa-lib. Последний fallback.
+  { cmd: 'aplay', args: (p) => ['-q', p] },
 ];
 
 function resolvePlayer(): PlayerDef | null {

@@ -1,5 +1,19 @@
 # AGENTS.md
 
+## Pre-work: Always sync with GitHub first
+
+Before any work — reading code, making changes, reviewing, or building — always
+run:
+
+```bash
+git fetch --all --prune
+git pull --ff-only
+```
+
+This ensures the local repository is up-to-date with `origin/main`. If you have
+uncommitted local changes, either `git stash` them first or work on a dedicated
+branch. Never push `git push --force` to `main`. Sync first, then work.
+
 ## Native Rust core
 
 `crates/tabook-native` holds the Rust core — FB2/EPUB parsing, the layout
