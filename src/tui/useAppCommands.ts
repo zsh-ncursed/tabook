@@ -33,6 +33,7 @@ export interface UseAppCommandsParams {
   setLibraryRefresh: (fn: (c: number) => number) => void;
   setCmdVersion: (fn: (v: number) => number) => void;
   setLiveConfig: (c: Config) => void;
+  setTtsConfigOpen: (open: boolean) => void;
   libraryCmdRef: { current: { sort?: SortField; group?: boolean } };
   /** Контроллер TTS из ридера (если книга открыта). */
   tts?: ReaderTtsController;
@@ -66,6 +67,7 @@ export function useAppCommands(params: UseAppCommandsParams): {
     setLibraryRefresh,
     setCmdVersion,
     setLiveConfig,
+    setTtsConfigOpen,
     libraryCmdRef,
     tts,
   } = params;
@@ -95,6 +97,7 @@ export function useAppCommands(params: UseAppCommandsParams): {
         setLibraryRefresh,
         setCmdVersion,
         setLiveConfig,
+        setTtsConfigOpen,
         libraryCmdRef,
         tts,
         // Set by runCommand on `:theme` (no args) and read back when the

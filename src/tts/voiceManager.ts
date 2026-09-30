@@ -38,8 +38,14 @@ export class VoiceManager {
     return loadCachedVoices();
   }
 
-  /** Скачать голос по id ( напр. "ru_RU/ivona/ivona-russian-medium"). */
-  async downloadVoice(voiceId: string): Promise<void> {
+  /**
+   * Скачать голос по id (напр. "ru_RU/ivona/ivona-russian-medium").
+   * `onBytes` — опциональный колбэк (done, total) для прогресс-бара UI.
+   */
+  async downloadVoice(
+    voiceId: string,
+    onBytes?: (done: number, total: number | undefined) => void,
+  ): Promise<void> {
     const voices = loadCachedVoices();
     const voice = voices.find((v) => v.id === voiceId);
     if (!voice) throw new Error(`Voice not found: ${voiceId}`);
@@ -61,6 +67,7 @@ export class VoiceManager {
         url: voice.downloadUrl,
         dest: destOnnx,
         onProgress: (done, total) => {
+          onBytes?.(done, total);
           const pct = total ? Math.round((done / total) * 100) : undefined;
           this.onProgress?.(
             `Downloading ${voiceId} (${formatBytes(done)}${total ? ` / ${formatBytes(total)}` : ''}${pct ? ` — ${pct}%` : ''})`,

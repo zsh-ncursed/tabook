@@ -21,6 +21,8 @@ export class PiperBackend implements TtsBackend {
     languages: ['ru', 'en', 'de', 'es', 'fr', 'it', 'pl', 'pt', 'uk', 'sv', ...MORE_LANGS],
     offline: true,
     rateControl: false,
+    // Piper не умеет менять pitch через CLI — только length_scale (rate).
+    pitchControl: false,
   } as const;
 
   private bin: string;
@@ -41,7 +43,8 @@ export class PiperBackend implements TtsBackend {
       tmpdir(),
       `tabook-piper-${process.pid}-${Math.random().toString(36).slice(2)}.wav`,
     );
-    const rate = opts.rate && opts.rate !== 1 ? [`--length_scale=${(1 / opts.rate).toFixed(2)}`] : [];
+    const rate =
+      opts.rate && opts.rate !== 1 ? [`--length_scale=${(1 / opts.rate).toFixed(2)}`] : [];
     const model = ensureOnnx(voice);
     const bin = resolvePiperBin(this.bin);
     await pipeTextToWav(bin, model, rate, sanitizeTtsText(chunk.text), out);

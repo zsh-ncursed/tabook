@@ -180,6 +180,12 @@ export const COMMANDS: CommandDef[] = [
     screens: ['reader'],
   },
   {
+    names: ['tts'],
+    usage: ':tts config',
+    desc: 'Open TTS settings (engine, voice, rate, pitch, download voices)',
+    screens: ['reader'],
+  },
+  {
     names: ['q', 'quit', 'exit'],
     usage: ':q / :quit',
     desc: 'Quit',
@@ -295,7 +301,15 @@ export function fuzzyMatchBooks(query: string, books: BookRecord[], limit = 25):
 
 export const OPDS_SUBS = ['add', 'remove', 'list'] as const;
 export const LIBRARY_SUBS = ['add', 'remove', 'list', 'scan'] as const;
-export const TTS_SUBS = ['stop', 'continue', 'engines', 'voice', 'rate', 'follow'] as const;
+export const TTS_SUBS = [
+  'stop',
+  'continue',
+  'engines',
+  'voice',
+  'rate',
+  'follow',
+  'config',
+] as const;
 
 /**
  * Returns the length of the command-name prefix that matches a valid command.

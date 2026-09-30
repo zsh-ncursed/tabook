@@ -27,6 +27,7 @@ function makeCtx(overrides: Partial<CommandContext> = {}): CommandContext {
     setLibraryRefresh: vi.fn(),
     setCmdVersion: vi.fn(),
     setLiveConfig: vi.fn(),
+    setTtsConfigOpen: vi.fn(),
     libraryCmdRef: { current: {} },
     prePickThemeRef: { current: null },
     ...overrides,

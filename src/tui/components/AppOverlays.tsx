@@ -2,13 +2,14 @@ import React from 'react';
 
 import type { Theme } from '../../themes/themes.js';
 import { themeNames } from '../../themes/themes.js';
-import type { Config } from '../../config/defaults.js';
+import type { Config, TtsConfig } from '../../config/defaults.js';
 import type { AppScreen } from '../runCommand.js';
 import { HelpView } from '../help/HelpView.js';
 import { ThemePicker } from './ThemePicker.js';
 import { FolderRemoveConfirm } from './FolderRemoveConfirm.js';
 import { OpenPathPrompt } from './OpenPathPrompt.js';
 import { CommandPalette } from './CommandPalette.js';
+import { TtsConfigModal } from './TtsConfigModal.js';
 import type { BookRecord } from '../../db/db.js';
 
 export interface AppOverlaysProps {
@@ -24,6 +25,8 @@ export interface AppOverlaysProps {
   promptOpenPath: boolean;
   /** Books offered by the command palette (fuzzy library search). */
   paletteBooks?: BookRecord[];
+  /** Открыта ли модалка настроек TTS. */
+  ttsConfigOpen: boolean;
   onRunCommand: (text: string) => void;
   /** Open a book selected in the command palette. */
   onOpenPaletteBook?: (record: BookRecord) => void;
@@ -36,6 +39,9 @@ export interface AppOverlaysProps {
   onThemeClose: (apply: boolean, previousTheme: string | null) => void;
   onOpenPath: (path: string) => void;
   onCancelPath: () => void;
+  /** Применить настройки TTS из модалки. */
+  onApplyTts: (tts: TtsConfig) => void;
+  onCancelTts: () => void;
 }
 
 // Overlay orchestration, extracted from App.tsx: renders whichever of the
@@ -54,6 +60,7 @@ export function AppOverlays(props: AppOverlaysProps): React.JSX.Element {
     commandPaletteOpen,
     themePickerOpen,
     promptOpenPath,
+    ttsConfigOpen,
     paletteBooks,
     onRunCommand,
     onOpenPaletteBook,
@@ -66,6 +73,8 @@ export function AppOverlays(props: AppOverlaysProps): React.JSX.Element {
     onThemeClose,
     onOpenPath,
     onCancelPath,
+    onApplyTts,
+    onCancelTts,
   } = props;
   return (
     <>
@@ -106,6 +115,16 @@ export function AppOverlays(props: AppOverlaysProps): React.JSX.Element {
       ) : null}
       {promptOpenPath ? (
         <OpenPathPrompt theme={theme} onOpen={onOpenPath} onCancel={onCancelPath} />
+      ) : null}
+      {ttsConfigOpen ? (
+        <TtsConfigModal
+          theme={theme}
+          config={config}
+          tts={config.tts}
+          isActive={ttsConfigOpen}
+          onApply={onApplyTts}
+          onClose={onCancelTts}
+        />
       ) : null}
     </>
   );

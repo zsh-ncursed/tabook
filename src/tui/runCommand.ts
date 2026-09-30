@@ -40,6 +40,7 @@ export interface CommandContext {
   setLibraryRefresh: (fn: (c: number) => number) => void;
   setCmdVersion: (fn: (v: number) => number) => void;
   setLiveConfig: (c: Config) => void;
+  setTtsConfigOpen: (open: boolean) => void;
   libraryCmdRef: { current: { sort?: SortField; group?: boolean } };
   prePickThemeRef: { current: string | null };
   /** Контроллер TTS из ридера (reader view его предоставляет). */
@@ -69,6 +70,7 @@ export function runCommand(text: string, ctx: CommandContext): void {
     setFolderRemoveConfirm,
     setCmdVersion,
     setLiveConfig,
+    setTtsConfigOpen,
     libraryCmdRef,
     prePickThemeRef,
     tts,
@@ -180,7 +182,9 @@ export function runCommand(text: string, ctx: CommandContext): void {
           }
         }
       } else if (sub === 'engines') {
-        notify('TTS engines: piper (local) · espeak (system fallback) — switch with :tts voice <engine>/<voice>');
+        notify(
+          'TTS engines: piper (local) · espeak (system fallback) — switch with :tts voice <engine>/<voice>',
+        );
       } else if (sub === 'voice') {
         const spec = args[1];
         if (!spec) {
@@ -198,6 +202,9 @@ export function runCommand(text: string, ctx: CommandContext): void {
       } else if (sub === 'follow') {
         const on = tts.toggleFollow();
         notify(`Follow while reading: ${on ? 'on' : 'off'}`);
+      } else if (sub === 'config') {
+        // Открывает модалку настроек TTS (движок/голос/скорость/высота/скачивание).
+        setTtsConfigOpen(true);
       } else {
         notify(`Unknown TTS subcommand: ${sub}. Try :tts stop | continue | engines`);
       }

@@ -174,6 +174,7 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
     if (typeof t.engine === 'string' && t.engine.trim() !== '') tts.engine = t.engine.trim();
     if (typeof t.voice === 'string' && t.voice.trim() !== '') tts.voice = t.voice.trim();
     if (typeof t.rate === 'number') tts.rate = clampTtsNumber(t.rate, 0.25, 4, warnings, 'rate');
+    if (typeof t.pitch === 'number') tts.pitch = clampTtsNumber(t.pitch, 0.5, 2, warnings, 'pitch');
     if (t.unit === 'paragraph' || t.unit === 'page' || t.unit === 'chapter') tts.unit = t.unit;
     if (typeof t.max_chunk_chars === 'number')
       tts.maxChunkChars = clampTtsNumber(
@@ -184,8 +185,7 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
         'max_chunk_chars',
       );
     if (typeof t.follow === 'boolean') tts.follow = t.follow;
-    if (typeof t.command === 'string' && t.command.trim() !== '')
-      tts.command = t.command.trim();
+    if (typeof t.command === 'string' && t.command.trim() !== '') tts.command = t.command.trim();
     config.tts = tts;
   }
 
@@ -301,6 +301,7 @@ export function serializeConfig(config: Config): string {
       engine: config.tts.engine,
       voice: config.tts.voice,
       rate: config.tts.rate,
+      pitch: config.tts.pitch,
       unit: config.tts.unit,
       max_chunk_chars: config.tts.maxChunkChars,
       follow: config.tts.follow,

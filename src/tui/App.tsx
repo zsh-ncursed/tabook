@@ -20,11 +20,7 @@ import type { AppScreen } from './runCommand.js';
 import { useLibraryScanner } from './useLibraryScanner.js';
 import { enableMouseReporting, disableMouseReporting } from './mouse.js';
 import { useImageLayer } from './imageLayer.js';
-import {
-  createDefaultTtsManager,
-  buildChunks,
-  type TtsManager,
-} from '../tts/index.js';
+import { createDefaultTtsManager, buildChunks, type TtsManager } from '../tts/index.js';
 import type { ReaderTtsController } from './reader/readerActions.js';
 import { blockToPlainText } from '../renderer/blocks.js';
 import * as fs from 'node:fs';
@@ -72,6 +68,7 @@ export function App(props: AppProps): React.JSX.Element {
   const [promptOpenPath, setPromptOpenPath] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [ttsConfigOpen, setTtsConfigOpen] = useState(false);
   const [folderRemoveConfirm, setFolderRemoveConfirm] = useState<{
     path: string;
     count: number;
@@ -105,7 +102,11 @@ export function App(props: AppProps): React.JSX.Element {
         if (chunks.chunks.length === 0) return;
         ttsManager.play(chunks.chunks, {
           engine: liveConfig.tts.engine,
-          voice: { voice: liveConfig.tts.voice, rate: liveConfig.tts.rate },
+          voice: {
+            voice: liveConfig.tts.voice,
+            rate: liveConfig.tts.rate,
+            pitch: liveConfig.tts.pitch,
+          },
         });
       },
       stop() {
@@ -362,6 +363,7 @@ export function App(props: AppProps): React.JSX.Element {
     setLibraryRefresh,
     setCmdVersion,
     setLiveConfig,
+    setTtsConfigOpen,
     libraryCmdRef,
     tts: ttsController,
   });
@@ -447,10 +449,33 @@ export function App(props: AppProps): React.JSX.Element {
     helpOpen ||
     themePickerOpen ||
     commandPaletteOpen ||
+    ttsConfigOpen ||
     folderRemoveConfirm !== null;
 
   const openCommandPalette = useCallback((): void => {
     setCommandPaletteOpen(true);
+  }, []);
+
+  // Применить настройки TTS из модалки: обновить live-конфиг и сохранить файл.
+  const applyTtsConfig = useCallback(
+    (tts: Config['tts']): void => {
+      const updated = { ...liveConfig, tts };
+      setLiveConfig(updated);
+      setTtsConfigOpen(false);
+      const p = configPathRef.current;
+      if (!p) return;
+      try {
+        fs.writeFileSync(p, serializeConfig(updated), 'utf8');
+      } catch {
+        // best-effort persist
+      }
+      notify(`TTS: ${tts.engine}/${tts.voice} · ${tts.rate}x`);
+    },
+    [liveConfig, notify],
+  );
+
+  const cancelTtsConfig = useCallback((): void => {
+    setTtsConfigOpen(false);
   }, []);
 
   // Books for the command palette's fuzzy library search. Loaded when the
@@ -546,6 +571,7 @@ export function App(props: AppProps): React.JSX.Element {
         commandPaletteOpen={commandPaletteOpen}
         themePickerOpen={themePickerOpen}
         promptOpenPath={promptOpenPath}
+        ttsConfigOpen={ttsConfigOpen}
         paletteBooks={paletteBooks}
         onRunCommand={runCommand}
         onOpenPaletteBook={(record) => {
@@ -573,6 +599,8 @@ export function App(props: AppProps): React.JSX.Element {
           void openBookPath(p);
         }}
         onCancelPath={() => setPromptOpenPath(false)}
+        onApplyTts={applyTtsConfig}
+        onCancelTts={cancelTtsConfig}
       />
     </Box>
   );

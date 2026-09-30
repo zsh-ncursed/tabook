@@ -82,6 +82,20 @@ warnings` и `cargo fmt --check` — настоящие гейты CI (continue-
 
 ---
 
+## v0.6.0 — сделано
+
+- **TTS: настройка голоса через модалку + скачивание голосов Piper** —
+  `:tts config` открывает `TtsConfigModal` (движок, голос, rate, pitch, follow,
+  apply/cancel с персистом в config.toml). Список Piper-голосов тянется с
+  HuggingFace (hf-mirror, кеш на 24ч), выбранный голос докачивается
+  стрим-скачиванием с прогрессом и сразу используется. Pitch добавлен в
+  `[tts]` конфиг и применяется в espeak-ng (`-p`); piper его не поддерживает
+  (помечено в capabilities).
+- **Приоритет плееров TTS** — `ffplay` теперь первый (ffmpeg есть почти
+  везде: серверы, контейнеры, Termux), `paplay` и `aplay` — fallback'и.
+
+---
+
 ## v0.5.0 — цели
 
 ### Топ-3 приоритета

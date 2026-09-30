@@ -10,7 +10,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { homedir } from 'node:os';
 
 /** Метаданные одного Piper-голоса с HuggingFace. */
@@ -67,18 +67,35 @@ export function piperVoiceDir(): string {
   return xdg;
 }
 
+/**
+ * Множество id установленных голосов. Голос лежит по пути
+ * `<voiceDir>/<id>/<basename>.onnx` (как его скачивает VoiceManager),
+ * поэтому обходим дерево и выводим id из пути к .onnx-файлу.
+ */
 function installedVoices(): Set<string> {
-  const dir = piperVoiceDir();
-  if (!existsSync(dir)) return new Set();
-  try {
-    return new Set(
-      readdirSync(dir, { withFileTypes: true })
-        .filter((d) => d.isDirectory())
-        .map((d) => d.name),
-    );
-  } catch {
-    return new Set();
-  }
+  const root = piperVoiceDir();
+  if (!existsSync(root)) return new Set();
+  const out = new Set<string>();
+  const walk = (dir: string, depth: number): void => {
+    if (depth > 6) return;
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        walk(join(dir, e.name), depth + 1);
+      } else if (e.name.endsWith('.onnx') && !e.name.endsWith('.onnx.json')) {
+        // id = относительный путь директории файла от корня голосов
+        const rel = relative(root, dir);
+        if (rel) out.add(rel);
+      }
+    }
+  };
+  walk(root, 0);
+  return out;
 }
 
 /** Проверить актуальность кеша; если устарел — обновить. */
@@ -176,6 +193,8 @@ async function fetchVoiceList(): Promise<PiperVoice[]> {
 }
 
 function langCodeToName(code: string): string | undefined {
+  // HF-пути используют 'ru_RU', 'en_US' — берём часть до '_'.
+  const key = code.split('_')[0]!.toLowerCase();
   const map: Record<string, string> = {
     ru: 'Russian',
     en: 'English',
@@ -217,7 +236,7 @@ function langCodeToName(code: string): string | undefined {
     et: 'Estonian',
     mk: 'Macedonian',
   };
-  return map[code.toLowerCase()];
+  return map[key];
 }
 
 function saveVoiceIndex(voices: PiperVoice[]): void {

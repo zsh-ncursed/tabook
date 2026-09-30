@@ -17,6 +17,7 @@ export class EspeakBackend implements TtsBackend {
     languages: ['ru', 'en', 'de', 'es', 'fr', 'it', 'pt', 'pl', 'hu', 'ja', 'zh', ...MORE],
     offline: true,
     rateControl: false,
+    pitchControl: true,
   } as const;
 
   async check(): Promise<string | null> {
@@ -32,8 +33,11 @@ export class EspeakBackend implements TtsBackend {
       tmpdir(),
       `tabook-espeak-${process.pid}-${Math.random().toString(36).slice(2)}.wav`,
     );
-    const rateArg = opts.rate && opts.rate !== 1 ? [`-s`, String(Math.round(opts.rate * 175))] : [];
-    await textToWavEspeak(voice, rateArg, chunk.text, out);
+    const rateArg = opts.rate && opts.rate !== 1 ? ['-s', String(Math.round(opts.rate * 175))] : [];
+    // espeak-ng pitch: 0–100, default 50 → наш множитель 1.0 == 50.
+    const pitchArg =
+      opts.pitch && opts.pitch !== 1 ? ['-p', String(Math.round((opts.pitch - 1) * 50 + 50))] : [];
+    await textToWavEspeak(voice, [...rateArg, ...pitchArg], chunk.text, out);
     return { kind: 'file', path: out };
   }
 
@@ -44,7 +48,12 @@ export class EspeakBackend implements TtsBackend {
 
 const MORE = ['cs', 'da', 'el', 'eo', 'fi', 'hr', 'hu', 'nl', 'no', 'ro', 'sk', 'sl', 'sv', 'tr'];
 
-function textToWavEspeak(voice: string, rateArg: string[], text: string, out: string): Promise<void> {
+function textToWavEspeak(
+  voice: string,
+  rateArg: string[],
+  text: string,
+  out: string,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn('espeak-ng', ['-v', voice, '-w', out, ...rateArg], {
       stdio: ['pipe', 'ignore', 'pipe'],

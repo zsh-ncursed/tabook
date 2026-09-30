@@ -208,6 +208,8 @@ export interface TtsConfig {
   voice: string;
   /** Скорость воспроизведения (1.0 — норма). */
   rate: number;
+  /** Высота голоса (1.0 — норма; espeak-ng: -p, piper не поддерживает). */
+  pitch: number;
   /** Граница чанка: 'paragraph' (по умолчанию) | 'page' | 'chapter'. */
   unit: 'paragraph' | 'page' | 'chapter';
   /** Максимум символов в чанке; длинные абзацы режутся по предложениям. */
@@ -248,6 +250,7 @@ export function defaultConfig(): Config {
       engine: 'piper',
       voice: 'ru_RU-irina-medium',
       rate: 1,
+      pitch: 1,
       unit: 'paragraph',
       maxChunkChars: 2000,
       follow: true,

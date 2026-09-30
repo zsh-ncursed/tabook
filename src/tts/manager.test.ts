@@ -41,7 +41,7 @@ describe('TtsManager', () => {
     mgr.register({
       id: 'mock',
       label: 'Mock',
-      capabilities: { languages: ['ru'], offline: true, rateControl: false },
+      capabilities: { languages: ['ru'], offline: true, rateControl: false, pitchControl: false },
       check: async () => null,
       synthesize,
       dispose: () => {},
@@ -78,13 +78,19 @@ describe('TtsManager', () => {
     mgr.register({
       id: 'mock',
       label: 'Mock',
-      capabilities: { languages: ['ru'], offline: true, rateControl: false },
+      capabilities: { languages: ['ru'], offline: true, rateControl: false, pitchControl: false },
       check: async () => null,
       synthesize: async () => SILENCE,
       dispose: () => {},
     });
 
-    mgr.play([{ text: 'a', startChar: 0 }, { text: 'b', startChar: 1 }], { engine: 'mock' });
+    mgr.play(
+      [
+        { text: 'a', startChar: 0 },
+        { text: 'b', startChar: 1 },
+      ],
+      { engine: 'mock' },
+    );
     await new Promise((r) => setTimeout(r, 5));
     mgr.stop();
     expect(mgr.getStatus().state).toBe('idle');
@@ -108,7 +114,7 @@ describe('TtsManager', () => {
     mgr.register({
       id: 'mock',
       label: 'Mock',
-      capabilities: { languages: ['ru'], offline: true, rateControl: false },
+      capabilities: { languages: ['ru'], offline: true, rateControl: false, pitchControl: false },
       check: async () => null,
       synthesize,
       dispose: () => {},
@@ -132,7 +138,10 @@ describe('TtsManager', () => {
     const player = mockPlayer();
     const mgr = new TtsManager({ player });
     mgr.play([{ text: '   ', startChar: 0 }]);
-    expect(mgr.getStatus()).toEqual({ state: 'error', message: 'nothing to read at this position' });
+    expect(mgr.getStatus()).toEqual({
+      state: 'error',
+      message: 'nothing to read at this position',
+    });
   });
 
   it('toggle pauses and resumes', async () => {
@@ -141,7 +150,7 @@ describe('TtsManager', () => {
     mgr.register({
       id: 'mock',
       label: 'Mock',
-      capabilities: { languages: ['ru'], offline: true, rateControl: false },
+      capabilities: { languages: ['ru'], offline: true, rateControl: false, pitchControl: false },
       check: async () => null,
       synthesize: async () => SILENCE,
       dispose: () => {},
@@ -160,7 +169,7 @@ describe('TtsManager', () => {
     mgr.register({
       id: 'a',
       label: 'A',
-      capabilities: { languages: ['ru'], offline: true, rateControl: false },
+      capabilities: { languages: ['ru'], offline: true, rateControl: false, pitchControl: false },
       check: async () => null,
       synthesize: async () => SILENCE,
       dispose: () => {},

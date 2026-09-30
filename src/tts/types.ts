@@ -30,6 +30,8 @@ export interface TtsCapabilities {
   offline: boolean;
   /** Умеет ли менять скорость на лету (для будущих версий). */
   rateControl: boolean;
+  /** Умеет ли менять высоту голоса (espeak-ng: -p; piper — нет). */
+  pitchControl: boolean;
 }
 
 /** Опции синтеза голосом. */
@@ -38,6 +40,8 @@ export interface TtsVoiceOptions {
   voice?: string;
   /** Скорость воспроизведения (1.0 — норма). */
   rate?: number;
+  /** Высота голоса (1.0 — норма). Поддерживается не всеми бэкендами. */
+  pitch?: number;
   /** Необязательный объект конфигурации провайдера (для облачных бэкендов). */
   provider?: Record<string, unknown>;
 }
