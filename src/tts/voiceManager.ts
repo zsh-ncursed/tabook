@@ -52,7 +52,7 @@ export class VoiceManager {
 
     const dir = piperVoiceDir();
     const destDir = join(dir, voiceId);
-    const destOnnx = join(destDir, `${voiceId}.onnx`);
+    const destOnnx = join(destDir, voice.file);
 
     // Уже установлен?
     if (existsSync(destOnnx)) {
@@ -90,7 +90,7 @@ export class VoiceManager {
     const all = loadCachedVoices();
     return all.map((v) => ({
       ...v,
-      installed: existsSync(join(piperVoiceDir(), v.id, `${v.id}.onnx`)),
+      installed: existsSync(join(piperVoiceDir(), v.id, v.file)),
     }));
   }
 

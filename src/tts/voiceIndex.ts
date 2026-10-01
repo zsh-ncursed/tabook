@@ -10,13 +10,15 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, basename } from 'node:path';
 import { homedir } from 'node:os';
 
 /** Метаданные одного Piper-голоса с HuggingFace. */
 export interface PiperVoice {
   /** Уникальный id, напр. "ru_RU-irina-medium" */
   id: string;
+  /** Имя .onnx файла, напр. "ru_RU-irina-medium.onnx" */
+  file: string;
   /** Человекочитаемое имя: "Irina (medium quality)" */
   name: string;
   /** BCP-47 код языка, напр. "ru", "en" */
@@ -49,7 +51,10 @@ interface HuggingFaceVoice {
 
 const HF_MIRROR = 'https://hf-mirror.com';
 const HF_MODEL = 'rhasspy/piper-voices';
-const HF_API = `${HF_MIRROR}/api/${HF_MODEL}`;
+// Tree endpoint: репозиторий — это models/, а не «просто репо», поэтому путь
+// /api/models/<id>/tree/main. Раньше использовали /api/<id> → HF отвечал 404.
+const HF_TREE = `${HF_MIRROR}/api/models/${HF_MODEL}/tree/main`;
+const HF_META = `${HF_MIRROR}/api/models/${HF_MODEL}`;
 const HF_RESOLVE = `${HF_MIRROR}/${HF_MODEL}/resolve/main`;
 
 /** 24 часа — как часто обновлять индекс (в мс). */
@@ -121,39 +126,76 @@ export async function refreshIndex(onProgress?: (msg: string) => void): Promise<
   onProgress?.(`Voice list updated: ${voices.length} voices`);
 }
 
+interface TreeEntry {
+  path: string;
+  size: number;
+  type: string;
+}
+
+/**
+ * Скачать всё дерево репозитория, перебирая страницы по cursor (HF отдаёт
+ * максимум 1000 записей на страницу — одного запроса на весь репозиторий
+ с голосами не хватает).
+ */
+async function fetchFullTree(): Promise<TreeEntry[]> {
+  const all: TreeEntry[] = [];
+  let url: string | null = `${HF_TREE}?recursive=true&limit=1000`;
+  while (url) {
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) {
+      throw new Error(`HF API error: ${res.status} ${res.statusText}`);
+    }
+    const batch = (await res.json()) as TreeEntry[];
+    all.push(...batch);
+    // Следующая страница лежит в Link header (rel="next"), если её нет — конец.
+    const next = nextLink(res.headers.get('link'));
+    if (!next || batch.length === 0) break;
+    url = next;
+  }
+  return all;
+}
+
+/** Распарсить `Link: <url>; rel="next"` — достать URL следующей страницы. */
+function nextLink(linkHeader: string | null): string | null {
+  if (!linkHeader) return null;
+  for (const part of linkHeader.split(',')) {
+    const [urlRaw, ...rest] = part.split(';');
+    const url = (urlRaw ?? '').trim().replace(/^<|>$/g, '');
+    const isNext = rest.some((r) => r.trim().startsWith('rel="next"'));
+    if (isNext) return url;
+  }
+  return null;
+}
+
 /** Fetch voice list from HF API. */
 async function fetchVoiceList(): Promise<PiperVoice[]> {
-  // Fetch full tree to find .onnx files
-  const res = await fetch(`${HF_API}?recursive=true`, {
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) {
-    throw new Error(`HF API error: ${res.status} ${res.statusText}`);
-  }
-  // The recursive API returns a flat list of {path, size, type} objects
-  const tree = (await res.json()) as Array<{ path: string; size: number; type: string }>;
+  // Полное дерево репозитория с пагинацией
+  const tree = await fetchFullTree();
 
-  // Build a map: voice_id → files
+  // Голос лежит по пути <lang>/<lang_REGION>/<speaker>/<quality>/<file>.onnx.
+  // voiceId = первые 4 компоненты (без имени файла) — например ru/ru_RU/irina/medium.
   const voiceFiles = new Map<string, string[]>();
   for (const entry of tree) {
+    if (entry.type !== 'file') continue;
     if (!entry.path.endsWith('.onnx') && !entry.path.endsWith('.onnx.json')) continue;
     const parts = entry.path.split('/');
-    if (parts.length < 3) continue;
-    const voiceId = parts.slice(0, 3).join('/'); // e.g. ru_RU/ivona/ivona-russian-medium
+    // samples/ и _script/ — не голоса
+    if (parts.length < 5) continue;
+    if (parts.includes('samples') || parts[0] === '_script') continue;
+    const voiceId = parts.slice(0, 4).join('/');
     if (!voiceFiles.has(voiceId)) voiceFiles.set(voiceId, []);
     voiceFiles.get(voiceId)!.push(entry.path);
   }
 
-  // Also get metadata (download count, language) from the main API
-  const metaRes = await fetch(`${HF_API}`, {
+  // Metadata: теги языков и число скачиваний для сортировки по популярности.
+  // /api/models/<id> отдаёт один объект репозитория, а не список.
+  const metaRes = await fetch(`${HF_META}`, {
     headers: { Accept: 'application/json' },
   });
-  const metaMap = new Map<string, { downloads: number; tags?: string[] }>();
+  let allTags: string[] = [];
   if (metaRes.ok) {
-    const metaList = (await metaRes.json()) as HuggingFaceVoice[];
-    for (const v of metaList) {
-      metaMap.set(v.id, { downloads: v.download_count ?? 0, tags: v.tags });
-    }
+    const meta = (await metaRes.json()) as HuggingFaceVoice;
+    allTags = meta.tags ?? [];
   }
 
   const installed = installedVoices();
@@ -163,32 +205,39 @@ async function fetchVoiceList(): Promise<PiperVoice[]> {
     // Find the .onnx (not .onnx.json)
     const onnxFile = files.find((f) => f.endsWith('.onnx') && !f.endsWith('.onnx.json'));
     if (!onnxFile) continue;
+    const onnxEntry = tree.find((e) => e.path === onnxFile);
 
     const parts = voiceId.split('/');
     const lang = parts[0] ?? '';
-    const [quality = 'medium'] =
-      parts[2]?.split('-').filter((s: string) => ['x-low', 'low', 'medium', 'high'].includes(s)) ??
-      [];
+    const quality = parts[3] ?? 'medium';
+    const speaker = parts[2] ?? '';
 
-    // Extract language name from tag list or use code
-    const meta = metaMap.get(voiceId);
-    const tags: string[] = meta?.tags ?? [];
-    const langName = tags.find((t) => t.length > 2 && t === t.toLowerCase()) ?? lang;
+    // Теги репозитория содержат коды языков (['onnx','ar','ca',...,'ru',...]);
+    // ранг скачиваний неизвестен — сортируем по языку, «своё» впереди.
+    const langTag = allTags.find((t) => t === lang) ?? lang;
 
     result.push({
       id: voiceId,
-      name: parts[1] ? `${parts[1].replace(/-/g, ' ')} (${quality})` : voiceId,
+      // Реальное имя файла на HF: "ru_RU-irina-medium.onnx" — именно так
+      // piper называет модель, и так VoiceManager кладёт её на диск.
+      file: basename(onnxFile),
+      name: speaker ? `${speaker.replace(/-/g, ' ')} (${quality})` : voiceId,
       language: lang,
-      languageName: langCodeToName(lang) ?? langName,
+      languageName: langCodeToName(lang) ?? langTag,
       quality,
       downloadUrl: `${HF_RESOLVE}/${onnxFile}`,
-      downloads: meta?.downloads ?? 0,
+      size: onnxEntry?.size,
+      downloads: 0,
       installed: installed.has(voiceId),
     });
   }
 
-  // Sort by downloads (most popular first)
-  result.sort((a, b) => b.downloads - a.downloads);
+  // Голоса сортируются: установленные → по языку → по имени.
+  result.sort((a, b) => {
+    if (a.installed !== b.installed) return a.installed ? -1 : 1;
+    if (a.language !== b.language) return a.language < b.language ? -1 : 1;
+    return a.name < b.name ? -1 : 1;
+  });
   return result;
 }
 

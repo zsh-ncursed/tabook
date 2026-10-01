@@ -22,6 +22,14 @@ export interface TtsConfigModalProps {
 
 type RowKind = 'engine' | 'voice' | 'rate' | 'pitch' | 'follow' | 'download' | 'apply' | 'cancel';
 
+/**
+ * Имя голоса для конфига: basename .onnx без расширения ("ru_RU-irina-medium").
+ * Именно такое имя piper ищет в каталогах моделей (findModel в piper.ts).
+ */
+function piperVoiceName(v: PiperVoice): string {
+  return v.file.replace(/\.onnx$/, '');
+}
+
 interface Row {
   kind: RowKind;
   label: string;
@@ -138,8 +146,9 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
           const v = filteredVoices[voiceCursor];
           if (!v) return;
           if (v.installed) {
-            // Уже скачан — просто выбираем.
-            setDraft((d) => ({ ...d, voice: v.id }));
+            // Уже скачан — просто выбираем. В конфиг идёт piper-имя модели
+            // (basename без .onnx): именно его piper ищет в каталогах моделей.
+            setDraft((d) => ({ ...d, voice: piperVoiceName(v) }));
             setPickingVoice(false);
             setVoiceFilter('');
           } else if (!downloading) {
@@ -227,7 +236,7 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
       setVoices(
         (prev) => prev?.map((x) => (x.id === v.id ? { ...x, installed: true } : x)) ?? prev,
       );
-      setDraft((d) => ({ ...d, voice: v.id }));
+      setDraft((d) => ({ ...d, voice: piperVoiceName(v) }));
       setPickingVoice(false);
       setVoiceFilter('');
     } catch (e: unknown) {
