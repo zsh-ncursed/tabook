@@ -99,6 +99,18 @@ export function HelpView(props: HelpViewProps): React.JSX.Element {
     <Text key="intro" color={theme.colors.dim} dimColor>
       All keys can be remapped in config.toml via [keybindings]. Vim-like by default.
     </Text>,
+    // TTS-команды лежат в самом низу Command Line и на низких терминалах
+    // скрыты за краем окна, пока не проскроллишь — а озвучка одна из главных
+    // фич. Поэтому блок «Read Aloud» идёт сразу после вступления: всегда на
+    // виду, на любом размере терминала.
+    <Text key="tts-text" color={theme.colors.dim} dimColor>
+      {(() => {
+        const k = (action: KeyAction): string => keyForAction(config, action) ?? '—';
+        return [
+          `Read aloud: ${k('tts_play')}/${k('tts_stop')} play/stop · :tts continue · :tts voice · :tts rate · F follow · :tts config`,
+        ].join(' · ');
+      })()}
+    </Text>,
     ...keybindingRows,
     <Box key="cmd-header" marginTop={1}>
       <Text color={theme.colors.heading} bold>

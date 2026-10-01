@@ -254,7 +254,9 @@ export function readerHint(mode: Mode, config: Config): string {
         keys('search'),
         keys('next_chapter'),
         keys('prev_chapter'),
-        keys('tts_play', 'tts_stop'),
+        // Подпись «tts» объясняет, что делают v/V — сами по себе буквы
+        // ничего не говорят, а :tts-команды в справке находятся в самом низу.
+        `tts ${keys('tts_play', 'tts_stop')}`,
         keys('help'),
         keys('quit'),
       ]
