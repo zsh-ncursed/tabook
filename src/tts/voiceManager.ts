@@ -53,9 +53,12 @@ export class VoiceManager {
     const dir = piperVoiceDir();
     const destDir = join(dir, voiceId);
     const destOnnx = join(destDir, voice.file);
+    // Piper требует рядом с моделью её конфиг <model>.onnx.json — без него
+    // он падает с FileNotFoundError ещё до синтеза.
+    const destConfig = join(destDir, `${voice.file}.json`);
 
     // Уже установлен?
-    if (existsSync(destOnnx)) {
+    if (existsSync(destOnnx) && existsSync(destConfig)) {
       this.onProgress?.(`Already installed: ${voiceId}`);
       return;
     }
@@ -63,6 +66,13 @@ export class VoiceManager {
     this.onProgress?.(`Downloading ${voiceId} (${formatBytes(0)})…`);
 
     try {
+      // Сначала конфиг (он маленький) — если его не получается скачать, модель
+      // бесполезна, лучше сразу узнать.
+      await downloadFile({
+        url: `${voice.downloadUrl}.json`,
+        dest: destConfig,
+        signal: this.signal,
+      });
       await downloadFile({
         url: voice.downloadUrl,
         dest: destOnnx,
@@ -90,7 +100,10 @@ export class VoiceManager {
     const all = loadCachedVoices();
     return all.map((v) => ({
       ...v,
-      installed: existsSync(join(piperVoiceDir(), v.id, v.file)),
+      // Модель и её .onnx.json-конфиг должны лежать рядом (piper требует оба).
+      installed:
+        existsSync(join(piperVoiceDir(), v.id, v.file)) &&
+        existsSync(join(piperVoiceDir(), v.id, `${v.file}.json`)),
     }));
   }
 

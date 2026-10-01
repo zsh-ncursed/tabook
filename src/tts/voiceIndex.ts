@@ -74,8 +74,9 @@ export function piperVoiceDir(): string {
 
 /**
  * Множество id установленных голосов. Голос лежит по пути
- * `<voiceDir>/<id>/<basename>.onnx` (как его скачивает VoiceManager),
- * поэтому обходим дерево и выводим id из пути к .onnx-файлу.
+ * `<voiceDir>/<id>/<basename>.onnx` рядом с конфигом `<basename>.onnx.json`
+ * (piper требует оба файла), поэтому обходим дерево и выводим id из пути
+ * к .onnx-файлу, проверяя наличие конфига.
  */
 function installedVoices(): Set<string> {
   const root = piperVoiceDir();
@@ -95,7 +96,8 @@ function installedVoices(): Set<string> {
       } else if (e.name.endsWith('.onnx') && !e.name.endsWith('.onnx.json')) {
         // id = относительный путь директории файла от корня голосов
         const rel = relative(root, dir);
-        if (rel) out.add(rel);
+        // Без .onnx.json-конфига piper не запустится — не считаем установенным.
+        if (rel && existsSync(join(dir, `${e.name}.json`))) out.add(rel);
       }
     }
   };

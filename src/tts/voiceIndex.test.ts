@@ -139,6 +139,11 @@ describe('voiceIndex', () => {
     );
     fs.mkdirSync(voiceDir, { recursive: true });
     fs.writeFileSync(path.join(voiceDir, 'ru_RU-irina-medium.onnx'), Buffer.from('fake'));
+    // Piper требует рядом с моделью её .onnx.json-конфиг.
+    fs.writeFileSync(
+      path.join(voiceDir, 'ru_RU-irina-medium.onnx.json'),
+      Buffer.from('{"audio": {}}'),
+    );
 
     await refreshIndex();
     const voices = loadCachedVoices();
@@ -146,6 +151,36 @@ describe('voiceIndex', () => {
     expect(irina?.installed).toBe(true);
     const amy = voices.find((v) => v.id === 'en/en_US/amy/medium');
     expect(amy?.installed).toBe(false);
+  });
+
+  it('does not mark a voice installed when the .onnx.json config is missing', async () => {
+    globalThis.fetch = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes('/tree/main')) {
+        return new Response(JSON.stringify(SAMPLE_TREE), { status: 200 });
+      }
+      return new Response(JSON.stringify({ tags: ['ru', 'en'] }), { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+
+    // .onnx есть, конфига нет — piper такой голос не запустит
+    const voiceDir = path.join(
+      home,
+      '.local',
+      'share',
+      'piper',
+      'voices',
+      'ru',
+      'ru_RU',
+      'irina',
+      'medium',
+    );
+    fs.mkdirSync(voiceDir, { recursive: true });
+    fs.writeFileSync(path.join(voiceDir, 'ru_RU-irina-medium.onnx'), Buffer.from('fake'));
+
+    await refreshIndex();
+    const voices = loadCachedVoices();
+    const irina = voices.find((v) => v.id === 'ru/ru_RU/irina/medium');
+    expect(irina?.installed).toBe(false);
   });
 
   it('checkAndRefresh skips the fetch while the cache is fresh', async () => {
