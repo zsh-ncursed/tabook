@@ -1,14 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import { VoiceManager } from './voiceManager.js';
 import { refreshIndex, piperVoiceDir } from './voiceIndex.js';
+import { testTmpdir } from '../testutil/tmpdir.js';
 
 // Piper требует модель и её .onnx.json-конфиг рядом: проверяем, что
 // downloadVoice качает оба файла и не считает голос установанным без конфига.
-const tmpHome = () =>
-  path.join(os.tmpdir(), `tabook-vm-home-${process.pid}-${Math.random().toString(36).slice(2)}`);
+const tmpHome = () => path.join(testTmpdir('tabook-vm-home'), 'home');
 
 const SAMPLE_TREE = [
   { path: 'ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx', size: 46000000, type: 'file' },

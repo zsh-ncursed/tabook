@@ -12,6 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, basename } from 'node:path';
 import { homedir } from 'node:os';
+import { HF_MIRROR, HF_MODEL, HF_RESOLVE } from './hf.js';
 
 /** Метаданные одного Piper-голоса с HuggingFace. */
 export interface PiperVoice {
@@ -49,13 +50,8 @@ interface HuggingFaceVoice {
   pipelite_onnx?: string;
 }
 
-const HF_MIRROR = 'https://hf-mirror.com';
-const HF_MODEL = 'rhasspy/piper-voices';
-// Tree endpoint: репозиторий — это models/, а не «просто репо», поэтому путь
-// /api/models/<id>/tree/main. Раньше использовали /api/<id> → HF отвечал 404.
 const HF_TREE = `${HF_MIRROR}/api/models/${HF_MODEL}/tree/main`;
 const HF_META = `${HF_MIRROR}/api/models/${HF_MODEL}`;
-const HF_RESOLVE = `${HF_MIRROR}/${HF_MODEL}/resolve/main`;
 
 /** 24 часа — как часто обновлять индекс (в мс). */
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;

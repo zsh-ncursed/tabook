@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import { loadCachedVoices, refreshIndex, checkAndRefresh, piperVoiceDir } from './voiceIndex.js';
+import { testTmpdir } from '../testutil/tmpdir.js';
 
 // Перехватываем fetch и домашнюю директорию, чтобы тесты не трогали сеть и
 // реальный HOME пользователя.
-const tmpHome = () =>
-  path.join(os.tmpdir(), `tabook-vi-home-${process.pid}-${Math.random().toString(36).slice(2)}`);
+const tmpHome = () => path.join(testTmpdir('tabook-vi-home'), 'home');
 
 const SAMPLE_TREE = [
   { path: 'ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx', size: 46000000, type: 'file' },

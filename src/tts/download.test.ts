@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { downloadFile, formatBytes } from './download.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
+import { testTmpdir } from '../testutil/tmpdir.js';
 
-const tmp = () =>
-  path.join(os.tmpdir(), `tabook-dl-test-${process.pid}-${Math.random().toString(36).slice(2)}`);
+/** Путь к файлу внутри свежей тестовой директории (на диске, не в /tmp-RAM). */
+const tmp = () => path.join(testTmpdir('tabook-dl-test'), 'voice.onnx');
 
 describe('formatBytes', () => {
   it('formats bytes/KB/MB/GB', () => {
@@ -85,7 +85,7 @@ describe('downloadFile', () => {
   });
 
   it('creates the destination directory tree', async () => {
-    const dest = path.join(tmp(), 'nested', 'dir', 'voice.onnx');
+    const dest = path.join(testTmpdir('tabook-dl-tree'), 'nested', 'dir', 'voice.onnx');
     globalThis.fetch = vi.fn(
       async () =>
         new Response(

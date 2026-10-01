@@ -1,10 +1,12 @@
 import { spawn } from 'node:child_process';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 import { existsSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import type { TtsBackend, WavSource } from './backend.js';
 import type { TtsChunk, TtsVoiceOptions } from './types.js';
 import { commandAvailable } from './bincheck.js';
+import { downloadFile } from './download.js';
+import { HF_RESOLVE } from './hf.js';
 
 /**
  * Бэкенд Piper (https://github.com/rhasspy/piper).
@@ -58,7 +60,7 @@ export class PiperBackend implements TtsBackend {
     );
     const rate =
       opts.rate && opts.rate !== 1 ? [`--length_scale=${(1 / opts.rate).toFixed(2)}`] : [];
-    const model = ensureOnnx(voice);
+    const model = await ensureOnnx(voice);
     const bin = resolvePiperBin(this.bin);
     await pipeTextToWav(bin, model, rate, sanitizeTtsText(chunk.text), out);
     return { kind: 'file', path: out };
@@ -147,20 +149,50 @@ function autoPiperCandidates(): string[] {
   return out;
 }
 
-/** Гарантировать, что имя голоса TTS — это путь к .onnx. */
-function ensureOnnx(voice: string): string {
+/** Гарантировать, что имя голоса TTS — это путь к .onnx + рядом лежит конфиг. */
+async function ensureOnnx(voice: string): Promise<string> {
   // Явный путь к существующему .onnx — как есть.
   if (voice.endsWith('.onnx')) {
     const p = resolve(voice);
-    if (existsSync(p)) return p;
+    if (existsSync(p)) {
+      await ensureConfigNextToModel(p);
+      return p;
+    }
   }
   // Короткое имя голоса (напр. 'ru_RU-irina-medium') — ищем .onnx в известных
   // каталогах с моделями piper.
   const base = voice.endsWith('.onnx') ? voice : `${voice}.onnx`;
   const hit = findModel(base);
-  if (hit) return hit;
+  if (hit) {
+    await ensureConfigNextToModel(hit);
+    return hit;
+  }
   // Ничего не нашли — отдаём как есть; piper выведет понятную ошибку.
   return base;
+}
+
+/**
+ * Piper требует рядом с моделью её конфиг <model>.onnx.json, иначе падает с
+ * FileNotFoundError. Голоса, скачанные старой версией tabook, конфига не имеют
+ * — докачиваем его автоматически (это 5 КБ, не 60 МБ модели).
+ */
+async function ensureConfigNextToModel(modelPath: string): Promise<void> {
+  const cfgPath = `${modelPath}.json`;
+  if (existsSync(cfgPath)) return;
+  const rel = relative(piperVoiceRoot(), modelPath);
+  if (!rel) return; // модель вне каталога голосов — URL не вычислить
+  const url = `${HF_RESOLVE}/${rel}.json`;
+  try {
+    await downloadFile({ url, dest: cfgPath });
+  } catch {
+    // Не получилось скачать конфиг — piper скажет, чего не хватает; лучше
+    // понятная ошибка, чем тихая поломка.
+  }
+}
+
+/** Корень каталога голосов piper (от него вычисляем путь для HF URL). */
+function piperVoiceRoot(): string {
+  return process.env.PIPER_MODELS_DIR ?? join(homedir(), '.local', 'share', 'piper', 'voices');
 }
 
 /** Каталоги, где piper-голоса обычно лежат (плюс piper --data-dir по умолчанию). */
