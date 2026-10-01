@@ -201,14 +201,14 @@ reading), so one config works for every view.
 
 Available sections:
 
-| Section     | Meaning                                           |
-| ----------- | ------------------------------------------------- |
-| `title`     | Current book title / catalog name                 |
-| `page`      | Current page and total pages (reader only)        |
-| `percent`   | Reading progress percentage (reader only)         |
-| `search`    | Active in-book search query                       |
-| `hint`      | Context-aware key hints for the current view      |
-| `downloads` | Active OPDS download progress (e.g. `↓ 45% Book`) |
+| Section     | Meaning                                                 |
+| ----------- | ------------------------------------------------------- |
+| `title`     | Current book title / catalog name                       |
+| `page`      | Current page and total pages (reader only)              |
+| `percent`   | Reading progress percentage (reader only)               |
+| `search`    | Active in-book search query                             |
+| `hint`      | Context-aware key hints for the current view            |
+| `downloads` | Active OPDS download progress (e.g. `↓ 45% Book`)       |
 | `tts`       | Text-to-speech indicator (animated while reading aloud) |
 
 Unknown section names are ignored with a warning. The legacy
@@ -221,16 +221,16 @@ Text-to-speech (reading books aloud). Off by default — no processes are spawne
 unless you start playback. See [docs/TTS.md](TTS.md) for the full design and
 how to add new voices/engines.
 
-| Key               | Default               | Meaning                                          |
-| ----------------- | --------------------- | ------------------------------------------------ |
-| `mode`            | `"disabled"`          | `"active"` to enable; `"disabled"` does nothing  |
-| `engine`          | `"piper"`             | Backend id: `piper` (neural, offline), `espeak` (system fallback) |
-| `voice`           | `"ru_RU-irina-medium"`| Voice inside the engine (piper: a `.onnx` voice name or path) |
-| `rate`            | `1.0`                 | Playback rate, clamped to `[0.25, 4]`            |
-| `unit`            | `"paragraph"`         | Chunk boundary: `paragraph` \| `page` \| `chapter` |
-| `max_chunk_chars` | `2000`                | Max chunk length; long paragraphs split at sentence boundaries (clamped `[200, 20000]`) |
-| `follow`          | `true`               | Follow the voice while reading (auto-scroll) — see TTS.md |
-| `command`         | `""`                  | Full path to the engine binary when auto-detection can't find it |
+| Key               | Default                | Meaning                                                                                 |
+| ----------------- | ---------------------- | --------------------------------------------------------------------------------------- |
+| `mode`            | `"disabled"`           | `"active"` to enable; `"disabled"` does nothing                                         |
+| `engine`          | `"piper"`              | Backend id: `piper` (neural, offline), `espeak` (system fallback)                       |
+| `voice`           | `"ru_RU-irina-medium"` | Voice inside the engine (piper: a `.onnx` voice name or path)                           |
+| `rate`            | `1.0`                  | Playback rate, clamped to `[0.25, 4]`                                                   |
+| `unit`            | `"paragraph"`          | Chunk boundary: `paragraph` \| `page` \| `chapter`                                      |
+| `max_chunk_chars` | `2000`                 | Max chunk length; long paragraphs split at sentence boundaries (clamped `[200, 20000]`) |
+| `follow`          | `true`                 | Follow the voice while reading (auto-scroll) — see TTS.md                               |
+| `command`         | `""`                   | Full path to the engine binary when auto-detection can't find it                        |
 
 Quick start (local, offline, no quality compromises):
 
@@ -262,7 +262,8 @@ The binary and models are auto-detected in `~/.local/bin`, pipx venvs, `.venv`,
 If auto-detection fails, set `command` (binary) and/or the `PIPER_MODELS_DIR`
 environment variable (voices), or point `voice` at the full `.onnx` path.
 
-Follow/karaoke highlighting is tracked in docs/TTS.md as Stage 2.
+When `follow = true`, the reader scrolls to the block being spoken and
+highlights it (karaoke mode); toggle live with `F`.
 
 ## CLI overrides
 

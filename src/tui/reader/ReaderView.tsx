@@ -86,14 +86,16 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   // Ошибки дополнительно всплывают тостом — пользователь не всегда смотрит
   // на индикатор, а понять, почему «:tts молчит», иначе невозможно.
   useEffect(() => {
-    ttsManager.onStatus((s) => {
+    const listener = (s: TtsStatus) => {
       setTtsStatus(s);
       if (s.state === 'error') {
         // Только первая строка многострочного сообщения — тост в одну строку,
         // полный текст остаётся в индикаторе TTS.
         notify(`TTS: ${s.message.split('\n')[0]!.trim()}`);
       }
-    });
+    };
+    ttsManager.onStatus(listener);
+    return () => ttsManager.offStatus(listener);
   }, [ttsManager, notify]);
 
   const [mode, setModeState] = useState<Mode>('reading');

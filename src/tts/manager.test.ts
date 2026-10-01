@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { TtsManager } from './manager.js';
-import type { TtsChunk } from './types.js';
+import type { TtsChunk, TtsStatus } from './types.js';
 import type { AudioPlayer, WavSource } from './backend.js';
 
 // Мок-плеер: воспроизведение мгновенно, onEnded вызывается вручную.
@@ -240,5 +240,60 @@ describe('TtsManager', () => {
     expect(statuses.at(-1)).toBe('idle');
 
     vi.useRealTimers();
+  });
+
+  it('supports several onStatus/onAdvance listeners at once', async () => {
+    // Индикатор в ReaderView и karaoke/follow в App подписываются на один
+    // менеджер: одиночный слушатель молча отвязывал предыдущего, и индикатор
+    // переставал обновляться.
+    const player = mockPlayer();
+    const mgr = new TtsManager({ player, interChunkPauseMs: 0 });
+    mgr.register({
+      id: 'mock',
+      label: 'Mock',
+      capabilities: { languages: ['ru'], offline: true, rateControl: false, pitchControl: false },
+      check: async () => null,
+      synthesize: vi.fn(async () => SILENCE),
+      dispose: () => {},
+    });
+
+    const a: string[] = [];
+    const b: string[] = [];
+    mgr.onStatus((s) => a.push(s.state));
+    mgr.onStatus((s) => b.push(s.state));
+    expect(a).toEqual(['idle']);
+    expect(b).toEqual(['idle']);
+
+    const advA: number[] = [];
+    const advB: number[] = [];
+    mgr.onAdvance((x) => advA.push(x.startChar));
+    mgr.onAdvance((x) => advB.push(x.startChar));
+
+    mgr.play([{ text: 'one', startChar: 0 }], { engine: 'mock' });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Оба слушателя получили и старт, и advance — ни один не отвязался.
+    expect(a.at(-1)).toBe('playing');
+    expect(b.at(-1)).toBe('playing');
+    expect(advA).toEqual([0]);
+    expect(advB).toEqual([0]);
+  });
+
+  it('unsubscribes via offStatus/offAdvance', () => {
+    const player = mockPlayer();
+    const mgr = new TtsManager({ player });
+    const a: string[] = [];
+    const listener = (s: TtsStatus) => a.push(s.state);
+    mgr.onStatus(listener);
+    mgr.offStatus(listener);
+
+    const adv = vi.fn();
+    mgr.onAdvance(adv);
+    mgr.offAdvance(adv);
+
+    mgr.play([{ text: 'x', startChar: 0 }], { engine: 'mock' });
+    // Слушатель удалён — повторной рассылки по play не будет;statuses остались
+    // только от начального onStatus.
+    expect(a).toEqual(['idle']);
   });
 });

@@ -157,6 +157,14 @@ export function App(props: AppProps): React.JSX.Element {
       }
     };
     ttsManager.onAdvance(handler);
+    // Сброс подсветки при остановке/ошибке: advance приходит только во время
+    // воспроизведения, и без этой подписки последний блок остался бы
+    // подсвеченным навсегда (тот же класс бага, что и зависший текст ошибки).
+    // onStatus поддерживает много слушателей, поэтому индикатору в ReaderView
+    // эта подписка не мешает.
+    ttsManager.onStatus((st) => {
+      if (st.state === 'idle' || st.state === 'error') setTtsKaraokeBlock(null);
+    });
   }, [ttsManager]);
 
   const theme = useMemo(() => {

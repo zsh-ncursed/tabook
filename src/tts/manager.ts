@@ -42,8 +42,11 @@ export class TtsManager {
   private index = 0;
   private engine: string | null = null;
   private voiceOpts: TtsVoiceOptions = {};
-  private statusListener: TtsStatusListener | null = null;
-  private advanceListener: ((a: TtsAdvance) => void) | null = null;
+  // Несколько слушателей: индикатор в ReaderView, karaoke/follow в App и т.д.
+  // Одиночный слушатель означал, что подписка одного компонента молча
+  // отвязывала предыдущего — индикатор TTS переставал обновляться.
+  private statusListeners = new Set<TtsStatusListener>();
+  private advanceListeners = new Set<(a: TtsAdvance) => void>();
   private status: TtsStatus = { state: 'idle' };
   private stopping = false;
   private errorTimer: NodeJS.Timeout | undefined;
@@ -77,12 +80,22 @@ export class TtsManager {
   // ---- подписки ----
 
   onStatus(listener: TtsStatusListener): void {
-    this.statusListener = listener;
+    this.statusListeners.add(listener);
     listener(this.status); // сразу отрапортовать текущее состояние
   }
 
+  /** Отписаться от статуса (компонент демонтируется). */
+  offStatus(listener: TtsStatusListener): void {
+    this.statusListeners.delete(listener);
+  }
+
   onAdvance(listener: (a: TtsAdvance) => void): void {
-    this.advanceListener = listener;
+    this.advanceListeners.add(listener);
+  }
+
+  /** Отписаться от advance-событий. */
+  offAdvance(listener: (a: TtsAdvance) => void): void {
+    this.advanceListeners.delete(listener);
   }
 
   getStatus(): TtsStatus {
@@ -184,8 +197,8 @@ export class TtsManager {
     this.errorTimer = undefined;
     this.player.stop();
     this.player.dispose();
-    this.statusListener = null;
-    this.advanceListener = null;
+    this.statusListeners.clear();
+    this.advanceListeners.clear();
     this.chunks = [];
   }
 
@@ -198,7 +211,7 @@ export class TtsManager {
 
   private setStatus(s: TtsStatus): void {
     this.status = s;
-    this.statusListener?.(s);
+    for (const l of this.statusListeners) l(s);
     // Ошибка не должна висеть в индикаторе вечно: пользователь увидел — и через
     // пару секунд возвращаемся в idle, чтобы текст не залипал поверх книги.
     if (s.state === 'error') {
@@ -236,11 +249,13 @@ export class TtsManager {
       chunkIndex: idx,
       total: this.chunks.length,
     });
-    this.advanceListener?.({
-      startChar: chunk.startChar,
-      chunkIndex: idx,
-      total: this.chunks.length,
-    });
+    for (const l of this.advanceListeners) {
+      l({
+        startChar: chunk.startChar,
+        chunkIndex: idx,
+        total: this.chunks.length,
+      });
+    }
     engine
       .synthesize(chunk, this.voiceOpts)
       .then((wav) => {
