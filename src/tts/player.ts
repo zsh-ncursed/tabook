@@ -96,7 +96,10 @@ export class SystemPlayer implements AudioPlayer {
   private startProcess(path: string): void {
     const player = resolvePlayer();
     if (!player) {
-      this.cb.onError('no audio player found (paplay/aplay/ffplay) in PATH');
+      this.cb.onError(
+        'No audio player found in PATH (ffplay / paplay / aplay).\n' +
+          'Install one:  sudo pacman -S ffmpeg   (or pulseaudio-alsa / alsa-utils)',
+      );
       return;
     }
     const child = spawn(player.cmd, player.args(path), { stdio: ['ignore', 'pipe', 'pipe'] });

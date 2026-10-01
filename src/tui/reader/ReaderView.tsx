@@ -80,9 +80,18 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
   const [ttsStatus, setTtsStatus] = useState<TtsStatus>({ state: 'idle' });
 
   // Подписка на статус TTS-менеджера (для индикатора в статус-баре).
+  // Ошибки дополнительно всплывают тостом — пользователь не всегда смотрит
+  // на индикатор, а понять, почему «:tts молчит», иначе невозможно.
   useEffect(() => {
-    ttsManager.onStatus((s) => setTtsStatus(s));
-  }, [ttsManager]);
+    ttsManager.onStatus((s) => {
+      setTtsStatus(s);
+      if (s.state === 'error') {
+        // Только первая строка многострочного сообщения — тост в одну строку,
+        // полный текст остаётся в индикаторе TTS.
+        notify(`TTS: ${s.message.split('\n')[0]!.trim()}`);
+      }
+    });
+  }, [ttsManager, notify]);
 
   const [mode, setModeState] = useState<Mode>('reading');
   // Mirrors `mode` but is updated synchronously so a multi-keypress chunk

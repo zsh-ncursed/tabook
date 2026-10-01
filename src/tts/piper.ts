@@ -32,7 +32,20 @@ export class PiperBackend implements TtsBackend {
 
   async check(): Promise<string | null> {
     if (!this.bin && !commandAvailable('piper') && !commandAvailable('piper-speak')) {
-      return `piper not found in PATH — install "piper-tts" (pipx) or set [tts] command`;
+      return [
+        'piper not found in PATH.',
+        '',
+        'To fix:',
+        '  1. Install:  pipx install piper-tts   (needs Python 3.9+)',
+        '  2. Enable TTS: :tts config  →  set Engine to piper, or add to config.toml:',
+        '',
+        '     [tts]',
+        '     mode = "active"',
+        '     engine = "piper"',
+        '     command = "/full/path/to/piper"   # only if piper is not in PATH',
+        '',
+        '  3. Download a voice: :tts config → Voice → pick one (e.g. ru_RU-irina-medium)',
+      ].join('\n');
     }
     return null;
   }

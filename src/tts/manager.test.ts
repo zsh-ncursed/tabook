@@ -107,7 +107,7 @@ describe('TtsManager', () => {
     expect(mgr.getStatus().state).toBe('error');
   });
 
-  it('drops empty chunks instead of crashing the engine', () => {
+  it('drops empty chunks instead of crashing the engine', async () => {
     const player = mockPlayer();
     const mgr = new TtsManager({ player });
     const synthesize = vi.fn<(c: TtsChunk) => Promise<WavSource>>(async () => SILENCE);
@@ -128,6 +128,8 @@ describe('TtsManager', () => {
       ],
       { engine: 'mock' },
     );
+    // play() делает pre-flight check движка — статус становится playing async.
+    await new Promise((r) => setTimeout(r, 10));
     expect(mgr.getStatus().state).toBe('playing');
     expect(synthesize).toHaveBeenCalledTimes(1);
     const firstCall = synthesize.mock.calls.at(0);
@@ -178,5 +180,46 @@ describe('TtsManager', () => {
     expect(mgr.resolveBackend('a')?.id).toBe('a');
     expect(mgr.resolveBackend('nope')).toBeNull();
     expect(mgr.resolveBackend('auto')?.id).toBe('a');
+  });
+
+  it('reports an engine check failure instead of spawning a broken backend', async () => {
+    const player = mockPlayer();
+    const mgr = new TtsManager({ player });
+    const synthesize = vi.fn(async () => SILENCE);
+    mgr.register({
+      id: 'mock',
+      label: 'Mock',
+      capabilities: { languages: ['ru'], offline: true, rateControl: false, pitchControl: false },
+      // Движок «не установлен» — как piper/espeak без бинарника в PATH.
+      check: async () => 'mock not found in PATH.\n\nTo fix:\n  install it',
+      synthesize,
+      dispose: () => {},
+    });
+
+    const statuses: string[] = [];
+    mgr.onStatus((s) => statuses.push(s.state));
+
+    mgr.play([{ text: 'hello', startChar: 0 }], { engine: 'mock' });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Синтеза не было — пользователь получил понятную ошибку вместо ENOENT.
+    expect(synthesize).not.toHaveBeenCalled();
+    expect(mgr.getStatus().state).toBe('error');
+    expect((mgr.getStatus() as { message: string }).message).toContain('mock not found');
+    expect(statuses).toContain('error');
+    expect(player.play).not.toHaveBeenCalled();
+  });
+
+  it('errors clearly when the requested engine is not registered', async () => {
+    const player = mockPlayer();
+    const mgr = new TtsManager({ player });
+    const statuses: string[] = [];
+    mgr.onStatus((s) => statuses.push(s.state));
+
+    mgr.play([{ text: 'hello', startChar: 0 }], { engine: 'nonexistent' });
+    await new Promise((r) => setTimeout(r, 5));
+
+    expect(mgr.getStatus().state).toBe('error');
+    expect((mgr.getStatus() as { message: string }).message).toContain('nonexistent');
   });
 });

@@ -22,7 +22,17 @@ export class EspeakBackend implements TtsBackend {
 
   async check(): Promise<string | null> {
     if (!commandAvailable('espeak-ng')) {
-      return 'espeak-ng not found in PATH (install "espeak-ng" package)';
+      return [
+        'espeak-ng not found in PATH.',
+        '',
+        'To fix:',
+        '  1. Install:  sudo pacman -S espeak-ng   (Debian/Ubuntu: apt install espeak-ng)',
+        '  2. Enable TTS: :tts config  →  set Engine to espeak, or add to config.toml:',
+        '',
+        '     [tts]',
+        '     mode = "active"',
+        '     engine = "espeak"',
+      ].join('\n');
     }
     return null;
   }

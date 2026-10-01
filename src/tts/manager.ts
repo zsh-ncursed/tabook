@@ -44,7 +44,6 @@ export class TtsManager {
   private status: TtsStatus = { state: 'idle' };
   private stopping = false;
 
-
   constructor(opts: TtsManagerOptions = {}) {
     this.player = opts.player ?? createDefaultPlayer();
     this.opts = { interChunkPauseMs: opts.interChunkPauseMs ?? 250 };
@@ -104,7 +103,25 @@ export class TtsManager {
       this.setStatus({ state: 'error', message: 'nothing to read at this position' });
       return;
     }
-    this.playChunkFrom(0);
+    const engine = this.resolveBackend(this.engine ?? undefined);
+    if (!engine) {
+      this.setStatus({
+        state: 'error',
+        message: `TTS engine "${this.engine ?? 'auto'}" not registered. Run :tts config to pick one (piper or espeak)`,
+      });
+      return;
+    }
+    // Pre-flight: проверяем движок ДО синтеза, чтобы пользователь увидел
+    // понятное «espeak-ng not found — установите пакет», а не сырой ENOENT
+    // из глубины spawn посреди воспроизведения.
+    void engine.check().then((problem) => {
+      if (this.stopping) return;
+      if (problem) {
+        this.setStatus({ state: 'error', message: problem });
+        return;
+      }
+      this.playChunkFrom(0);
+    });
   }
 
   /** Пауза/возобновление (toggle). */
@@ -201,7 +218,11 @@ export class TtsManager {
       chunkIndex: idx,
       total: this.chunks.length,
     });
-    this.advanceListener?.({ startChar: chunk.startChar, chunkIndex: idx, total: this.chunks.length });
+    this.advanceListener?.({
+      startChar: chunk.startChar,
+      chunkIndex: idx,
+      total: this.chunks.length,
+    });
     engine
       .synthesize(chunk, this.voiceOpts)
       .then((wav) => {
