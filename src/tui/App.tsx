@@ -113,11 +113,51 @@ export function App(props: AppProps): React.JSX.Element {
         ttsManager.stop();
       },
       toggleFollow() {
-        return !liveConfig.tts.follow;
+        const newFollow = !liveConfig.tts.follow;
+        const p = configPathRef.current;
+        if (p) {
+          const updated: Config = { ...liveConfig, tts: { ...liveConfig.tts, follow: newFollow } };
+          setLiveConfig(updated);
+          try {
+            fs.writeFileSync(p, serializeConfig(updated), 'utf8');
+          } catch {
+            /* best-effort */
+          }
+        } else {
+          setLiveConfig((c) => ({ ...c, tts: { ...c.tts, follow: newFollow } }));
+        }
+        return newFollow;
       },
     }),
     [session, liveConfig.tts, ttsManager],
   );
+
+  // TTS karaoke + follow: подписываемся на advance один раз.
+  // followRef обновляется при каждом рендере (синхронно в before-hooks),
+  // поэтому обработчик всегда видит актуальное значение.
+  const followRef = useRef(liveConfig.tts.follow);
+  followRef.current = liveConfig.tts.follow;
+  const [ttsKaraokeBlock, setTtsKaraokeBlock] = useState<number | null>(null);
+  useEffect(() => {
+    const handler = (advance: { startChar: number }) => {
+      const { startChar } = advance;
+      const s = sessionRef.current;
+      if (!s) return;
+      if (followRef.current) {
+        s.goToCharOffset(startChar);
+      }
+      const n = s.book.content.length;
+      for (let i = 0; i < n; i++) {
+        const bStart = s.blockCharStart(i);
+        const bEnd = i + 1 < n ? s.blockCharStart(i + 1) : Infinity;
+        if (startChar >= bStart && startChar < bEnd) {
+          setTtsKaraokeBlock(i);
+          return;
+        }
+      }
+    };
+    ttsManager.onAdvance(handler);
+  }, [ttsManager]);
 
   const theme = useMemo(() => {
     const t = THEMES[themeName];
@@ -554,6 +594,7 @@ export function App(props: AppProps): React.JSX.Element {
           message={message?.text}
           ttsManager={ttsManager}
           tts={ttsController}
+          ttsSpeakingBlock={ttsKaraokeBlock}
         />
       ) : null}
       {openingBook ? (

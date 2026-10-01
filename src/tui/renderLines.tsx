@@ -62,7 +62,12 @@ function splitSelection(
   return chunks;
 }
 
-export function renderLine(line: TextLine, theme: Theme, sel?: SelectionRange): React.ReactNode {
+export function renderLine(
+  line: TextLine,
+  theme: Theme,
+  sel?: SelectionRange,
+  karaokeHighlight?: boolean,
+): React.ReactNode {
   if (line.role === 'empty' || line.spans.length === 0) {
     return (
       <Text key={`${line.blockIndex}-${line.charOffset}`} color={theme.colors.text}>
@@ -71,6 +76,9 @@ export function renderLine(line: TextLine, theme: Theme, sel?: SelectionRange): 
     );
   }
   const color = roleColor(theme, line.role);
+  // Karaoke: translucent accent background over the whole line.
+  // Ink accepts #RRGGBBAA hex for alpha.
+  const karaokeBg = karaokeHighlight ? theme.colors.accent + '33' : undefined;
   // Rendered columns: the indent and prefix are drawn before the spans, so
   // span text starts at indent + prefix length in rendered coordinates.
   const base = line.indent + line.prefix.length;
@@ -85,8 +93,8 @@ export function renderLine(line: TextLine, theme: Theme, sel?: SelectionRange): 
         <Text
           key={start}
           color={span.link ? theme.colors.link : color}
-          backgroundColor={span.highlight ? theme.colors.searchHighlight : undefined}
-          bold={span.bold}
+          backgroundColor={span.highlight ? theme.colors.searchHighlight : karaokeBg}
+          bold={span.bold || karaokeHighlight}
           italic={span.italic}
           underline={span.underline || span.link}
           inverse={!!span.highlight}
@@ -106,9 +114,9 @@ export function renderLine(line: TextLine, theme: Theme, sel?: SelectionRange): 
               ? theme.colors.searchHighlight
               : span.highlight
                 ? theme.colors.searchHighlight
-                : undefined
+                : karaokeBg
           }
-          bold={span.bold}
+          bold={span.bold || (karaokeHighlight && chunk.selected)}
           italic={span.italic}
           underline={span.underline || span.link}
           inverse={chunk.selected || !!span.highlight}
@@ -122,6 +130,7 @@ export function renderLine(line: TextLine, theme: Theme, sel?: SelectionRange): 
     <Text
       key={`${line.blockIndex}-${line.charOffset}-${line.role}`}
       color={color}
+      backgroundColor={karaokeBg}
       bold={roleBold(line.role)}
       italic={roleItalic(line.role)}
     >

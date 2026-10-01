@@ -53,6 +53,8 @@ export interface ReaderViewProps {
   ttsManager: TtsManager;
   /** TTS-контроллер для хоткеев (play/stop/toggleFollow). */
   tts: ReaderTtsController;
+  /** blockIndexCurrently озвучиваемого блока (для караоке-подсветки). */
+  ttsSpeakingBlock?: number | null;
 }
 
 export function ReaderView(props: ReaderViewProps): React.JSX.Element {
@@ -74,6 +76,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
     message,
     ttsManager,
     tts: ttsController,
+    ttsSpeakingBlock,
   } = props;
   const imageLayer = useImageLayer();
   const [width, height] = useTerminalSize();
@@ -387,7 +390,12 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       <Box flexDirection="column" paddingX={1} height={session.pageHeight()}>
         {lines.map((line, i) => (
           <Box key={i} height={1}>
-            {renderLine(line, theme, selectionRangeForLine(selection, i))}
+            {renderLine(
+              line,
+              theme,
+              selectionRangeForLine(selection, i),
+              ttsSpeakingBlock === line.blockIndex,
+            )}
           </Box>
         ))}
       </Box>
