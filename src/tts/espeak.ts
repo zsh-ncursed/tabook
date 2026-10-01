@@ -75,7 +75,16 @@ function textToWavEspeak(
     child.on('error', (e) => reject(e));
     child.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`espeak-ng failed (${code}): ${err.trim()}`));
+        // stderr может содержать ANSI-коды и несколько строк — сжимаем в
+        // одну, чтобы индикатор ошибки не разорвал экран TUI.
+        const summary =
+          err
+            .replace(/\x1b\[[0-9;]*m/g, '')
+            .split('\n')
+            .map((l) => l.trim())
+            .filter((l) => l.length > 0)
+            .slice(-1)[0] ?? '';
+        reject(new Error(`espeak-ng failed (${code}): ${summary.slice(0, 200)}`));
         return;
       }
       resolve();

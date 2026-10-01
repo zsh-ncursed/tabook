@@ -222,4 +222,23 @@ describe('TtsManager', () => {
     expect(mgr.getStatus().state).toBe('error');
     expect((mgr.getStatus() as { message: string }).message).toContain('nonexistent');
   });
+
+  it('clears the error from the screen after a hold period', async () => {
+    vi.useFakeTimers();
+    const player = mockPlayer();
+    const mgr = new TtsManager({ player });
+    const statuses: string[] = [];
+    mgr.onStatus((s) => statuses.push(s.state));
+
+    mgr.play([{ text: 'hello', startChar: 0 }], { engine: 'nonexistent' });
+    expect(mgr.getStatus().state).toBe('error');
+
+    // Ошибка держится на экране ограниченное время, потом возвращаемся в idle —
+    // чтобы сообщение не залипало поверх текста книги до перезапуска.
+    vi.advanceTimersByTime(10_000);
+    expect(mgr.getStatus().state).toBe('idle');
+    expect(statuses.at(-1)).toBe('idle');
+
+    vi.useRealTimers();
+  });
 });

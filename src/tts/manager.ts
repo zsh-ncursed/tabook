@@ -24,6 +24,9 @@ export interface TtsManagerOptions {
   /** Разбивать длинные чанки по предложениям (далее в интеграции). */
 }
 
+/** Сколько секунд индикатор держит ошибку на экране, прежде чем вернуться в idle. */
+const ERROR_HOLD_MS = 4000;
+
 /**
  * Оркестратор TTS: держит бэкенды, очередь чанков, статус воспроизведения
  * и координацию с навигацией. Не зависит от ReaderSession напрямую — чанки
@@ -43,6 +46,7 @@ export class TtsManager {
   private advanceListener: ((a: TtsAdvance) => void) | null = null;
   private status: TtsStatus = { state: 'idle' };
   private stopping = false;
+  private errorTimer: NodeJS.Timeout | undefined;
 
   constructor(opts: TtsManagerOptions = {}) {
     this.player = opts.player ?? createDefaultPlayer();
@@ -165,6 +169,8 @@ export class TtsManager {
 
   stop(): void {
     this.stopping = true;
+    clearTimeout(this.errorTimer);
+    this.errorTimer = undefined;
     this.player.stop();
     this.chunks = [];
     this.index = 0;
@@ -174,6 +180,8 @@ export class TtsManager {
 
   /** Убить плеер/процессы и снять подписки (при выходе из ридера). */
   dispose(): void {
+    clearTimeout(this.errorTimer);
+    this.errorTimer = undefined;
     this.player.stop();
     this.player.dispose();
     this.statusListener = null;
@@ -191,6 +199,16 @@ export class TtsManager {
   private setStatus(s: TtsStatus): void {
     this.status = s;
     this.statusListener?.(s);
+    // Ошибка не должна висеть в индикаторе вечно: пользователь увидел — и через
+    // пару секунд возвращаемся в idle, чтобы текст не залипал поверх книги.
+    if (s.state === 'error') {
+      clearTimeout(this.errorTimer);
+      this.errorTimer = setTimeout(() => {
+        if (this.status.state === 'error') {
+          this.setStatus({ state: 'idle' });
+        }
+      }, ERROR_HOLD_MS);
+    }
   }
 
   private playChunkFrom(idx: number): void {

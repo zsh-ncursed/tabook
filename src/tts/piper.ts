@@ -209,6 +209,34 @@ function findModel(base: string, dir?: string, depth = 4): string | null {
   return null;
 }
 
+/**
+ * Сжать stderr дочернего процесса до одной человекочитаемой строки.
+ *
+ * Piper сыпет в stderr ANSI-раскрашенные warning'и onnxruntime и полный
+ * Python-traceback. В терминале tabook (raw mode, TUI) многострочный вывод с
+ * escape-последовательностями разрывает экран и оставляет артефакты поверх
+ * текста книги. Поэтому: вырезаем ANSI, выбрасываем служебные строки логов и
+ * берём последнюю значимую строку — обычно это строка исключения.
+ */
+export function summarizeStderr(raw: string): string {
+  const noAnsi = raw.replace(/\x1b\[[0-9;]*m/g, '');
+  const lines = noAnsi
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    // Служебный шум, который piper/onnxruntime сыплют в stderr: телеметрия
+    // (всегда с временной меткой), обвязка Python-traceback и скобки.
+    .filter(
+      (l) =>
+        !/\d{4}-\d{2}-\d{2}|onnxruntime|telemetry|^Traceback|^ {2}File |^\s*~+|^sys\.exit|\{$|\}$/i.test(
+          l,
+        ),
+    );
+  // Последняя значимая строка трейсбека — само исключение (ValueError: ...).
+  // Если после фильтра ничего не осталось (чистый шум) — пустая строка.
+  return (lines[lines.length - 1] ?? '').slice(0, 200);
+}
+
 /** Прогнать piper: текст в stdin -> wav-файл; резолвится по завершении. */
 function pipeTextToWav(
   bin: string,
@@ -238,7 +266,7 @@ function pipeTextToWav(
     });
     child.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`piper failed (${code}): ${err.trim()}`));
+        reject(new Error(`piper failed (${code}): ${summarizeStderr(err)}`));
         return;
       }
       resolve();
