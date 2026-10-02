@@ -9,6 +9,10 @@ arch=('x86_64' 'aarch64')
 url='https://github.com/zsh-ncursed/tabook'
 license=('MIT')
 depends=('nodejs>=18')
+# Install scriptlet. Since pacman 7 / makepkg 7 a `post_install()` *function* in
+# this file is silently ignored — scriptlets must live in a separate file named
+# by $install. The hint advertises the optional piper-tts engine.
+install=tabook.install
 optdepends=(
   'ueberzugpp: display images in terminals without kitty-protocol support (alacritty, xterm, tmux)'
   'zenity: graphical file picker for the `o` open-file dialog'
@@ -24,11 +28,6 @@ source_x86_64=("tabook-${pkgver}-linux-x64.tar.zst::https://github.com/zsh-ncurs
 source_aarch64=("tabook-${pkgver}-linux-arm64.tar.zst::https://github.com/zsh-ncursed/tabook/releases/download/v${pkgver}/tabook-${pkgver}-linux-arm64.tar.zst")
 sha256sums_x86_64=('__SHA256_X64__')
 sha256sums_aarch64=('__SHA256_ARM64__')
-
-post_install() {
-  echo "  TTS (optional): install piper-tts from AUR — yay -S piper-tts"
-  echo "  Then run :tts config in tabook to pick a voice"
-}
 
 package() {
   # The tarball carries tabook.bundle.mjs, node_modules/ (@tabook/native Rust

@@ -103,8 +103,12 @@ jobs:
         run: |
           cp PKGBUILD aur-repo/
           cp .SRCINFO aur-repo/
+          # pacman 7 dropped post_install() functions from PKGBUILD; the
+          # scriptlet lives in a separate file named by $install. Without
+          # copying it, AUR users never see the optional piper-tts hint.
+          cp tabook.install aur-repo/
           cd aur-repo
-          git add PKGBUILD .SRCINFO
+          git add PKGBUILD .SRCINFO tabook.install
           git commit -m "Update to v${{ steps.version.outputs.version }}" || echo "No changes to commit"
 
       - name: Push to AUR
