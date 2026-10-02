@@ -48,7 +48,16 @@ export class TtsManager {
   private statusListeners = new Set<TtsStatusListener>();
   private advanceListeners = new Set<(a: TtsAdvance) => void>();
   private status: TtsStatus = { state: 'idle' };
-  private stopping = false;
+  /**
+   * Монотонный счётчик «поколений» воспроизведения. Прежде здесь стоял булев
+   * `stopping`, но stop() выставлял его в true и тут же синхронно сбрасывал в
+   * false, поэтому все гварды `if (this.stopping) return` в async-колбэках
+   * никогда не срабатывали: стоп во время синтеза всё равно включал звук, а
+   * `:tts` + быстрый `:tts stop` успевали запустить проигрывание после стопа.
+   * Счётчик однозначен: каждая отложенная операция помнит своё поколение и
+   * выполняется, только если оно всё ещё актуально.
+   */
+  private gen = 0;
   private errorTimer: NodeJS.Timeout | undefined;
 
   constructor(opts: TtsManagerOptions = {}) {
@@ -75,6 +84,13 @@ export class TtsManager {
 
   get engines(): { id: string; label: string }[] {
     return [...this.backends.values()].map((b) => ({ id: b.id, label: b.label }));
+  }
+
+  /** Pre-flight проверка движка TTS. Возвращает текст проблемы или null. */
+  async check(engineId?: string): Promise<string | null> {
+    const engine = this.resolveBackend(engineId);
+    if (!engine) return `TTS engine "${engineId ?? 'auto'}" not registered`;
+    return engine.check();
   }
 
   // ---- подписки ----
@@ -110,6 +126,7 @@ export class TtsManager {
    */
   play(chunks: TtsChunk[], opts: { engine?: string; voice?: TtsVoiceOptions } = {}): void {
     this.stop();
+    const gen = this.gen; // поколение, установленное stop() выше — наше «текущее»
     // Пустые/whitespace-чанки и «огрызки» из одних знаков препинания нельзя
     // отдавать в движок: piper падает на тексте без фонем (Python traceback).
     this.chunks = chunks.filter((c) => c.text.trim().length > 0 && isSpeakable(c.text));
@@ -132,9 +149,10 @@ export class TtsManager {
     // понятное «espeak-ng not found — установите пакет», а не сырой ENOENT
     // из глубины spawn посреди воспроизведения.
     void engine.check().then((problem) => {
-      if (this.stopping) return;
+      if (gen !== this.gen) return; // пока check() висел, пользователь нажал stop
       if (problem) {
         this.setStatus({ state: 'error', message: problem });
+
         return;
       }
       this.playChunkFrom(0);
@@ -181,13 +199,14 @@ export class TtsManager {
   }
 
   stop(): void {
-    this.stopping = true;
+    // Инвалидируем всё, что было запущено раньше: любой отложенный check()/
+    // synthesize()/setTimeout увидит несовпадение поколения и не тронет плеер.
+    this.gen++;
     clearTimeout(this.errorTimer);
     this.errorTimer = undefined;
     this.player.stop();
     this.chunks = [];
     this.index = 0;
-    this.stopping = false;
     this.setStatus({ state: 'idle' });
   }
 
@@ -236,6 +255,7 @@ export class TtsManager {
   private playChunk(idx: number): void {
     const chunk = this.chunks[idx];
     if (!chunk) return;
+    const gen = this.gen;
     this.index = idx;
     const engine = this.resolveBackend(this.engine ?? undefined);
     if (!engine) {
@@ -259,10 +279,13 @@ export class TtsManager {
     engine
       .synthesize(chunk, this.voiceOpts)
       .then((wav) => {
-        if (this.stopping) return;
+        // Стоп во время синтеза: wav выкидываем, звук не включаем.
+        if (gen !== this.gen) return;
         this.player.play(wav);
       })
       .catch((e) => {
+        // Ошибка устаревшего воспроизведения не должна перебивать текущее.
+        if (gen !== this.gen) return;
         this.setStatus({
           state: 'error',
           message: e instanceof Error ? e.message : String(e),
@@ -271,7 +294,7 @@ export class TtsManager {
   }
 
   private onChunkEnded(): void {
-    if (this.stopping) return;
+    const gen = this.gen;
     const next = this.index + 1;
     if (next >= this.chunks.length) {
       this.setStatus({ state: 'idle' });
@@ -281,7 +304,7 @@ export class TtsManager {
     const pauseMs = this.opts.interChunkPauseMs;
     if (pauseMs > 0) {
       setTimeout(() => {
-        if (this.stopping) return;
+        if (gen !== this.gen) return; // остановлено, пока шла пауза
         this.playChunk(next);
       }, pauseMs);
     } else {

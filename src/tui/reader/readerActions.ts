@@ -44,6 +44,8 @@ export interface ReaderTtsController {
   stop(): void;
   /** Переключить режим «следовать за звуком». */
   toggleFollow(): boolean;
+  /** Pre-flight проверка движка TTS. Возвращает текст проблемы или null. */
+  check(): Promise<string | null>;
 }
 
 // Reading-mode action handling, extracted from the component so it can be

@@ -296,4 +296,71 @@ describe('TtsManager', () => {
     // только от начального onStatus.
     expect(a).toEqual(['idle']);
   });
+
+  it('does not start playback when stop() lands while synthesis is in flight', async () => {
+    // Регрессия: гвард был `if (this.stopping)`, но stop() сбрасывал флаг
+    // синхронно, поэтому стоп во время синтеза всё равно включал звук.
+    // Важно дождаться именно synthesize(): если стопнуть раньше, поток умирает
+    // на пустом chunks и до гварда не доходит — тест проходит вхолостую.
+    const player = mockPlayer();
+    const mgr = new TtsManager({ player, interChunkPauseMs: 0 });
+    let release: (v: WavSource) => void = () => {};
+    const pending = new Promise<WavSource>((r) => {
+      release = r;
+    });
+    const synthesize = vi.fn(() => pending);
+    mgr.register({
+      id: 'mock',
+      label: 'mock',
+      capabilities: { languages: [], offline: true, rateControl: false, pitchControl: false },
+      check: async () => null,
+      synthesize,
+      dispose: () => {},
+    });
+
+    mgr.play([{ text: 'привет', startChar: 0 }], { engine: 'mock' });
+    await vi.waitFor(() => expect(synthesize).toHaveBeenCalledTimes(1));
+
+    mgr.stop(); // пользователь успел нажать стоп, пока piper синтезировал
+    release(SILENCE);
+    await pending;
+    await Promise.resolve();
+
+    expect(player.play).not.toHaveBeenCalled();
+    expect(mgr.getStatus().state).toBe('idle');
+  });
+
+  it('drops a late chunk from a superseded play()', async () => {
+    // Второй :tts перебивает первый: озвучка первого фрагмента не должна
+    // пробиваться сквозь новую, когда синтез отдаёт результат с задержкой.
+    const player = mockPlayer();
+    const mgr = new TtsManager({ player, interChunkPauseMs: 0 });
+    const gates: Array<(v: WavSource) => void> = [];
+    const synthesize = vi.fn(
+      () =>
+        new Promise<WavSource>((r) => {
+          gates.push(r);
+        }),
+    );
+    mgr.register({
+      id: 'mock',
+      label: 'mock',
+      capabilities: { languages: [], offline: true, rateControl: false, pitchControl: false },
+      check: async () => null,
+      synthesize,
+      dispose: () => {},
+    });
+
+    mgr.play([{ text: 'первый', startChar: 0 }], { engine: 'mock' });
+    await vi.waitFor(() => expect(synthesize).toHaveBeenCalledTimes(1));
+
+    mgr.play([{ text: 'второй', startChar: 100 }], { engine: 'mock' });
+    await vi.waitFor(() => expect(synthesize).toHaveBeenCalledTimes(2));
+
+    gates[0]?.(SILENCE); // просроченный результат первой озвучки
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(player.play).not.toHaveBeenCalled();
+  });
 });

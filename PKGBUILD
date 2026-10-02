@@ -2,7 +2,7 @@
 # vim: ft=sh:
 
 pkgname=tabook
-pkgver=0.3.4
+pkgver=0.6.0
 pkgrel=1
 pkgdesc='Terminal-based e-book reader for FB2 and EPUB formats'
 arch=('x86_64' 'aarch64')
@@ -13,6 +13,7 @@ optdepends=(
   'ueberzugpp: display images in terminals without kitty-protocol support (alacritty, xterm, tmux)'
   'zenity: graphical file picker for the `o` open-file dialog'
   'kdialog: graphical file picker (KDE alternative to zenity)'
+  'piper-tts: local neural TTS engine for :tts command (AUR: yay -S piper-tts)'
 )
 # Prebuilt per-arch release tarballs (single-file JS bundle + Rust native
 # module, which also owns the SQLite DB via rusqlite), produced by
@@ -23,6 +24,11 @@ source_x86_64=("tabook-${pkgver}-linux-x64.tar.zst::https://github.com/zsh-ncurs
 source_aarch64=("tabook-${pkgver}-linux-arm64.tar.zst::https://github.com/zsh-ncursed/tabook/releases/download/v${pkgver}/tabook-${pkgver}-linux-arm64.tar.zst")
 sha256sums_x86_64=('__SHA256_X64__')
 sha256sums_aarch64=('__SHA256_ARM64__')
+
+post_install() {
+  echo "  TTS (optional): install piper-tts from AUR — yay -S piper-tts"
+  echo "  Then run :tts config in tabook to pick a voice"
+}
 
 package() {
   # The tarball carries tabook.bundle.mjs, node_modules/ (@tabook/native Rust

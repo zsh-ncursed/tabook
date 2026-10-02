@@ -128,6 +128,9 @@ export function App(props: AppProps): React.JSX.Element {
         }
         return newFollow;
       },
+      check() {
+        return ttsManager.check(liveConfig.tts.engine);
+      },
     }),
     [session, liveConfig.tts, ttsManager],
   );

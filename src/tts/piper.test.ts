@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { sanitizeTtsText, summarizeStderr } from './piper.js';
+import { sanitizeTtsText, summarizeStderr, piperBinCandidates } from './piper.js';
 import { testTmpdir } from '../testutil/tmpdir.js';
 
 describe('sanitizeTtsText', () => {
@@ -49,6 +49,30 @@ describe('summarizeStderr', () => {
 
   it('returns an empty string for pure noise', () => {
     expect(summarizeStderr('\u001b[0;93monnxruntime telemetry\u001b[m')).toBe('');
+  });
+});
+
+describe('piperBinCandidates', () => {
+  it('includes the real pipx venvs dir (~/.local/share/pipx), not only the legacy one', () => {
+    // Баг: pipx кладёт venvs в ~/.local/share/pipx/venvs (подтверждено pipx list),
+    // автопоиск смотрел только в несуществующий ~/.local/pipx/venvs.
+    const home = process.env.HOME ?? '';
+    const cands = piperBinCandidates();
+    expect(cands).toContain(
+      path.join(home, '.local', 'share', 'pipx', 'venvs', 'piper-tts', 'bin', 'piper'),
+    );
+    expect(cands).toContain(
+      path.join(home, '.local', 'pipx', 'venvs', 'piper-tts', 'bin', 'piper'),
+    );
+  });
+
+  it('includes the standalone release layout (~/.local/share/piper-tts/piper/piper)', () => {
+    // Распаковка piper_linux_x86_64.tar.gz из rhasspy/piper releases:
+    // внутри архива — piper/piper; без симлинка в ~/.local/bin его не найти.
+    const home = process.env.HOME ?? '';
+    expect(piperBinCandidates()).toContain(
+      path.join(home, '.local', 'share', 'piper-tts', 'piper', 'piper'),
+    );
   });
 });
 
@@ -106,5 +130,33 @@ describe('PiperBackend config auto-repair', () => {
       else process.env.TABOOK_TTS_COMMAND = origCmd;
       vi.resetModules();
     }
+  });
+});
+
+describe('PiperBackend.check', () => {
+  // piper не входит в depends пакета — check() обязан объяснить, что ставить.
+  it('tells the user to install piper-tts from AUR when no binary is found', async () => {
+    const origPath = process.env.PATH;
+    const origHome = process.env.HOME;
+    // Пустой PATH + пустой HOME: ни piper, ни кандидаты в ~/.local не найдутся.
+    process.env.PATH = testTmpdir('tts-check-path');
+    process.env.HOME = testTmpdir('tts-check-home');
+    fs.mkdirSync(process.env.PATH, { recursive: true });
+    fs.mkdirSync(process.env.HOME, { recursive: true });
+    try {
+      const { PiperBackend } = await import('./piper.js');
+      const problem = await new PiperBackend('').check();
+      expect(problem).toContain('yay -S piper-tts');
+      expect(problem).toContain('pipx install piper-tts');
+    } finally {
+      process.env.PATH = origPath;
+      process.env.HOME = origHome;
+    }
+  });
+
+  it('stays silent when the binary is available', async () => {
+    const { PiperBackend } = await import('./piper.js');
+    // Явный command — движок считаем установленным, notification не нужна.
+    expect(await new PiperBackend('/usr/bin/piper').check()).toBeNull();
   });
 });

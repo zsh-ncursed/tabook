@@ -35,18 +35,13 @@ export class PiperBackend implements TtsBackend {
   async check(): Promise<string | null> {
     if (!this.bin && !commandAvailable('piper') && !commandAvailable('piper-speak')) {
       return [
-        'piper not found in PATH.',
+        'piper not found — TTS engine not installed.',
         '',
-        'To fix:',
-        '  1. Install:  pipx install piper-tts   (needs Python 3.9+)',
-        '  2. Enable TTS: :tts config  →  set Engine to piper, or add to config.toml:',
+        'Install piper-tts:',
+        '  AUR:  yay -S piper-tts',
+        '  pipx: pipx install piper-tts',
         '',
-        '     [tts]',
-        '     mode = "active"',
-        '     engine = "piper"',
-        '     command = "/full/path/to/piper"   # only if piper is not in PATH',
-        '',
-        '  3. Download a voice: :tts config → Voice → pick one (e.g. ru_RU-irina-medium)',
+        'Then download a voice: :tts config → Voice → pick one (e.g. ru_RU-irina-medium)',
       ].join('\n');
     }
     return null;
@@ -125,6 +120,14 @@ function resolvePiperBin(command: string): string {
   return 'piper';
 }
 
+/**
+ * Список путей-кандидатов для автопоиска бинаря piper. Экспортирован для
+ * тестов (проверяем, что актуальные места установки не потеряны).
+ */
+export function piperBinCandidates(): string[] {
+  return autoPiperCandidates();
+}
+
 /** Типичные пути, куда pipx/pip ставит piper-tts. */
 function autoPiperCandidates(): string[] {
   const home = process.env.HOME ?? '';
@@ -133,7 +136,15 @@ function autoPiperCandidates(): string[] {
     if (p) out.push(p);
   };
   push(join(home, '.local', 'bin', 'piper'));
+  // pipx venv: XDG-путь ~/.local/share/pipx/venvs (актуальный) и старый
+  // ~/.local/pipx/venvs (встречался в ранних pipx). Симлинк в ~/.local/bin
+  // часто отваливается после обновления Python — venv надо искать сам.
+  push(join(home, '.local', 'share', 'pipx', 'venvs', 'piper-tts', 'bin', 'piper'));
   push(join(home, '.local', 'pipx', 'venvs', 'piper-tts', 'bin', 'piper'));
+  // Standalone-распаковка из архива rhasspy/piper releases (piper_linux_x86_64.tar.gz):
+  // внутри — piper/piper; Readme советует симлинк в ~/.local/bin, кладём на случай,
+  // если его не сделали.
+  push(join(home, '.local', 'share', 'piper-tts', 'piper', 'piper'));
   push(join(home, '.venv', 'bin', 'piper'));
   push(join(home, '.tts-venv', 'bin', 'piper'));
   // venv рядом с табуком (dev/тестовые окружения): поднимаемся от запускаемого
@@ -289,7 +300,7 @@ function pipeTextToWav(
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
         reject(
           new Error(
-            `piper binary not found: "${bin}". Install piper-tts (pipx install piper-tts) or set [tts] command = "/full/path/to/piper" in config.toml`,
+            `piper binary not found: "${bin}". Install: yay -S piper-tts (AUR) or pipx install piper-tts`,
           ),
         );
         return;

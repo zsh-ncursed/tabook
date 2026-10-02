@@ -77,7 +77,9 @@ parsers, layout, search **and the SQLite database** (better-sqlite3 is not
 needed). Images work natively in kitty-family terminals; optional
 dependencies: `ueberzugpp` (images in terminals without native protocol
 support, e.g. alacritty, xterm — also inside tmux), `zenity` / `kdialog`
-(graphical file picker for `o`).
+(graphical file picker for `o`), `piper-tts` (local neural voices for
+`:tts` — tabook installs no speech engine of its own; without piper it
+falls back to `espeak-ng`, or prints how to install one).
 
 ### From the prebuilt npm package (no Rust toolchain)
 
@@ -209,34 +211,34 @@ the output of `--completion` into your shell's completion directory.
 
 ### Command line
 
-| Command                  | Description                                              |
-| ------------------------ | -------------------------------------------------------- |
-| `:open <path>`           | Open a book file (falls back to picker)                  |
-| `:theme <name>`          | Switch theme (persisted to config)                       |
-| `:themes`                | List available themes                                    |
-| `:sort <field>`          | Sort library by `title`, `author`, `added` or `progress` |
-| `:group`                 | Toggle group-by-series in the library                    |
-| `:goto <page>`           | Jump to a page number (`:goto 10%` also works)           |
-| `:simplified`            | Toggle simplified reading mode                           |
-| `:tts`                   | Read aloud — play / pause from the current position      |
-| `:tts continue`          | Resume reading aloud from the last saved position        |
-| `:tts stop`              | Stop reading aloud                                       |
-| `:tts engines`           | List available TTS engines                               |
-| `:tts voice <engine>/<voice>` | Switch engine and voice                            |
-| `:tts rate <n>`          | Set playback rate (0.25–4)                               |
-| `:tts follow`            | Toggle follow-while-reading                              |
-| `:search <query>`        | Search the current book                                  |
-| `:config init`           | Write a default config file                              |
-| `:config edit`           | Open the config in `$EDITOR` and reload it live          |
-| `:opds`                  | Open the OPDS catalog browser                            |
-| `:opds add <name> <url>` | Add an OPDS catalog (`[username] [password]` optional)   |
-| `:opds remove <name>`    | Remove an OPDS catalog                                   |
-| `:opds list`             | List configured OPDS catalogs                            |
-| `:library add <path>`    | Attach a folder as a library                             |
-| `:library list`          | List attached folders                                    |
-| `:library scan`          | Rescan all attached folders                              |
-| `:library remove <path>` | Detach a folder and remove its books                     |
-| `:q` / `:quit`           | Quit                                                     |
+| Command                       | Description                                              |
+| ----------------------------- | -------------------------------------------------------- |
+| `:open <path>`                | Open a book file (falls back to picker)                  |
+| `:theme <name>`               | Switch theme (persisted to config)                       |
+| `:themes`                     | List available themes                                    |
+| `:sort <field>`               | Sort library by `title`, `author`, `added` or `progress` |
+| `:group`                      | Toggle group-by-series in the library                    |
+| `:goto <page>`                | Jump to a page number (`:goto 10%` also works)           |
+| `:simplified`                 | Toggle simplified reading mode                           |
+| `:tts`                        | Read aloud — play / pause from the current position      |
+| `:tts continue`               | Resume reading aloud from the last saved position        |
+| `:tts stop`                   | Stop reading aloud                                       |
+| `:tts engines`                | List available TTS engines                               |
+| `:tts voice <engine>/<voice>` | Switch engine and voice                                  |
+| `:tts rate <n>`               | Set playback rate (0.25–4)                               |
+| `:tts follow`                 | Toggle follow-while-reading                              |
+| `:search <query>`             | Search the current book                                  |
+| `:config init`                | Write a default config file                              |
+| `:config edit`                | Open the config in `$EDITOR` and reload it live          |
+| `:opds`                       | Open the OPDS catalog browser                            |
+| `:opds add <name> <url>`      | Add an OPDS catalog (`[username] [password]` optional)   |
+| `:opds remove <name>`         | Remove an OPDS catalog                                   |
+| `:opds list`                  | List configured OPDS catalogs                            |
+| `:library add <path>`         | Attach a folder as a library                             |
+| `:library list`               | List attached folders                                    |
+| `:library scan`               | Rescan all attached folders                              |
+| `:library remove <path>`      | Detach a folder and remove its books                     |
+| `:q` / `:quit`                | Quit                                                     |
 
 ## Configuration
 

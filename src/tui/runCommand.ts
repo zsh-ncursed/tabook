@@ -47,6 +47,14 @@ export interface CommandContext {
   tts?: ReaderTtsController;
 }
 
+/**
+ * Счётчик намерений для `:tts`. Пока асинхронная проверка движка висит в
+ * воздухе, она не должна запускать озвучку, если пользователь уже успел
+ * остановить её (или начать новую). Модульный, т.к. runCommand — чистая
+ * функция одного нажатия, а состояние TUI живёт между вызовами.
+ */
+let ttsIntent = 0;
+
 export function runCommand(text: string, ctx: CommandContext): void {
   const {
     db,
@@ -164,8 +172,20 @@ export function runCommand(text: string, ctx: CommandContext): void {
       }
       const sub = args[0]?.toLowerCase();
       if (!sub || sub === 'toggle' || sub === '') {
-        tts.play();
+        // Проверка движка асинхронна, и пока она висит, пользователь может
+        // нажать :tts stop. Без ttsIntent pending-проверка запустила бы озвучку
+        // уже после стопа — звук включается вопреки последнему намерению.
+        const intent = ++ttsIntent;
+        void tts.check().then((problem) => {
+          if (intent !== ttsIntent) return;
+          if (problem) {
+            notify(problem);
+          } else {
+            tts.play();
+          }
+        });
       } else if (sub === 'stop') {
+        ttsIntent++; // отменяем висящую проверку
         tts.stop();
       } else if (sub === 'continue') {
         // Возобновить с сохранённой позиции: читаем из БД и прокручиваем туда.

@@ -58,12 +58,13 @@ export class SystemPlayer implements AudioPlayer {
     this.stop();
     this.current = source;
     this.paused = false;
-    this.startProcess(ensureWavFile(source));
+    this.startProcess(this.ensureWavFile(source));
   }
 
   pause(): void {
     if (this.paused || !this.proc) return;
     // Останавливаем процесс, но запоминаем источник → resume перезапустит.
+    // Файл НЕ удаляем: он понадобится resume.
     this.paused = true;
     this.killProc();
   }
@@ -71,18 +72,29 @@ export class SystemPlayer implements AudioPlayer {
   resume(): void {
     if (!this.paused) return;
     this.paused = false;
-    if (this.current) this.startProcess(ensureWavFile(this.current));
+    if (this.current) this.startProcess(this.ensureWavFile(this.current));
   }
 
   stop(): void {
     this.paused = false;
     this.current = null;
     this.killProc();
+    this.cleanupTmp();
   }
 
   dispose(): void {
     this.disposed = true;
     this.killProc();
+    this.cleanupTmp();
+  }
+
+  /**
+   * Удалить все wav, созданные за сессию. Вызывается из stop()/dispose().
+   * Без этого каждый чанк piper оставлял файл в /tmp насовсем — час озвучки
+   * это сотни мегабайт, и ничто их не вычищало (см. ensureWavFile: пути
+   * регистрируются здесь, поэтому tmpFiles больше не пустой).
+   */
+  private cleanupTmp(): void {
     for (const f of this.tmpFiles) {
       try {
         unlinkSync(f);
@@ -131,15 +143,23 @@ export class SystemPlayer implements AudioPlayer {
       this.proc = null;
     }
   }
-}
 
-/** Скопировать WAV в temp-файл, если это buffer (плееру нужен путь к файлу). */
-function ensureWavFile(src: WavSource): string {
-  if (src.kind === 'file') return src.path;
-  const tmp = join(
-    tmpdir(),
-    `tabook-tts-${process.pid}-${Math.random().toString(36).slice(2)}.wav`,
-  );
-  writeFileSync(tmp, src.buffer);
-  return tmp;
+  /**
+   * Путь к WAV, который можно отдать плееру, с регистрацией во временных
+   * файлах. Piper уже пишет свой wav в tmpdir — раньше этот путь просто
+   * возвращался и никто не удалял файл, поэтому tmpFiles оставался пустым.
+   */
+  private ensureWavFile(src: WavSource): string {
+    if (src.kind === 'file') {
+      if (!this.tmpFiles.includes(src.path)) this.tmpFiles.push(src.path);
+      return src.path;
+    }
+    const tmp = join(
+      tmpdir(),
+      `tabook-tts-${process.pid}-${Math.random().toString(36).slice(2)}.wav`,
+    );
+    writeFileSync(tmp, src.buffer);
+    this.tmpFiles.push(tmp);
+    return tmp;
+  }
 }

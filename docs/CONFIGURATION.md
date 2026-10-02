@@ -245,7 +245,10 @@ Then open a book and press `v` (or `:tts`). Playback pauses/resumes with `v`,
 stops with `V`; `:tts continue` resumes from the last saved reading position.
 
 **Prerequisites.** Install the engine and a voice yourself — tabook never
-downloads anything:
+downloads anything. The engine is an optional dependency of the package
+(AUR: `yay -S piper-tts`); without it `:tts` prints these install hints
+instead of failing silently, and `espeak-ng` remains available as a
+system fallback.
 
 ```sh
 pipx install piper-tts                    # engine (provides the `piper` binary)
@@ -256,7 +259,9 @@ curl -L -o ru_RU-irina-medium.onnx.json \
   https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
 ```
 
-The binary and models are auto-detected in `~/.local/bin`, pipx venvs, `.venv`,
+The binary and models are auto-detected in `~/.local/bin`, pipx venvs
+(`~/.local/share/pipx/venvs` and the legacy `~/.local/pipx/venvs`), the
+standalone release layout `~/.local/share/piper-tts/piper/piper`, `.venv`,
 `.tts-venv`, `~/.local/share/piper[/{voices,models}]`, `~/.config/piper`,
 `~/piper-voices`, `~/tts-models`, `.tts-models`, and next to the tabook install.
 If auto-detection fails, set `command` (binary) and/or the `PIPER_MODELS_DIR`

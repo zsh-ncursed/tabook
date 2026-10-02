@@ -18,10 +18,12 @@ export { commandAvailable } from './bincheck.js';
  * Ничего не скачивает: бэкенды проверяют наличие движка в момент запуска.
  * `command` — полный путь к бинарнику движка ([tts] command), если его нет в PATH.
  */
-export function createDefaultTtsManager(opts: {
-  player?: AudioPlayer;
-  command?: string;
-} = {}) {
+export function createDefaultTtsManager(
+  opts: {
+    player?: AudioPlayer;
+    command?: string;
+  } = {},
+) {
   const mgr = new TtsManager({ player: opts.player });
   mgr.register(new PiperBackend(opts.command ?? ''));
   mgr.register(new EspeakBackend());

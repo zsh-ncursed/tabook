@@ -264,16 +264,56 @@ src/tts/*.test.ts       unit-тесты (менеджер, chunking, sanitize, �
 - Движок: `piper` (pip `piper-tts`, CLI `piper`), голоса `onnx` c HF.
 - Русский: `ru_RU-*` голоса (по умолчанию `ru_RU-irina-medium`), англ. и др.
 - Процесс: отдаём текст по stdin → получаем WAV → `paplay`/`aplay`.
-- Зависимость: пользователь ставит `pipx install piper-tts` (или AUR `piper-tts`)
-  и скачивает голос. tabook их не тащит — только оркестрирует.
+- Зависимость: пользователь ставит `pipx install piper-tts` (или AUR `piper-tts`,
+  или standalone-архив с releases rhasspy/piper) и скачивает голос. tabook их
+  не тащит — только оркестрирует.
+
+**Piper не входит в зависимости пакета.** В `PKGBUILD` он объявлен в
+`optdepends`, потому что это тяжёлый нейросетевой движок (~100 МБ с
+Python-зависимостями), а озвучка нужна не всем. `post_install` печатает
+подсказку, `paru`/`yay` предлагают поставить его при установке.
+
+**Что видит пользователь без piper.** `:tts` не бросает сырой `ENOENT` в
+статус-бар, а печатает в уведомление инструкцию — иначе на секунду мелькнёт
+ошибка и пропадёт:
+
+```
+piper not found — TTS engine not installed.
+
+Install piper-tts:
+  AUR:  yay -S piper-tts
+  pipx: pipx install piper-tts
+
+Then download a voice: :tts config → Voice → pick one (e.g. ru_RU-irina-medium)
+```
+
+Проверка движка (`TtsManager.check()`) выполняется **до** синтеза, поэтому
+подсказка приходит сразу, а не после первого упавшего чанка. Движок
+`espeak-ng` при этом продолжает работать — он есть в репозиториях Arch
+и ничего доустанавливать не требует.
+
+**Устойчивая установка.** venv/ pipx-установки привязаны к версии Python и
+ломаются при обновлении системы (частый случай на Arch). Не зависящий от
+Python вариант — standalone-архив `piper_linux_x86_64.tar.gz` с
+https://github.com/rhasspy/piper/releases:
+
+```sh
+mkdir -p ~/.local/share/piper-tts
+tar -xzf piper_linux_x86_64.tar.gz -C ~/.local/share/piper-tts
+ln -s ~/.local/share/piper-tts/piper/piper ~/.local/bin/piper
+```
+
+Оба места (симлинк и распаковка) входят в автопоиск tabook.
 
 **Автоопределение (без настройки).** Бинарь piper и файлы моделей ищутся по цепочке:
 
 1. `[tts] command` — явный путь к бинарю в конфиге;
 2. `TABOOK_TTS_COMMAND` — переменная окружения;
 3. `piper`/`piper-speak` в `PATH`;
-4. типичные venv: `~/.local/bin`, `~/.local/pipx/venvs/piper-tts/bin`,
-   `~/.venv/bin`, `.tts-venv/bin` (включая уровни вверх от запуска tabook).
+4. типичные venv: `~/.local/bin`, `~/.local/share/pipx/venvs/piper-tts/bin`,
+   `~/.local/pipx/venvs/piper-tts/bin` (старый pipx), standalone-распаковка
+   `~/.local/share/piper-tts/piper/piper`, `~/.venv/bin`, `.tts-venv/bin`
+   (включая уровни вверх от запуска tabook).
 
 Модели голосов ищутся в `~/.local/share/piper[/{voices,models}]`, `~/.config/piper`,
 `~/piper-voices`, `~/tts-models`, `.tts-models/` и рядом с найденным бинарём;

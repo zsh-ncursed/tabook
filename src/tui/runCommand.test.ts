@@ -177,4 +177,54 @@ describe('runCommand', () => {
     expect(session.nextMatch).toHaveBeenCalled();
     expect(ctx.notify).toHaveBeenCalledWith('3 matches');
   });
+
+  // :tts must not fire the engine before it knows the engine exists — otherwise
+  // the user only gets a 4-second status-bar flash instead of the install hint.
+  function makeTts(check: () => Promise<string | null>) {
+    return { play: vi.fn(), stop: vi.fn(), toggleFollow: vi.fn(() => false), check: vi.fn(check) };
+  }
+
+  it(':tts notifies with the install hint instead of playing when the engine is missing', async () => {
+    const tts = makeTts(async () => 'piper not found — install: yay -S piper-tts');
+    const ctx = makeCtx({ tts });
+    runCommand(':tts', ctx);
+    await vi.waitFor(() => expect(ctx.notify).toHaveBeenCalled());
+    expect(ctx.notify).toHaveBeenCalledWith('piper not found — install: yay -S piper-tts');
+    expect(tts.play).not.toHaveBeenCalled();
+  });
+
+  it(':tts plays once the engine reports no problem', async () => {
+    const tts = makeTts(async () => null);
+    const ctx = makeCtx({ tts });
+    runCommand(':tts', ctx);
+    await vi.waitFor(() => expect(tts.play).toHaveBeenCalled());
+    expect(ctx.notify).not.toHaveBeenCalled();
+  });
+
+  it(':tts stop does not probe the engine', () => {
+    const tts = makeTts(async () => 'must not be called');
+    const ctx = makeCtx({ tts });
+    runCommand(':tts stop', ctx);
+    expect(tts.stop).toHaveBeenCalled();
+    expect(tts.check).not.toHaveBeenCalled();
+  });
+
+  it(':tts stop cancels a pending :tts check so playback never starts', async () => {
+    // Регрессия: check() асинхронен, и без защиты он успевал вызвать play()
+    // уже после стопа — пользователь нажимал «стоп», а звук включался.
+    let release: (v: string | null) => void = () => {};
+    const pending = new Promise<string | null>((r) => {
+      release = r;
+    });
+    const tts = makeTts(() => pending);
+    const ctx = makeCtx({ tts });
+
+    runCommand(':tts', ctx);
+    runCommand(':tts stop', ctx);
+    release(null); // движок «нашёлся» уже после стопа
+    await pending;
+
+    expect(tts.stop).toHaveBeenCalledTimes(1);
+    expect(tts.play).not.toHaveBeenCalled();
+  });
 });

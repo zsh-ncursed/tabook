@@ -60,10 +60,11 @@ After that, all subsequent updates are handled by the GitHub Actions workflow.
 
 ```bash
 # 1. Update the version everywhere:
-#    package.json / package-lock.json, crates/tabook-native/Cargo.toml,
-#    crates/tabook-native/package.json and PKGBUILD (pkgver).
-#    The workflow re-derives pkgver from the tag anyway, but keep the
-#    repo copy in sync.
+#    package.json / package-lock.json. The workflow re-derives pkgver from
+#    the tag anyway, but keep the repo copy in sync.
+#    crates/tabook-native/Cargo.toml and crates/tabook-native/package.json
+#    are versioned independently (they track the Rust core, not the app) and
+#    are deliberately NOT bumped for an app release.
 npm version 0.3.0 --no-git-tag-version
 
 # 2. Commit and push the release:
