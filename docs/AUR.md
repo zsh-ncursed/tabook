@@ -81,6 +81,32 @@ git push origin v0.3.0
 #    - Pushes to AUR
 ```
 
+### Install scriptlets (pacman 7+)
+
+`post_install()` **functions inside `PKGBUILD` are silently ignored** since
+pacman 7 — `makepkg` 7.1.0 does not even mention the name. A scriptlet must be
+a separate file next to the `PKGBUILD`, named by the `install` variable:
+
+```bash
+# PKGBUILD
+install=tabook.install
+```
+
+```bash
+# tabook.install
+post_install() {
+  echo "  TTS (optional): install piper-tts from AUR - yay -S piper-tts"
+}
+```
+
+This fails silently: the package builds, `namcap` says nothing, and the hint
+simply never runs. Two consequences for this repo:
+
+- `aur-publish.yml` copies files to the AUR repo one by one, so `tabook.install`
+  has to be listed there explicitly alongside `PKGBUILD` and `.SRCINFO`.
+- Verify locally by building and looking for `.INSTALL` in the result:
+  `tar --zstd -tf tabook-*.pkg.tar.zst | grep INSTALL`.
+
 Notes:
 
 - The `target/` directory is git-ignored; never commit Rust build artifacts
