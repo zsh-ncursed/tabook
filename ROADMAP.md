@@ -8,6 +8,9 @@
 - **v0.4.0** — сделано
 - **v0.5.2** — сделано (наведение порядка: нативный сканер, один SQL-бэкенд,
   упаковка npm, clippy)
+- **v0.6.0** — сделано (TTS: модалка голоса, приоритет плееров, Piper
+  опционально, фиксы гонок и утечек)
+- **v0.7.0** — в плане (пропорциональные графические шрифты, graphics-режим)
 - **v0.5+** — крупные фичи, требующие отдельного проектирования
 
 ---
@@ -107,6 +110,99 @@ warnings` и `cargo fmt --check` — настоящие гейты CI (continue-
   wav-файлы регистрируются и чистятся на каждом `stop()`, а не только при
   выходе (раньше `tmpFiles` оставался пустым, и каждый чанк оставлял файл
   в `/tmp` навсегда).
+
+---
+
+## v0.7.0 — пропорциональные графические шрифты (в плане)
+
+Готово по ТЗ `tabook-graphics-fonts-tz.md` (v1.2, согласовано 2026-10-03).
+Следующий спринт. Цель — опциональный graphics-режим чтения с
+пропорциональными TTF/OTF, не ломая mono-TUI, TTS, поиск, выделение и
+навигацию.
+
+### Ключевое
+
+- [ ] **Второй бэкенд рендера `graphics`** (Kitty protocol) рядом с mono
+      (Ink/ANSI). Переключение `:set render mono|graphics|auto` на лету.
+- [ ] **Загрузка TTF/OTF** произвольных, плюс dot-системная библиотека шрифтов.
+- [ ] **Navigation/аннотация API**: единый `offset ↔ cluster ↔ rect` mapping —
+      основа для mouse selection, копирования (OSC 52 / arboard), подсветки.
+- [ ] **Настройки через TOML и команды** (`:font`, `:font-size`, `:line-height`,
+      `:hyphenation`, `:justify`, `:font-fallback`).
+- [ ] **Профили типографики** — экспорт/импорт сразу в основном объёме.
+
+### Архитектурно
+
+- [ ] Rust: `text/`, `font/`, `shape/`, `layout/`, `render/`, `highlight/`,
+      `cache/`, `profile/` + napi_api.
+- [ ] TS: `ui/components/GraphicsView.tsx`, `MonoView.tsx`; hooks
+      (`useMouse`, `useSelection`, `useKittyGraphics`, `useViewport`);
+      services (`renderBridge`, `highlightBridge`, `profileBridge`,
+      `packageBridge`).
+- [ ] Два бэкенда, общий mapping, ленивое кэширование, dirty-инвалидация,
+      opt-in.
+
+### Пайплайн рендера
+
+- [ ] render_viewport → диск кэш → строки → layout (shaping+fallback+переносы)
+      → raster (атлас+swash) → composition → PNG → диск → Kitty emitter.
+- [ ] Dirty-инвалидация по `RowCacheKey` (шрифт/кегль/line-height/ресайз/
+      подсветка/тема).
+
+### Кэши
+
+- [ ] Mem: glyph atlas, layout строк/страниц, отрендеренные строки, PNG
+      viewport — LRU.
+- [ ] Disk: `~/.cache/tabook/render/`, 500 МБ LRU, TTL 30 дней.
+- [ ] Prefetch: 2 страницы вперёд/назад + 1–2 абзаца для TTS.
+
+### Kitty graphics
+
+- [ ] Placements: viewport (скролл) + построчные (dirty-подсветка).
+- [ ] `a=T/p/d`, `i=`, `p=`, `f=100` PNG. Sixel — нет.
+- [ ] Fallback: ueberzugpp для картинок, mono для текста.
+
+### Мышь и выделение
+
+- [ ] SGR mouse mode (`\x1b[?1000/1002/1006h`), click/double/triple/drag/
+      shift+drag.
+- [ ] Копирование OSC 52 (лимит 8 КБ, предупреждение) + arboard fallback.
+
+### Подсветка
+
+- [ ] Единый слой `HighlightLayer` для всех типов: TTS / search / selection /
+      bookmark.
+- [ ] `intersects_row`, `hash_for_row` → dirty-инвалидация строк.
+- [ ] Приоритет отрисовки: selection → search match → search active →
+      bookmark → TTS sentence → TTS current word.
+
+### Шрифты
+
+- [ ] Основной — Literata/Serif; fallback-цепи: основной → script-specific
+      (CJK, Arabic) → emoji → system.
+- [ ] VF → 3 фиксированных инстанса (Regular 400, Bold 700, Italic 400 italic;
+      synthetic oblique если нет оси).
+- [ ] Не хранить шрифты в репо; опциональная установка (пакеты/down).
+
+### Настройки, конфиг, профили
+
+- [ ] Блок `[render]`, `[font]`, `[font.fallback]`, `[font.packages]`,
+      `[layout]`, `[cache]`, `[highlight]` в TOML.
+- [ ] Команды `:set render`, `:font`, `:font-size`, `:line-height`,
+      `:hyphenation`, `:justify`, `:font-fallback`, `:profile ...`.
+- [ ] Встроенные пресеты: `novel`, `poetry`, `technical`, `cjk`, `dyslexia`.
+- [ ] Экспорт/импорт профилей, валидация `schema_version`.
+
+### Производительность и тесты
+
+- [ ] Метрики: первый рендер <150 мс, скролл mem <16 мс, disk <8 мс,
+      листание <100 мс.
+- [ ] Rust unit: shaping (лигатуры, арабица, деванагари, emoji), mapping,
+      atlas, layout, highlight, VF-инстансы, профили.
+- [ ] Интеграция: FB2 → 100 страниц без утечек, ресайз ×50, TTS+подсветка+
+      скролл, дисковый кэш (hit/miss/LRU/TTL).
+- [ ] Терминалы: kitty, WezTerm, Ghostty, Konsole; fallback xterm/foot.
+- [ ] Путь по этапам ТЗ (1–7), критерии готовности из раздела 22.
 
 ---
 

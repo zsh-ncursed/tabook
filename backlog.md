@@ -5,6 +5,64 @@
 
 ---
 
+## v0.7.0 — пропорциональные графические шрифты (следующий спринт)
+
+По ТЗ `tabook-graphics-fonts-tz.md` (v1.2). Декомпозиция по этапам.
+
+### Этап 1. Инфраструктура mapping
+
+- [ ] `text/position.rs`, `text/document.rs`, `text/mapping.rs` (offset ↔ cluster)
+- [ ] napi: `get_rect_at`, `get_offset_at`, `get_word_at`, `get_paragraph_at`
+- [ ] Перевести TTS-подсветку на новый mapping-API
+- [ ] Тесты mapping'а
+
+### Этап 2. Базовый graphics
+
+- [ ] `font/manager.rs` (fontdb), `shape/shaper.rs` (rustybuzz)
+- [ ] `layout/engine.rs` — одна страница
+- [ ] `render/atlas.rs`, `render/raster.rs` (swash), `render/page.rs`
+- [ ] Kitty emitter на TS
+- [ ] Команда `:set render graphics`
+- [ ] Один встроенный шрифт
+
+### Этап 3. Кэши и производительность
+
+- [ ] LRU-кэши в памяти (glyph atlas, layout строк/страниц, строки, PNG)
+- [ ] Дисковый кэш PNG `~/.cache/tabook/render/`
+- [ ] Префетч (2 стр. вперёд/назад + 1–2 абзаца для TTS)
+- [ ] Dirty-инвалидация, row-level placements
+
+### Этап 4. Выделение и мышь
+
+- [ ] SGR mouse mode (`\x1b[?1000/1002/1006h`)
+- [ ] Selection в UI (click/double/triple/drag/shift+drag)
+- [ ] OSC 52 + arboard
+- [ ] Синхронизация с TTS
+
+### Этап 5. Настройки, VF, пакеты, профили
+
+- [ ] TOML-конфиг (`[render]`, `[font]`, `[layout]`, `[cache]`, `[highlight]`)
+- [ ] Команды `:font`, `:font-size`, `:line-height`, `:hyphenation`, `:justify`,
+      `:font-fallback`
+- [ ] Fallback-цепь шрифтов (CJK, Arabic, emoji)
+- [ ] VF → три инстанса (Regular/Bold/Italic)
+- [ ] Детект пакетов, уведомления, скачивание
+- [ ] Профили типографики: экспорт/импорт, встроенные пресеты
+- [ ] Документация
+
+### Этап 6. Стабилизация
+
+- [ ] Профилирование, метрики (<150 мс first render, <16 мс scroll mem)
+- [ ] Тесты (unit Rust + интеграционные + кросс-терминальные)
+
+### Этап 7. Nice-to-have
+
+- [ ] Shared disk cache по `text_hash` между книгами одного автора
+- [ ] Дополнительные встроенные пресеты
+- [ ] Экспорт профиля в Gist
+
+---
+
 ## Полностью не реализовано
 
 - [ ] **Подсветка текущей строки в reader** — `ReaderSession.currentLine` уже есть
