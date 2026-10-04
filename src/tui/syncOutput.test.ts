@@ -89,6 +89,25 @@ describe('withSynchronizedOutput', () => {
     expect(calls).toEqual([[`${BEGIN}x${END}`, 'utf8', cb]]);
   });
 
+  it('brackets Ink’s full-screen wipe frame atomically', () => {
+    // Exactly the payload Ink emits on the clearTerminal path
+    // (ansiEscapes.clearTerminal = ESC[2J + ESC[3J + ESC[H) followed by the
+    // new frame. This is the write that flickered 12-16x/second during TTS,
+    // and it must arrive as ONE synchronized write — otherwise the terminal
+    // can present the wiped screen without the content that refills it.
+    const wipe = '\x1b[2J\x1b[3J\x1b[H' + 'frame body';
+    const stdout = new FakeStdout();
+    const wrapped = withSynchronizedOutput(stdout as unknown as Writable);
+
+    wrapped.write(wipe);
+
+    expect(stdout.frames).toEqual([`${BEGIN}${wipe}${END}`]);
+    // The markers surround the wipe and the content together, and nothing
+    // was emitted between them.
+    expect(stdout.frames[0]!.indexOf(BEGIN)).toBe(0);
+    expect(stdout.frames[0]!.lastIndexOf(END)).toBe(stdout.frames[0]!.length - END.length);
+  });
+
   it('leaves binary payloads untouched (escapes cannot be concatenated)', () => {
     const stdout = new FakeStdout();
     const wrapped = withSynchronizedOutput(stdout as unknown as Writable);
@@ -127,6 +146,18 @@ function Spinner() {
   return React.createElement(Text, null, `${PLAY[frame]} 3/42`);
 }
 
+// Ink refuses to write frames to stdout when it detects CI (`is-in-ci`, see
+// ink/build/ink.js:111) — it only stashes `lastOutput`, because CI does not
+// handle the erase escapes. The end-to-end repaint assertions below therefore
+// can only run on a developer machine. The contract itself is covered by the
+// deterministic test above, which runs everywhere.
+const inCi =
+  process.env.CI !== '0' &&
+  process.env.CI !== 'false' &&
+  ('CI' in process.env ||
+    'CONTINUOUS_INTEGRATION' in process.env ||
+    Object.keys(process.env).some((k) => k.startsWith('CI_')));
+
 describe('withSynchronizedOutput with Ink', () => {
   it('renders a live frame and brackets every write', async () => {
     const stdout = new FakeStdout();
@@ -157,7 +188,7 @@ describe('withSynchronizedOutput with Ink', () => {
     }
   });
 
-  it('keeps a full-screen repaint inside one synchronized block', async () => {
+  it.skipIf(inCi)('keeps a full-screen repaint inside one synchronized block', async () => {
     const stdout = new FakeStdout();
     const tree = render(
       // minHeight = rows forces Ink's clearTerminal path, the one that flickers.
