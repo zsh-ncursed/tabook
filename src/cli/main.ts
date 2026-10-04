@@ -4,6 +4,7 @@ import React from 'react';
 import { Command } from 'commander';
 import { render } from 'ink';
 import { registerForceRedraw } from '../tui/screenRefresh.js';
+import { withSynchronizedOutput } from '../tui/syncOutput.js';
 import { loadConfig } from '../config/config.js';
 import { getTheme } from '../themes/themes.js';
 import { LibraryDb } from '../db/db.js';
@@ -175,6 +176,14 @@ async function run(
     process.stdout.write('\x1b[?1049h\x1b[2J\x1b[H');
   }
 
+  // Synchronized output (DECSET 2026) on Ink's stdout: every frame is
+  // presented atomically by the terminal. The root Box uses minHeight, so Ink
+  // wipes and repaints the WHOLE screen on each render (deliberately — it keeps
+  // logUpdate's line counter from leaving stale tails after a modal closes).
+  // Harmless while idle, but TTS repaints ~12-16x/second (spinner + per-chunk
+  // status), which flickered. Wrapping the writes removes the visible
+  // intermediate state and keeps the minHeight tail protection intact.
+  // Terminals without 2026 support ignore the mode and behave as before.
   const tree = render(
     React.createElement(App, {
       db,
@@ -183,6 +192,7 @@ async function run(
       initialPath,
       themeOverride,
     }),
+    { stdout: withSynchronizedOutput(process.stdout) },
   );
   // ponytail: Ink's logUpdate suppresses a write when the closing frame is
   // byte-identical to the pre-modal one (modal stays on screen). clear()

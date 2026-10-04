@@ -2,7 +2,7 @@
 # vim: ft=sh:
 
 pkgname=tabook
-pkgver=0.6.0
+pkgver=0.6.1
 pkgrel=1
 pkgdesc='Terminal-based e-book reader for FB2 and EPUB formats'
 arch=('x86_64' 'aarch64')
