@@ -1,4 +1,4 @@
-import type { TtsBackend, AudioPlayer } from './backend.js';
+import type { TtsBackend, AudioPlayer, WavSource } from './backend.js';
 import type { TtsChunk, TtsStatus, TtsVoiceOptions } from './types.js';
 import { isSpeakable } from './chunking.js';
 import { SystemPlayer } from './player.js';
@@ -42,6 +42,12 @@ export class TtsManager {
   private index = 0;
   private engine: string | null = null;
   private voiceOpts: TtsVoiceOptions = {};
+  /**
+   * Буфер предзагруженных (prefetch) WAV: индекс чанка → готовый источник.
+   * Следующий чанк синтезируется, пока играется текущий, поэтому на стыке
+   * абзацев нет тишины на время запуска piper/espeak и самого синтеза.
+   */
+  private pendingWavs = new Map<number, WavSource>();
   // Несколько слушателей: индикатор в ReaderView, karaoke/follow в App и т.д.
   // Одиночный слушатель означал, что подписка одного компонента молча
   // отвязывала предыдущего — индикатор TTS переставал обновляться.
@@ -207,6 +213,7 @@ export class TtsManager {
     this.player.stop();
     this.chunks = [];
     this.index = 0;
+    this.pendingWavs.clear();
     this.setStatus({ state: 'idle' });
   }
 
@@ -219,6 +226,7 @@ export class TtsManager {
     this.statusListeners.clear();
     this.advanceListeners.clear();
     this.chunks = [];
+    this.pendingWavs.clear();
   }
 
   // ---- внутреннее ----
@@ -256,26 +264,14 @@ export class TtsManager {
     const chunk = this.chunks[idx];
     if (!chunk) return;
     const gen = this.gen;
-    this.index = idx;
     const engine = this.resolveBackend(this.engine ?? undefined);
     if (!engine) {
+      this.startChunk(idx);
       this.setStatus({ state: 'error', message: 'no tts engine registered' });
       return;
     }
-    // долгий синтез не блокирует: асинхронный метод, статус «playing» ставим сразу
-    this.setStatus({
-      state: 'playing',
-      currentChar: chunk.startChar,
-      chunkIndex: idx,
-      total: this.chunks.length,
-    });
-    for (const l of this.advanceListeners) {
-      l({
-        startChar: chunk.startChar,
-        chunkIndex: idx,
-        total: this.chunks.length,
-      });
-    }
+    // объявляем чанк текущим (статус, advance, prefetch следующего) сразу
+    this.startChunk(idx);
     engine
       .synthesize(chunk, this.voiceOpts)
       .then((wav) => {
@@ -293,14 +289,80 @@ export class TtsManager {
       });
   }
 
+  /**
+   * Сделать чанк `idx` «текущим»: обновить статус/advance и начать предзагрузку
+   * следующего. Вызывается и для обычного пути (синтез), и для уже готового wav.
+   */
+  private startChunk(idx: number): void {
+    const chunk = this.chunks[idx];
+    if (!chunk) return;
+    this.index = idx;
+    this.setStatus({
+      state: 'playing',
+      currentChar: chunk.startChar,
+      chunkIndex: idx,
+      total: this.chunks.length,
+    });
+    for (const l of this.advanceListeners) {
+      l({
+        startChar: chunk.startChar,
+        chunkIndex: idx,
+        total: this.chunks.length,
+      });
+    }
+    this.prefetchNext(idx);
+  }
+
+  /** Играть `idx` без пересинтеза: статус/advance + готовый wav сразу. */
+  private playReadyChunk(idx: number, wav: WavSource): void {
+    this.startChunk(idx);
+    this.player.play(wav);
+  }
+
+  /**
+   * Начать синтез чанка `idx+1` заранее, пока играется `idx`. Результат попадёт
+   * в `pendingWavs` и будет использован на `onChunkEnded` для бесшовного handoff —
+   * без паузы и без ожидания синтеза. Если предзагрузка не успела (медленный
+   * движок/короткий чанк), дальше сработает обычная очередь.
+   */
+  private prefetchNext(idx: number): void {
+    const next = idx + 1;
+    if (next >= this.chunks.length || this.pendingWavs.has(next)) return;
+    const chunk = this.chunks[next];
+    if (!chunk) return;
+    const gen = this.gen;
+    const engine = this.resolveBackend(this.engine ?? undefined);
+    if (!engine) return;
+    engine
+      .synthesize(chunk, this.voiceOpts)
+      .then((wav) => {
+        if (gen !== this.gen) return; // остановили/перезапустили — результат не нужен
+        this.pendingWavs.set(next, wav);
+      })
+      .catch(() => {
+        // Предзагрузка не критична: собственный синтез чанка на месте воспроизведения
+        // покажет корректную ошибку пользователю.
+      });
+  }
+
   private onChunkEnded(): void {
     const gen = this.gen;
     const next = this.index + 1;
     if (next >= this.chunks.length) {
+      // не оставлять лишние wav в буфере (после последнего чанка синтеза не было)
+      this.pendingWavs.clear();
       this.setStatus({ state: 'idle' });
       return;
     }
-    // небольшая пауза между чанками (тишина на стыке абзацев)
+    // Prefetch уже подготовил следующий чанк — играем сразу, без тишины.
+    // Это и есть «бесшовная» озвучка: синтез шёл в фоне во время игры текущего.
+    const ready = this.pendingWavs.get(next);
+    if (ready) {
+      this.pendingWavs.delete(next);
+      this.playReadyChunk(next, ready);
+      return;
+    }
+    // Предзагрузка не успела (короткий чанк / медленный движок) — старый путь.
     const pauseMs = this.opts.interChunkPauseMs;
     if (pauseMs > 0) {
       setTimeout(() => {

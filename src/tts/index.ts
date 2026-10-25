@@ -17,14 +17,19 @@ export { commandAvailable } from './bincheck.js';
  * Создать TTS-менеджер с бэкендами по умолчанию (piper + espeak fallback).
  * Ничего не скачивает: бэкенды проверяют наличие движка в момент запуска.
  * `command` — полный путь к бинарнику движка ([tts] command), если его нет в PATH.
+ * `interChunkPauseMs` — пауза между чанками (0 = бесшовно через prefetch).
  */
 export function createDefaultTtsManager(
   opts: {
     player?: AudioPlayer;
     command?: string;
+    interChunkPauseMs?: number;
   } = {},
 ) {
-  const mgr = new TtsManager({ player: opts.player });
+  const mgr = new TtsManager({
+    player: opts.player,
+    interChunkPauseMs: opts.interChunkPauseMs ?? 0,
+  });
   mgr.register(new PiperBackend(opts.command ?? ''));
   mgr.register(new EspeakBackend());
   return mgr;

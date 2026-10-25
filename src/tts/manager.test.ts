@@ -34,7 +34,7 @@ describe('TtsManager', () => {
     expect(statuses).toEqual(['idle']);
   });
 
-  it('plays chunks through the engine and advances on chunk end', async () => {
+  it('plays chunks through the engine, prefetching the next while playing', async () => {
     const player = mockPlayer();
     const mgr = new TtsManager({ player, interChunkPauseMs: 0 });
     const synthesize = vi.fn(async () => SILENCE);
@@ -54,22 +54,101 @@ describe('TtsManager', () => {
       [
         { text: 'first', startChar: 0 },
         { text: 'second', startChar: 5 },
+        { text: 'third', startChar: 10 },
       ],
       { engine: 'mock' },
     );
     await new Promise((r) => setTimeout(r, 5));
-    expect(synthesize).toHaveBeenCalledTimes(1);
-    expect(statuses).toContain('playing');
-
-    // Первый чанк доиграл — переходим ко второму
-    player.fireEnded();
-    await new Promise((r) => setTimeout(r, 10));
+    // Пока играет первый, следующий уже синтезируется заранее (prefetch).
     expect(synthesize).toHaveBeenCalledTimes(2);
+    expect(statuses).toContain('playing');
+    expect(mgr.getStatus().state).toBe('playing');
+    expect((mgr.getStatus() as { chunkIndex: number }).chunkIndex).toBe(0);
 
-    // Второй доиграл — idle
+    // Первый доиграл — второй берётся из prefetch-буфера без нового синтеза.
     player.fireEnded();
-    await new Promise((r) => setTimeout(r, 10));
+    expect(mgr.getStatus().state).toBe('playing');
+    expect((mgr.getStatus() as { chunkIndex: number }).chunkIndex).toBe(1);
+    await new Promise((r) => setTimeout(r, 5));
+    // А третий начал синтезироваться заранее, пока играет второй.
+    expect(synthesize).toHaveBeenCalledTimes(3);
+
+    // Второй доиграл — третий из буфера.
+    player.fireEnded();
+    expect((mgr.getStatus() as { chunkIndex: number }).chunkIndex).toBe(2);
+    expect(mgr.getStatus().state).toBe('playing');
+
+    // Третий доиграл — конец озвучки.
+    player.fireEnded();
     expect(mgr.getStatus().state).toBe('idle');
+    expect(synthesize).toHaveBeenCalledTimes(3);
+  });
+
+  it('hands off immediately when the next chunk is prefetched (no inter-chunk pause)', async () => {
+    const player = mockPlayer();
+    const mgr = new TtsManager({ player, interChunkPauseMs: 50_000 }); // пауза нарочно огромная
+    const synthesize = vi.fn(async () => SILENCE);
+    mgr.register({
+      id: 'mock',
+      label: 'Mock',
+      capabilities: { languages: ['ru'], offline: true, rateControl: false, pitchControl: false },
+      check: async () => null,
+      synthesize,
+      dispose: () => {},
+    });
+
+    mgr.play(
+      [
+        { text: 'first', startChar: 0 },
+        { text: 'second', startChar: 5 },
+      ],
+      { engine: 'mock' },
+    );
+    await vi.waitFor(() => expect(synthesize).toHaveBeenCalledTimes(2)); // первый + prefetch второго
+
+    player.fireEnded();
+    // Готовый wav играется сразу — огромная пауза между чанками не применяется.
+    expect(mgr.getStatus().state).toBe('playing');
+    expect((mgr.getStatus() as { chunkIndex: number }).chunkIndex).toBe(1);
+  });
+
+  it('falls back to the inter-chunk pause when prefetch has not finished', async () => {
+    const player = mockPlayer();
+    const mgr = new TtsManager({ player, interChunkPauseMs: 50 });
+    let releaseSecond: (v: WavSource) => void = () => {};
+    const secondPending = new Promise<WavSource>((r) => {
+      releaseSecond = r;
+    });
+    const synthesize = vi.fn((c: TtsChunk) =>
+      c.text === 'second' ? secondPending : Promise.resolve(SILENCE),
+    );
+    mgr.register({
+      id: 'mock',
+      label: 'Mock',
+      capabilities: { languages: ['ru'], offline: true, rateControl: false, pitchControl: false },
+      check: async () => null,
+      synthesize,
+      dispose: () => {},
+    });
+
+    mgr.play(
+      [
+        { text: 'first', startChar: 0 },
+        { text: 'second', startChar: 5 },
+      ],
+      { engine: 'mock' },
+    );
+    await new Promise((r) => setTimeout(r, 5));
+    // Первый играется, prefetch второго висит без результата.
+    expect(synthesize).toHaveBeenCalledTimes(2);
+    expect(player.play).toHaveBeenCalledTimes(1);
+
+    player.fireEnded();
+    // Готового wav нет — только после паузы начинается обычный синтез второго.
+    expect(synthesize).toHaveBeenCalledTimes(2);
+    await new Promise((r) => setTimeout(r, 80));
+    expect(synthesize).toHaveBeenCalledTimes(3);
+    releaseSecond(SILENCE);
   });
 
   it('stop resets to idle and prevents further advance', async () => {

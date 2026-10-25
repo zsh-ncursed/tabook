@@ -76,7 +76,10 @@ export function App(props: AppProps): React.JSX.Element {
 
   // TTS: один менеджер на всё приложение (переживает смену книг).
   const [ttsManager] = useState<TtsManager>(() =>
-    createDefaultTtsManager({ command: liveConfig.tts.command }),
+    createDefaultTtsManager({
+      command: liveConfig.tts.command,
+      interChunkPauseMs: liveConfig.tts.interChunkPauseMs,
+    }),
   );
 
   // ReaderTtsController: собирает чанки из сессии и гоняет их через менеджер.

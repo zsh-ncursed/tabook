@@ -221,16 +221,17 @@ Text-to-speech (reading books aloud). Off by default — no processes are spawne
 unless you start playback. See [docs/TTS.md](TTS.md) for the full design and
 how to add new voices/engines.
 
-| Key               | Default                | Meaning                                                                                 |
-| ----------------- | ---------------------- | --------------------------------------------------------------------------------------- |
-| `mode`            | `"disabled"`           | `"active"` to enable; `"disabled"` does nothing                                         |
-| `engine`          | `"piper"`              | Backend id: `piper` (neural, offline), `espeak` (system fallback)                       |
-| `voice`           | `"ru_RU-irina-medium"` | Voice inside the engine (piper: a `.onnx` voice name or path)                           |
-| `rate`            | `1.0`                  | Playback rate, clamped to `[0.25, 4]`                                                   |
-| `unit`            | `"paragraph"`          | Chunk boundary: `paragraph` \| `page` \| `chapter`                                      |
-| `max_chunk_chars` | `2000`                 | Max chunk length; long paragraphs split at sentence boundaries (clamped `[200, 20000]`) |
-| `follow`          | `true`                 | Follow the voice while reading (auto-scroll) — see TTS.md                               |
-| `command`         | `""`                   | Full path to the engine binary when auto-detection can't find it                        |
+| Key                    | Default                | Meaning                                                                                  |
+| ---------------------- | ---------------------- | ---------------------------------------------------------------------------------------- |
+| `mode`                 | `"disabled"`           | `"active"` to enable; `"disabled"` does nothing                                          |
+| `engine`               | `"piper"`              | Backend id: `piper` (neural, offline), `espeak` (system fallback)                        |
+| `voice`                | `"ru_RU-irina-medium"` | Voice inside the engine (piper: a `.onnx` voice name or path)                            |
+| `rate`                 | `1.0`                  | Playback rate, clamped to `[0.25, 4]`                                                    |
+| `unit`                 | `"paragraph"`          | Chunk boundary: `paragraph` \| `page` \| `chapter`                                       |
+| `max_chunk_chars`      | `2000`                 | Max chunk length; long paragraphs split at sentence boundaries (clamped `[200, 20000]`)  |
+| `follow`               | `true`                 | Follow the voice while reading (auto-scroll) — see TTS.md                                |
+| `command`              | `""`                   | Full path to the engine binary when auto-detection can't find it                         |
+| `inter_chunk_pause_ms` | `0`                    | Pause (ms) between chunks; `0` enables seamless prefetch (audio continues without delay) |
 
 Quick start (local, offline, no quality compromises):
 

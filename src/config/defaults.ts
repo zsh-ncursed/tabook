@@ -218,6 +218,8 @@ export interface TtsConfig {
   follow: boolean;
   /** Полный путь к бинарнику движка, если его нет в PATH (напр. venv piper). */
   command: string;
+  /** Пауза (мс) между чанками, когда prefetch следующего не успел (0 = бесшовно). */
+  interChunkPauseMs: number;
 }
 
 export function defaultConfig(): Config {
@@ -255,6 +257,7 @@ export function defaultConfig(): Config {
       maxChunkChars: 2000,
       follow: true,
       command: '',
+      interChunkPauseMs: 0,
     },
   };
 }

@@ -186,6 +186,8 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
       );
     if (typeof t.follow === 'boolean') tts.follow = t.follow;
     if (typeof t.command === 'string' && t.command.trim() !== '') tts.command = t.command.trim();
+    if (typeof t.inter_chunk_pause_ms === 'number' && t.inter_chunk_pause_ms >= 0)
+      tts.interChunkPauseMs = Math.floor(t.inter_chunk_pause_ms);
     config.tts = tts;
   }
 
@@ -306,6 +308,7 @@ export function serializeConfig(config: Config): string {
       max_chunk_chars: config.tts.maxChunkChars,
       follow: config.tts.follow,
       command: config.tts.command,
+      inter_chunk_pause_ms: config.tts.interChunkPauseMs,
     },
   };
   return stringifyTomlLib(out);
