@@ -166,7 +166,10 @@ describe('PiperBackend.check', () => {
 
   it('stays silent when the binary is available', async () => {
     const { PiperBackend } = await import('./piper.js');
-    // Явный command — движок считаем установленным, notification не нужна.
-    expect(await new PiperBackend('/usr/bin/piper').check()).toBeNull();
+    // Только явный путь к существующему файлу: хосту CI не обязательно иметь
+    // piper в PATH (иначе тест проходил лишь на машине с установленным piper).
+    const bin = path.join(testTmpdir('tts-check-bin'), 'piper');
+    fs.writeFileSync(bin, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    expect(await new PiperBackend(bin).check()).toBeNull();
   });
 });
