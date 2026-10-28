@@ -84,6 +84,38 @@ describe('downloadFile', () => {
     expect(fs.existsSync(dest)).toBe(false);
   });
 
+  it('cancels cleanly when the signal aborts mid-stream', async () => {
+    const dest = tmp();
+    const ctl = new AbortController();
+    const onProgress = vi.fn();
+    globalThis.fetch = vi.fn(async (_url, init) => {
+      const signal = (init as RequestInit | undefined)?.signal;
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2, 3]));
+          signal?.addEventListener('abort', () =>
+            controller.error(new DOMException('Aborted', 'AbortError')),
+          );
+        },
+      });
+      return new Response(body, { status: 200, headers: { 'content-length': '10' } });
+    }) as unknown as typeof globalThis.fetch;
+
+    const pending = downloadFile({
+      url: 'http://x/slow.onnx',
+      dest,
+      signal: ctl.signal,
+      onProgress,
+    });
+    setTimeout(() => ctl.abort(), 100);
+
+    // Регрессия: ручной destroy() писал в уже уничтоженный поток и ронял
+    // процесс необработанным ERR_STREAM_DESTROYED.
+    await expect(pending).rejects.toThrow(/Download cancelled/);
+    expect(onProgress).toHaveBeenCalled();
+    expect(fs.existsSync(dest)).toBe(false);
+  });
+
   it('creates the destination directory tree', async () => {
     const dest = path.join(testTmpdir('tabook-dl-tree'), 'nested', 'dir', 'voice.onnx');
     globalThis.fetch = vi.fn(

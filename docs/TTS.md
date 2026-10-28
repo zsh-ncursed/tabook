@@ -14,9 +14,10 @@
   навигация, закладки и возобновление после перезапуска работают как обычно.
 - TTS разбит на **независимые бэкенды** (модули). У каждого бэкенда один и тот же
   интерфейс, поэтому движок и язык переключаются конфигом/командой без пересборки.
-- На первом этапе поставляются 2 встроенных бэкенда: `piper` (локальный, рус. + др.) и
-  `espeak` (локальный fallback). Остальные (Silero, Kokoro, Edge/MS, Chatterbox,
-  любой внешний HTTP API) — по тому же контракту, как «внешние модули».
+- На текущий момент поставляются встроенные бэкенды: `piper` (локальный, рус. + др.),
+  `sherpa-onnx` (ONNX без Python), `vosk` (ONNX, русский) и `espeak` (локальный
+  fallback). Остальные (Silero, Kokoro, Edge/MS, Chatterbox, любой внешний HTTP API) —
+  по тому же контракту, как «внешние модули».
 - Воспроизведение идёт через PipeWire/PulseAudio (`aplay`/`paplay`), как принято в Linux-TUI.
 
 ---
@@ -111,6 +112,21 @@ export interface TtsBackend {
 
   /** Освобождение ресурсов (kill дочерних процессов) — для shutdown. */
   dispose(): void;
+
+  // --- необязательные методы для каталога голосов в :tts config ---
+  configure?(paths: TtsEnginePaths): void;
+  listVoices?(): Promise<TtsVoiceEntry[]>;
+  /** Онлайн-каталог: модалка показывает его и разрешает установку. */
+  voiceCatalog?(signal?: AbortSignal): Promise<TtsVoiceEntry[]>;
+  /** Установить голос/модель; возвращает значение для `tts.voice`. */
+  installVoice?(
+    voiceId: string,
+    onProgress: (p: TtsVoiceInstallProgress) => void,
+    signal?: AbortSignal,
+  ): Promise<string>;
+  /** Голос по умолчанию при смене движка (синхронно). */
+  defaultVoice?(): string;
+  installHint?(): TtsInstallHint | null;
 }
 ```
 
@@ -249,7 +265,15 @@ src/tts/player.ts       SystemPlayer: WAV → paplay/aplay/ffplay
 src/tts/bincheck.ts     commandAvailable() — проверка бинарника в PATH
 src/tts/chunking.ts     buildChunks() + isSpeakable() — сборка чанков
 src/tts/piper.ts        бэкенд Piper (локальный, pip piper-tts + голоса .onnx)
+src/tts/sherpa.ts       бэкенд sherpa-onnx (ONNX, без Python)
+src/tts/vosk.ts         бэкенд Vosk TTS (ONNX, русский, спикеры)
+src/tts/voskWorker.ts   долгоживущий Python-worker (модель грузится один раз)
+src/tts/voskText.ts     нормализация текста под G2P Vosk (латиница, цифры)
+src/tts/voskIndex.ts    каталог моделей alphacephei.com + кеш
+src/tts/voskInstall.ts  скачивание zip, md5, распаковка, атомарная установка
 src/tts/espeak.ts       бэкенд eSpeak NG (системный fallback)
+src/tts/cliText.ts      sanitizeForCli() — безопасный текст для аргументов CLI
+src/tts/stderr.ts       summarizeEngineStderr() — одна строка ошибки движка
 src/tts/index.ts        createDefaultTtsManager() + реэкспорты
 src/tts/*.test.ts       unit-тесты (менеджер, chunking, sanitize, контракт)
 ```
@@ -335,7 +359,87 @@ ln -s ~/.local/share/piper-tts/piper/piper ~/.local/bin/piper
 - Никаких моделей; работает без установки чего-либо сверх пакета из репозитория.
 - Используется как запасной вариант, если piper не найден или нет нужной модели.
 
-### 4.3 Расширяемость «любых языков/движков»
+### 4.3 `vosk` (ONNX, русский, multi-speaker)
+
+- Движок: https://github.com/alphacep/vosk-tts, пакет `vosk-tts` (Python +
+  onnxruntime). В AUR его **нет** — ставится пользователем:
+  `pipx install vosk-tts` (Python 3.14 поддерживается).
+- Синтез идёт через долгоживущий worker (`src/tts/voskWorker.ts`), а не через
+  CLI на каждый чанк: CLI пакета 0.3.61 грузит модель заново каждый раз и
+  всегда подаёт в ONNX вход `sid`, которого нет у графов 0.4 — синтез падает
+  `Invalid input name: sid`. Worker грузит модель один раз и оборачивает сессию
+  прокси, отбрасывающим входы, которых нет у графа (для 0.9-multi `sid`
+  сохраняется). Интерпретатор берётся из `VOSK_TTS_PYTHON`, затем из shebang
+  установленного `vosk-tts` (pipx-venv), затем `python3` из PATH.
+- Модели — zip-архивы с alphacephei.com (`model-list.json`). Актуальные TTS-модели:
+
+  | Модель                          | Размер   | Голоса |
+  | ------------------------------- | -------- | ------ |
+  | `vosk-model-tts-ru-0.4-irina`   | 115.8 MB | 1      |
+  | `vosk-model-tts-ru-0.4-natasha` | 115.8 MB | 1      |
+  | `vosk-model-tts-ru-0.9-multi`   | 746.5 MB | 5      |
+
+  Рекомендуемая по умолчанию — `vosk-model-tts-ru-0.4-irina`.
+  `vosk-model-tts-ru-0.1-*` в каталог не попадает: её словарь хранит фонемы
+  без длительностей (`!SIL SIL`), а vosk-tts 0.3.61 ждёт три колонки и падает
+  `ValueError: could not convert string to float: 'SIL'`. Локальная 0.1-модель
+  не показывается в списке голосов, а `check()` объясняет несовместимость.
+
+- Установка моделей — только по явному действию пользователя: `:tts config` →
+  **Voice** → выбрать модель (`○` = не установлена). tabook скачивает zip,
+  сверяет md5, распаковывает `bsdtar`/`unzip`, проверяет раскладку и атомарно
+  переименовывает каталог в `~/.local/share/vosk/<id>`. Временные файлы
+  (`.zip.part`, `.tmp-*`, `.old-*`) удаляются; при отмене (Esc) старая модель
+  остаётся нетронутой.
+- Каталог кешируется в `~/.config/tabook/tts-vosk-index.json` на 24 часа;
+  без сети используется даже просроченный кеш (предупреждение — в футере
+  пикера), локальные модели остаются доступны.
+
+```toml
+[tts]
+mode = "active"
+engine = "vosk"
+voice = "vosk-model-tts-ru-0.4-irina#0"   # model#speaker
+rate = 1.0
+
+[tts.engines.vosk]
+command = ""                              # пусто = автопоиск vosk-tts
+models_dir = "~/.local/share/vosk"
+model = "vosk-model-tts-ru-0.4-irina"
+```
+
+Особенности движка, учтённые в бэкенде:
+
+- модель загружается один раз на процесс; смена модели (или переустановка —
+  сравниваются size/mtime `model.onnx`) пересоздаёт сессию;
+- `speaker` зажимается по `num_speakers` из `config.json`; вне диапазона
+  ONNX-сессия падает;
+- `speech-rate` клампится в `[0.25, 4]`;
+- текст перед синтезом нормализуется (`voskText.ts`): латиница
+  транслитерируется, числа пишутся словами, `%` — «процент(а/ов)»,
+  типографские кавычки/многоточие/тире заменяются. G2P падает `KeyError` на
+  латинице, цифрах и «ёлочках», поэтому это не косметика, а условие работы;
+- worker общается JSON-строками по stdin/stdout, все логи Python уходят в
+  stderr; при выходе из приложения процесс убивается
+  (`TtsManager.dispose()` → `VoskBackend.dispose()`).
+
+Модель считается валидной, если в каталоге есть `model.onnx`, `config.json`,
+`dictionary`, а для `model_type: multistream_*` — ещё `bert/model.onnx` и
+`bert/vocab.txt`. Раскладка проверяется в `check()` до синтеза, поэтому
+недокачанная модель даёт понятное сообщение, а не падение ONNX-сессии.
+
+Замеры на CPU (onnxruntime 1.31, один поток вывода):
+
+| Модель      | Первый чанк (загрузка + синтез) | Следующие чанки | RTF синтеза |
+| ----------- | ------------------------------- | --------------- | ----------- |
+| `0.4-irina` | ~8.1 с                          | 0.6–1.0 с       | ≈ 0.11–0.15 |
+| `0.9-multi` | ~149 с                          | 2.9–5.8 с       | ≈ 0.6–0.8   |
+
+Поэтому 0.4-irina — дефолт: после прогрева она быстрее реального времени и
+успевает в prefetch. 0.9-multi выбирают ради качества/пяти голосов, ценой
+долгой первой загрузки.
+
+### 4.4 Расширяемость «любых языков/движков»
 
 - Silero v5 (`silero` onnx, лучший русский на CPU) — бэкенд по тому же контракту;
 - Kokoro (`kokoro-js`, npm, Apache-2.0, Node/CPU) — для англ. и др. языков без python;
@@ -678,13 +782,14 @@ sherpa-onnx. Оставить как эксперимент.
 
 ### 10.6 Сравнение
 
-| Вариант             | Зависимости                 | RTF (ru)               | Усилий в tabook        | Охват                                                |
-| ------------------- | --------------------------- | ---------------------- | ---------------------- | ---------------------------------------------------- |
-| piper сейчас        | piper-tts + .onnx           | 1.13–1.32              | —                      | 40+ языков, без автоударения                         |
-| A: config-провайдер | нет (сам движок)            | как у движка           | ~150 строк + правки UI | любой CLI-движок                                     |
-| C: sherpa-onnx      | бинарник 27 МБ + модель     | **0.70**               | ~250 строк             | VITS/Kokoro/Matcha/Kitten/Pocket/ZipVoice/Supertonic |
-| B: silero           | venv 1.1 ГБ + модель 139 МБ | **0.06–0.08** (worker) | ~300 строк             | лучший русский, автоударение, 5 спикеров v5_ru       |
-| D: onnx in-process  | 301 МБ npm / Rust ort       | ~0.5                   | много                  | только ONNX-модели (не Silero)                       |
+| Вариант             | Зависимости                 | RTF (ru)               | Усилий в tabook         | Охват                                                |
+| ------------------- | --------------------------- | ---------------------- | ----------------------- | ---------------------------------------------------- |
+| piper сейчас        | piper-tts + .onnx           | 1.13–1.32              | —                       | 40+ языков, без автоударения                         |
+| E: vosk-tts         | pipx vosk-tts + модель      | см. §4.3 (замер RTF)   | ~600 строк + установщик | русский, multi-speaker, модели с alphacephei.com     |
+| A: config-провайдер | нет (сам движок)            | как у движка           | ~150 строк + правки UI  | любой CLI-движок                                     |
+| C: sherpa-onnx      | бинарник 27 МБ + модель     | **0.70**               | ~250 строк              | VITS/Kokoro/Matcha/Kitten/Pocket/ZipVoice/Supertonic |
+| B: silero           | venv 1.1 ГБ + модель 139 МБ | **0.06–0.08** (worker) | ~300 строк              | лучший русский, автоударение, 5 спикеров v5_ru       |
+| D: onnx in-process  | 301 МБ npm / Rust ort       | ~0.5                   | много                   | только ONNX-модели (не Silero)                       |
 
 ### 10.7 Рекомендуемый порядок внедрения
 
@@ -804,8 +909,16 @@ model      = "vits-mms-rus"                                  # голос по �
 
 1. Новый файл в `src/tts/`: реализовать `TtsBackend` (минимум —
    `id`/`label`/`capabilities`/`check()`/`synthesize()`/`dispose()`).
-2. Необязательно: `configure(paths)` — пути из `[tts.engines.<id>]`,
-   `listVoices()` — локальные голоса для UI, `installHint()` — подсказка
-   «как поставить».
+2. Необязательно, но именно это делает движок полноценным в UI:
+   - `configure(paths)` — пути из `[tts.engines.<id>]`;
+   - `listVoices()` — локальные голоса для офлайн-списка;
+   - `voiceCatalog(signal)` — онлайн-каталог; модалка показывает его вместо
+     `listVoices()` и разрешает скачивание;
+   - `installVoice(id, onProgress, signal)` — установка; возвращает значение
+     для `tts.voice` (например, `model#0`; прогресс — `TtsVoiceInstallProgress`);
+   - `defaultVoice()` — голос при переключении на движок;
+   - `installHint()` — подсказка «как поставить».
+     Если у записи каталога `speakers > 1`, модалка сама откроет пикер спикера и
+     запишет `${id}#N`; бэкенд обязан понимать и `id`, и `id#N`.
 3. Зарегистрировать в `src/tts/index.ts` — он сам появится в модалке,
    в `:tts engines` и в списке доступных движков. Правок ридера не нужно.

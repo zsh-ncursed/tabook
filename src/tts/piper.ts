@@ -7,11 +7,15 @@ import type {
   TtsEnginePaths,
   TtsInstallHint,
   TtsVoiceEntry,
+  TtsVoiceInstallProgress,
   WavSource,
 } from './backend.js';
 import type { TtsChunk, TtsVoiceOptions } from './types.js';
 import { downloadFile } from './download.js';
 import { HF_RESOLVE } from './hf.js';
+import { VoiceManager } from './voiceManager.js';
+import { loadCachedVoices } from './voiceIndex.js';
+import { summarizeEngineStderr } from './stderr.js';
 import {
   commandAvailable,
   expandPath,
@@ -74,6 +78,45 @@ export class PiperBackend implements TtsBackend {
       id: basename(f, '.onnx'),
       label: basename(f),
     }));
+  }
+
+  /**
+   * Каталог голосов piper — индекс HuggingFace. `listVoices()` остаётся
+   * быстрым офлайн-списком, а сеть трогаем только по действию пользователя.
+   */
+  async voiceCatalog(signal?: AbortSignal): Promise<TtsVoiceEntry[]> {
+    const mgr = new VoiceManager({ signal });
+    const voices = await mgr.getVoices();
+    return voices.map((v) => ({
+      id: v.id,
+      label: v.name || v.id,
+      language: v.language,
+      installed: v.installed,
+      size: v.size,
+      // piper ищет модель по basename без .onnx, а не по HF-пути.
+      configVoice: v.file.replace(/\.onnx$/, ''),
+    }));
+  }
+
+  /** Скачать голос из каталога и вернуть имя для `tts.voice`. */
+  async installVoice(
+    voiceId: string,
+    onProgress: (p: TtsVoiceInstallProgress) => void,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const mgr = new VoiceManager({ signal });
+    await mgr.downloadVoice(voiceId, (done, total) => {
+      onProgress({ phase: 'download', done, total });
+    });
+    const voice = loadCachedVoices().find((v) => v.id === voiceId);
+    if (!voice) throw new Error(`Voice not found after download: ${voiceId}`);
+    onProgress({ phase: 'validate', message: `Installed: ${voiceId}` });
+    return voice.file.replace(/\.onnx$/, '');
+  }
+
+  /** Голос по умолчанию: явный из конфига, иначе русский medium. */
+  defaultVoice(): string {
+    return this.model || 'ru_RU-irina-medium';
   }
 
   async check(): Promise<string | null> {
@@ -295,31 +338,10 @@ function findModel(base: string): string | null {
 
 /**
  * Сжать stderr дочернего процесса до одной человекочитаемой строки.
- *
- * Piper сыпет в stderr ANSI-раскрашенные warning'и onnxruntime и полный
- * Python-traceback. В терминале tabook (raw mode, TUI) многострочный вывод с
- * escape-последовательностями разрывает экран и оставляет артефакты поверх
- * текста книги. Поэтому: вырезаем ANSI, выбрасываем служебные строки логов и
- * берём последнюю значимую строку — обычно это строка исключения.
+ * Оставлено публичным именем для совместимости; реализация общая с
+ * sherpa/vosk — см. `summarizeEngineStderr`.
  */
-export function summarizeStderr(raw: string): string {
-  const noAnsi = raw.replace(/\x1b\[[0-9;]*m/g, '');
-  const lines = noAnsi
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0)
-    // Служебный шум, который piper/onnxruntime сыплют в stderr: телеметрия
-    // (всегда с временной меткой), обвязка Python-traceback и скобки.
-    .filter(
-      (l) =>
-        !/\d{4}-\d{2}-\d{2}|onnxruntime|telemetry|^Traceback|^ {2}File |^\s*~+|^sys\.exit|\{$|\}$/i.test(
-          l,
-        ),
-    );
-  // Последняя значимая строка трейсбека — само исключение (ValueError: ...).
-  // Если после фильтра ничего не осталось (чистый шум) — пустая строка.
-  return (lines[lines.length - 1] ?? '').slice(0, 200);
-}
+export { summarizeEngineStderr as summarizeStderr };
 
 /** Прогнать piper: текст в stdin -> wav-файл; резолвится по завершении. */
 function pipeTextToWav(
@@ -350,7 +372,7 @@ function pipeTextToWav(
     });
     child.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`piper failed (${code}): ${summarizeStderr(err)}`));
+        reject(new Error(`piper failed (${code}): ${summarizeEngineStderr(err)}`));
         return;
       }
       resolve();

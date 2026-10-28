@@ -183,4 +183,250 @@ describe('TtsConfigModal', () => {
     const applied = onApply.mock.calls[0]![0] as TtsConfig;
     expect(applied.engine).toBe('sherpa');
   });
+
+  it('takes the install hint from the backend, not from a hardcoded switch', async () => {
+    const mgr = new TtsManager({ player: silentPlayer() });
+    mgr.register({
+      ...makeBackend('vosk', 'Vosk TTS'),
+      check: async () => 'vosk-tts not found',
+      installHint: () => ({
+        install: 'pipx install vosk-tts',
+        notes: 'then download a model in :tts config',
+      }),
+    });
+    const { stdin, lastFrame } = render(
+      <TtsConfigModal {...makeProps({ ttsManager: mgr, tts: { ...baseTts, engine: 'vosk' } })} />,
+    );
+    await settle();
+    stdin.write('\r'); // open engine picker
+    await settle(300);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('pipx install vosk-tts');
+    expect(frame).toContain('then download a model');
+  });
+
+  it('opens a voice catalogue for a non-piper engine and uses its label', async () => {
+    const backend = catalogBackend();
+    const { stdin, lastFrame } = render(
+      <TtsConfigModal
+        {...makeProps({ ttsManager: catalogManager(backend), tts: { ...baseTts, engine: 'vosk' } })}
+      />,
+    );
+    await settle();
+    stdin.write('j'); // Voice row
+    await settle();
+    stdin.write('\r');
+    await settle(300);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Vosk TTS voices');
+    expect(frame).toContain('Installed model');
+    expect(frame).toContain('Remote model');
+    expect(frame).toContain('installed');
+  });
+
+  it('falls back to local models and shows the catalog error when voiceCatalog fails', async () => {
+    const backend: TtsBackend = {
+      ...makeBackend('vosk', 'Vosk TTS'),
+      voiceCatalog: async () => {
+        throw new Error('Vosk model catalog unavailable: offline');
+      },
+    };
+    const { stdin, lastFrame } = render(
+      <TtsConfigModal
+        {...makeProps({ ttsManager: catalogManager(backend), tts: { ...baseTts, engine: 'vosk' } })}
+      />,
+    );
+    await settle();
+    stdin.write('j'); // Voice row
+    await settle();
+    stdin.write('\r');
+    await settle(300);
+    const frame = lastFrame() ?? '';
+    // Локальные модели остаются доступными, ошибка каталога — в футере.
+    expect(frame).toContain('vosk voice');
+    expect(frame).toContain('catalog unavailable');
+  });
+
+  it('shows the stale-cache warning in the footer', async () => {
+    const backend: TtsBackend = {
+      ...makeBackend('vosk', 'Vosk TTS'),
+      catalogWarning: 'Vosk catalog unavailable (offline); using cached list',
+      voiceCatalog: async () => [
+        { id: 'm-installed', label: 'Installed model', language: 'ru', installed: true },
+      ],
+    };
+    const { stdin, lastFrame } = render(
+      <TtsConfigModal
+        {...makeProps({ ttsManager: catalogManager(backend), tts: { ...baseTts, engine: 'vosk' } })}
+      />,
+    );
+    await settle();
+    stdin.write('j'); // Voice row
+    await settle();
+    stdin.write('\r');
+    await settle(300);
+    expect(lastFrame() ?? '').toContain('using cached list');
+  });
+
+  it('selects an installed model without installing it', async () => {
+    const backend = catalogBackend();
+    const onApply = vi.fn();
+    const { stdin } = render(
+      <TtsConfigModal
+        {...makeProps({
+          onApply,
+          ttsManager: catalogManager(backend),
+          tts: { ...baseTts, engine: 'vosk', voice: '' },
+        })}
+      />,
+    );
+    await settle();
+    stdin.write('j');
+    await settle();
+    stdin.write('\r');
+    await settle(300);
+    stdin.write('\r'); // first entry — installed
+    await settle();
+    stdin.write('jjjjj'); // Voice row -> Apply
+    await settle();
+    stdin.write('\r');
+    await settle();
+    expect(backend.installVoice).not.toHaveBeenCalled();
+    expect((onApply.mock.calls[0]![0] as TtsConfig).voice).toBe('m-installed');
+  });
+
+  it('opens a speaker picker for a multi-speaker model and saves model#N', async () => {
+    const backend = catalogBackend();
+    const onApply = vi.fn();
+    const { stdin, lastFrame } = render(
+      <TtsConfigModal
+        {...makeProps({
+          onApply,
+          ttsManager: catalogManager(backend),
+          tts: { ...baseTts, engine: 'vosk', voice: '' },
+        })}
+      />,
+    );
+    await settle();
+    stdin.write('j');
+    await settle();
+    stdin.write('\r');
+    await settle(300);
+    stdin.write('j'); // second entry — multi-speaker
+    await settle();
+    stdin.write('\r');
+    await settle();
+    expect(lastFrame() ?? '').toContain('speaker');
+    stdin.write('j'); // speaker 0 -> 1
+    await settle();
+    stdin.write('\r');
+    await settle();
+    stdin.write('jjjjj'); // Voice -> Apply
+    await settle();
+    stdin.write('\r');
+    await settle();
+    expect((onApply.mock.calls[0]![0] as TtsConfig).voice).toBe('m-multi#1');
+  });
+
+  it('installs an uninstalled model and shows progress', async () => {
+    let finish!: (voice: string) => void;
+    const backend = catalogBackend();
+    backend.installVoice = vi.fn(
+      (_id, onProgress) =>
+        new Promise<string>((res) => {
+          onProgress({ phase: 'download', done: 50, total: 100 });
+          finish = res;
+        }),
+    );
+    const onApply = vi.fn();
+    const { stdin, lastFrame } = render(
+      <TtsConfigModal
+        {...makeProps({
+          onApply,
+          ttsManager: catalogManager(backend),
+          tts: { ...baseTts, engine: 'vosk', voice: '' },
+        })}
+      />,
+    );
+    await settle();
+    stdin.write('j');
+    await settle();
+    stdin.write('\r');
+    await settle(300);
+    stdin.write('jj'); // third entry — remote
+    await settle();
+    stdin.write('\r');
+    await settle();
+    expect(backend.installVoice).toHaveBeenCalledWith(
+      'm-remote',
+      expect.any(Function),
+      expect.any(AbortSignal),
+    );
+    expect(lastFrame() ?? '').toContain('50%');
+    finish('m-remote#0');
+    await settle();
+    stdin.write('jjjjj');
+    await settle();
+    stdin.write('\r');
+    await settle();
+    expect((onApply.mock.calls[0]![0] as TtsConfig).voice).toBe('m-remote#0');
+  });
+
+  it('aborts an in-flight install on esc and keeps the picker open', async () => {
+    const backend = catalogBackend();
+    let seenSignal: AbortSignal | undefined;
+    backend.installVoice = vi.fn(
+      (_id, _onProgress, signal) =>
+        new Promise<string>((_res, rej) => {
+          seenSignal = signal;
+          signal?.addEventListener('abort', () => rej(new Error('Download cancelled')));
+        }),
+    );
+    const { stdin, lastFrame } = render(
+      <TtsConfigModal
+        {...makeProps({
+          ttsManager: catalogManager(backend),
+          tts: { ...baseTts, engine: 'vosk', voice: '' },
+        })}
+      />,
+    );
+    await settle();
+    stdin.write('j');
+    await settle();
+    stdin.write('\r');
+    await settle(300);
+    stdin.write('jj');
+    await settle();
+    stdin.write('\r'); // start install
+    await settle();
+    stdin.write('\u001b'); // cancel download
+    await settle();
+    expect(seenSignal?.aborted).toBe(true);
+    expect(lastFrame() ?? '').toContain('Vosk TTS voices');
+    expect(lastFrame() ?? '').toContain('Download cancelled');
+  });
 });
+
+/** Каталог с установленной, multi- и удалённой моделями. */
+function catalogBackend(): TtsBackend & { installVoice: ReturnType<typeof vi.fn> } {
+  return {
+    id: 'vosk',
+    label: 'Vosk TTS',
+    capabilities: { languages: ['ru'], offline: true, rateControl: true, pitchControl: false },
+    check: async () => null,
+    voiceCatalog: async () => [
+      { id: 'm-installed', label: 'Installed model', language: 'ru', installed: true },
+      { id: 'm-multi', label: 'Multi model', language: 'ru', installed: true, speakers: 2 },
+      { id: 'm-remote', label: 'Remote model', language: 'ru', installed: false, size: 1024 },
+    ],
+    installVoice: vi.fn(async (id: string) => `${id}#0`),
+    synthesize: async () => ({ kind: 'buffer', buffer: Buffer.alloc(0) }),
+    dispose: () => {},
+  };
+}
+
+function catalogManager(backend: TtsBackend): TtsManager {
+  const mgr = new TtsManager({ player: silentPlayer() });
+  mgr.register(backend);
+  return mgr;
+}

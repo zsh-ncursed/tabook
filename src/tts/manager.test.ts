@@ -442,4 +442,24 @@ describe('TtsManager', () => {
 
     expect(player.play).not.toHaveBeenCalled();
   });
+
+  it('disposes every backend and the player on dispose', () => {
+    const player = mockPlayer();
+    const mgr = new TtsManager({ player });
+    const dispose = vi.fn();
+    mgr.register({
+      id: 'mock',
+      label: 'mock',
+      capabilities: { languages: [], offline: true, rateControl: false, pitchControl: false },
+      check: async () => null,
+      synthesize: async () => SILENCE,
+      dispose,
+    });
+
+    mgr.dispose();
+
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(player.dispose).toHaveBeenCalledTimes(1);
+    expect(mgr.engines).toEqual([]);
+  });
 });

@@ -1,6 +1,7 @@
 import { PiperBackend } from './piper.js';
 import { EspeakBackend } from './espeak.js';
 import { SherpaBackend } from './sherpa.js';
+import { VoskBackend } from './vosk.js';
 import { TtsManager } from './manager.js';
 import type { AudioPlayer, TtsBackend, TtsEnginePaths } from './backend.js';
 import type { TtsEngineConfig } from '../config/defaults.js';
@@ -12,6 +13,8 @@ export type {
   AudioPlayer,
   WavSource,
   TtsVoiceEntry,
+  TtsVoiceInstallPhase,
+  TtsVoiceInstallProgress,
   TtsInstallHint,
   TtsEnginePaths,
 } from './backend.js';
@@ -21,13 +24,14 @@ export { buildChunks, isSpeakable, type ChunkSource, type ChunkBuildOptions } fr
 export { PiperBackend } from './piper.js';
 export { EspeakBackend } from './espeak.js';
 export { SherpaBackend } from './sherpa.js';
+export { VoskBackend } from './vosk.js';
 export { commandAvailable } from './bincheck.js';
 export { expandPath, findModelFile, listModelFiles, modelSearchDirs } from './modelPaths.js';
 
 /**
- * Создать TTS-менеджер с бэкендами по умолчанию (piper + sherpa-onnx + espeak).
- * Ничего не скачивает: бэкенды проверяют наличие движка в момент запуска, а
- * выбор движка/голоса делается в `:tts config` или через конфиг.
+ * Создать TTS-менеджер с бэкендами по умолчанию (piper + sherpa-onnx + vosk +
+ * espeak). Ничего не скачивает: бэкенды проверяют наличие движка в момент
+ * запуска, а выбор движка/голоса делается в `:tts config` или через конфиг.
  *
  * `command` — общий путь к бинарнику движка (`[tts] command`), если его нет в
  * PATH. `engines` — пути к конкретным движкам из `[tts.engines.<id>]`; они
@@ -46,7 +50,12 @@ export function createDefaultTtsManager(
     player: opts.player,
     interChunkPauseMs: opts.interChunkPauseMs ?? 0,
   });
-  const backends: TtsBackend[] = [new PiperBackend(''), new SherpaBackend(''), new EspeakBackend()];
+  const backends: TtsBackend[] = [
+    new PiperBackend(''),
+    new SherpaBackend(''),
+    new VoskBackend(''),
+    new EspeakBackend(),
+  ];
   for (const b of backends) {
     // Бэкенд без configure() просто игнорирует пути — общий `command` тогда
     // не доедет, и он останется на своём автопоиске (так и задумано).

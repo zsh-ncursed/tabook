@@ -5,10 +5,9 @@ import type { Config, TtsConfig } from '../../config/defaults.js';
 import { ListModal } from './ListModal.js';
 import { createActionResolver, resolveKeyName } from '../keymap.js';
 import { useInputDispatch } from '../useInputDispatch.js';
-import { VoiceManager, type PiperVoice } from '../../tts/voiceManager.js';
 import { formatBytes } from '../../tts/download.js';
 import type { TtsManager } from '../../tts/manager.js';
-import type { TtsVoiceEntry, TtsInstallHint } from '../../tts/backend.js';
+import type { TtsVoiceEntry, TtsVoiceInstallProgress } from '../../tts/backend.js';
 
 export interface TtsConfigModalProps {
   theme: Theme;
@@ -18,8 +17,8 @@ export interface TtsConfigModalProps {
   isActive: boolean;
   /**
    * Менеджер TTS — источник истины для списка движков. Модалка не знает
-   * про piper/espeak/sherpa поимённо: она показывает ровно то, что
-   * зарегистрировано, поэтому новый бэкенд появляется здесь сам.
+   * про piper/espeak/sherpa/vosk поимённо: она показывает ровно то, что
+   * зарегистрировано, и работает через контракт `TtsBackend`.
    */
   ttsManager?: TtsManager;
   /** Применить настройки (persist + обновить live config). */
@@ -30,43 +29,83 @@ export interface TtsConfigModalProps {
 
 type RowKind = 'engine' | 'voice' | 'rate' | 'pitch' | 'follow' | 'download' | 'apply' | 'cancel';
 
-/**
- * Имя голоса для конфига: basename .onnx без расширения ("ru_RU-irina-medium").
- * Именно такое имя piper ищет в каталогах моделей (findModel в piper.ts).
- */
-function piperVoiceName(v: PiperVoice): string {
-  return v.file.replace(/\.onnx$/, '');
-}
-
 interface Row {
   kind: RowKind;
   label: string;
   value: string;
 }
 
+/** Голос установлен, если бэкенд не сказал обратного (listVoices = локальные). */
+function isInstalled(v: TtsVoiceEntry): boolean {
+  return v.installed !== false;
+}
+
+/** Значение `tts.voice` для записи без пикера спикера. */
+function entryConfigVoice(v: TtsVoiceEntry): string {
+  return v.configVoice ?? v.id;
+}
+
+/** Совпадает ли запись каталога с текущим голосом в конфиге. */
+function voiceMatches(v: TtsVoiceEntry, voice: string): boolean {
+  return voice === entryConfigVoice(v) || voice === v.id || voice.startsWith(`${v.id}#`);
+}
+
+/** Строка-описание для списка голосов: язык · размер/установлен · спикеры. */
+function voiceDetail(v: TtsVoiceEntry): string {
+  const parts: string[] = [];
+  if (v.language) parts.push(v.language);
+  if (isInstalled(v)) {
+    parts.push('installed');
+  } else if (v.size) {
+    parts.push(formatBytes(v.size));
+  }
+  if (v.speakers && v.speakers > 1) parts.push(`${v.speakers} voices`);
+  return parts.join(' · ');
+}
+
+const PHASE_LABEL: Record<TtsVoiceInstallProgress['phase'], string> = {
+  download: 'downloading',
+  verify: 'verifying',
+  extract: 'extracting',
+  validate: 'validating',
+};
+
+/** Текст футера во время установки. */
+function progressText(id: string, p: TtsVoiceInstallProgress | null): string {
+  if (!p) return `⬇ ${id}`;
+  if (p.phase === 'download' && p.done !== undefined) {
+    const pct = p.total ? Math.round((p.done / p.total) * 100) : null;
+    return `⬇ ${id} — ${pct !== null ? `${pct}%` : formatBytes(p.done)}`;
+  }
+  return `⬇ ${id} — ${PHASE_LABEL[p.phase]}…`;
+}
+
 // TTS settings modal: engine, voice, rate, pitch, follow toggle, plus an
-// embedded Piper voice browser that lists HuggingFace voices and downloads
-// the selected one on demand. Settings edit a local draft; Apply persists.
+// engine-agnostic voice catalogue. Settings edit a local draft; Apply persists.
 export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
   const { theme, config, tts, isActive, ttsManager, onApply, onClose } = props;
   const resolver = useMemo(() => createActionResolver(config), [config]);
-  const voiceMgr = useMemo(() => new VoiceManager(), []);
 
   const [draft, setDraft] = useState<TtsConfig>(tts);
   const [cursor, setCursor] = useState(0);
-  // Три режима: список настроек, выбор движка, выбор голоса.
+  // Режимы: список настроек, выбор движка, список голосов, выбор спикера.
   const [pickingEngine, setPickingEngine] = useState(false);
   const [engineCursor, setEngineCursor] = useState(0);
   const [engineAvail, setEngineAvail] = useState<Record<string, string | null>>({});
   const engineAvailRef = useRef<Record<string, string | null>>({});
   const [pickingVoice, setPickingVoice] = useState(false);
   const [voiceCursor, setVoiceCursor] = useState(0);
-  const [voices, setVoices] = useState<PiperVoice[] | null>(null);
+  const [voices, setVoices] = useState<TtsVoiceEntry[] | null>(null);
   const [voiceFilter, setVoiceFilter] = useState('');
   const [loadingVoices, setLoadingVoices] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState<string | null>(null);
-  const [downloadPct, setDownloadPct] = useState<number>(0);
+  const [voiceWarning, setVoiceWarning] = useState<string | null>(null);
+  const [installing, setInstalling] = useState<string | null>(null);
+  const [installProgress, setInstallProgress] = useState<TtsVoiceInstallProgress | null>(null);
+  const [pickingSpeaker, setPickingSpeaker] = useState(false);
+  const [speakerEntry, setSpeakerEntry] = useState<TtsVoiceEntry | null>(null);
+  const [speakerCursor, setSpeakerCursor] = useState(0);
+  const installAbortRef = useRef<AbortController | null>(null);
 
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -82,9 +121,8 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
   useEffect(() => {
     if (!pickingEngine || !ttsManager) return;
     let cancelled = false;
-    // Читаем уже опросенные движки через ref, а не state:
-    // взаисимость engineAvail в deps заставила бы эффект перезапуск,
-    // а ref ведёт себя актуальное значение без переразданка.
+    // Читаем уже опрошенные движки через ref, а не state: зависимость
+    // engineAvail в deps заставила бы эффект перезапускаться.
     const done = engineAvailRef.current;
     const pending = engines.filter((e) => !(e.id in done));
     if (pending.length === 0) return;
@@ -113,83 +151,76 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
   const cbRef = useRef({ onApply, onClose });
   cbRef.current = { onApply, onClose };
 
-  // Загрузить список голосов при входе в режим выбора. Для piper список берётся
-  // из индекса HuggingFace (с возможностью скачать голос прямо из UI), для
-  // остальных движков — из их локальных моделей через listVoices().
-  const activeEngine = draftRef.current.engine;
+  // Список голосов при входе в режим выбора: онлайн-каталог, если бэкенд его
+  // умеет, иначе локальные модели через listVoices().
+  const activeEngine = draft.engine;
   useEffect(() => {
     if (!pickingVoice) return;
     let cancelled = false;
+    const ctl = new AbortController();
     setLoadingVoices(true);
     setVoiceError(null);
+    setVoiceWarning(null);
+    setVoices(null);
     const backend = ttsManager?.resolveBackend(activeEngine);
-    // Piper — особый случай: у него голоса качаются с HF.
-    if (activeEngine !== 'piper' || !backend?.listVoices) {
-      if (!backend?.listVoices) {
-        // espeak и подобные: голос = код языка, списка нет.
-        setVoices(null);
-        setLoadingVoices(false);
-        return;
-      }
-      backend
-        .listVoices()
-        .then((list) => {
-          if (cancelled) return;
-          setVoices(
-            list.map((v: TtsVoiceEntry) => ({
-              id: v.id,
-              file: v.id,
-              name: v.label,
-              language: v.language ?? '',
-              languageName: v.language ?? '',
-              quality: 'local',
-              downloadUrl: '',
-              downloads: 0,
-              installed: true,
-            })),
-          );
-          const cur = draftRef.current.voice;
-          const idx = list.findIndex((v) => v.id === cur);
-          setVoiceCursor(idx >= 0 ? idx : 0);
-        })
-        .catch((e: unknown) => {
-          if (!cancelled) setVoiceError(e instanceof Error ? e.message : String(e));
-        })
-        .finally(() => {
-          if (!cancelled) setLoadingVoices(false);
-        });
+    if (!backend) {
+      setLoadingVoices(false);
       return;
     }
-    voiceMgr
-      .getVoices()
+    const load = backend.voiceCatalog
+      ? backend.voiceCatalog(ctl.signal)
+      : backend.listVoices
+        ? backend.listVoices()
+        : Promise.resolve<TtsVoiceEntry[]>([]);
+    load
       .then((list) => {
         if (cancelled) return;
         setVoices(list);
+        // Каталог мог ответить кешем (нет сети) — предупреждение в футер.
+        setVoiceWarning(backend.catalogWarning ?? null);
         // Курсор — на текущем голосе, если он есть в списке.
         const cur = draftRef.current.voice;
-        const idx = list.findIndex((v) => v.id === cur);
+        const idx = list.findIndex((v) => voiceMatches(v, cur));
         setVoiceCursor(idx >= 0 ? idx : 0);
       })
-      .catch((e: unknown) => {
+      .catch(async (e: unknown) => {
         if (cancelled) return;
-        setVoiceError(e instanceof Error ? e.message : String(e));
+        const msg = e instanceof Error ? e.message : String(e);
+        // Каталог недоступен (нет сети/кеша): показываем локальные модели и
+        // ошибку в футере — пустой список без объяснения хуже.
+        let local: TtsVoiceEntry[] = [];
+        try {
+          local = backend.listVoices ? await backend.listVoices() : [];
+        } catch {
+          // Локальный список тоже не дался — останется пусто + ошибка.
+        }
+        if (cancelled) return;
+        setVoices(local);
+        const cur = draftRef.current.voice;
+        const idx = local.findIndex((v) => voiceMatches(v, cur));
+        setVoiceCursor(idx >= 0 ? idx : 0);
+        setVoiceError(msg);
       })
       .finally(() => {
         if (!cancelled) setLoadingVoices(false);
       });
     return () => {
       cancelled = true;
+      ctl.abort();
     };
-  }, [pickingVoice, voiceMgr, ttsManager, activeEngine]);
+  }, [pickingVoice, ttsManager, activeEngine]);
 
-  // Pitch/rate поддерживаются на способность самого движка: подпись “only espeak” был захардкой
-  // захардкого виджета и считался неверным для любого движка.
+  // Незавершённая установка не должна пережить размонтирование модалки.
+  useEffect(() => () => installAbortRef.current?.abort(), []);
+
+  // Rate/pitch подписи зависят от возможностей движка, а не от его id.
   const engine = ttsManager?.resolveBackend(draft.engine);
   const pitchNote = engine?.capabilities.pitchControl
     ? ''
     : ` (${engine ? 'unsupported' : 'engine-dependent'})`;
   const rateNote = engine?.capabilities.rateControl ? '' : ' (resampled)';
-  const hasVoiceList = Boolean(engine?.listVoices);
+  const hasVoiceList = Boolean(engine?.voiceCatalog || engine?.listVoices);
+  const canDownload = Boolean(engine?.voiceCatalog);
 
   const rows: Row[] = useMemo(
     () => [
@@ -198,8 +229,7 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
         kind: 'voice',
         label: 'Voice',
         // У espeak голос — это код языка, а не выбираемое из списка.
-        value:
-          hasVoiceList || draft.engine === 'piper' ? draft.voice : `${draft.voice} (language code)`,
+        value: hasVoiceList ? draft.voice : `${draft.voice} (language code)`,
       },
       {
         kind: 'rate',
@@ -211,12 +241,12 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
       {
         kind: 'download',
         label: 'Download voice',
-        value: draft.engine === 'piper' ? 'piper voices ▸' : 'n/a (local models)',
+        value: canDownload ? `${engine?.label ?? draft.engine} voices ▸` : 'n/a (local models)',
       },
       { kind: 'apply', label: 'Apply', value: '' },
       { kind: 'cancel', label: 'Cancel', value: '' },
     ],
-    [draft, hasVoiceList, pitchNote, rateNote],
+    [draft, engine, hasVoiceList, canDownload, pitchNote, rateNote],
   );
 
   const filteredVoices = useMemo(() => {
@@ -224,15 +254,12 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
     const q = voiceFilter.trim().toLowerCase();
     if (!q) return voices;
     return voices.filter(
-      (v) =>
-        v.id.toLowerCase().includes(q) ||
-        v.name.toLowerCase().includes(q) ||
-        v.languageName.toLowerCase().includes(q),
+      (v) => v.id.toLowerCase().includes(q) || v.label.toLowerCase().includes(q),
     );
   }, [voices, voiceFilter]);
 
   // splitChunks: быстрый ввод (или вставка) приходит одним чанком, а Ink
-  // парсит только первый символ — j/k и h/l serieями терялись бы.
+  // парсит только первый символ — j/k и h/l сериями терялись бы.
   const dispatchRef = useInputDispatch(isActive, { splitChunks: true });
   dispatchRef.current = (input: string, key: Key) => {
     const keyName = resolveKeyName(input, key);
@@ -255,17 +282,44 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
           const e = engines[engineCursor];
           if (!e) return;
           setDraft((d) => {
-            // Голос принадлежит движку: при смене движка старый голос (напр.
-            // ru_RU-irina-medium) в новом невалиден, поэтому сбрасываем его и
-            // даём движку применить свой дефолт.
-            const sameEngine = d.engine === e.id;
+            // Голос принадлежит движку: при смене движка старый голос
+            // невалиден, поэтому даём бэкенду применить свой дефолт.
+            if (d.engine === e.id) return d;
+            const backend = ttsManager?.resolveBackend(e.id);
+            const fallback = d.engines?.[e.id]?.model;
             return {
               ...d,
               engine: e.id,
-              voice: sameEngine ? d.voice : defaultVoiceFor(e.id, d.engines),
+              voice: backend?.defaultVoice?.() || fallback || '',
             };
           });
           setPickingEngine(false);
+          return;
+        }
+        default:
+          return;
+      }
+    }
+
+    // --- режим выбора спикера (поверх списка моделей) ---
+    if (pickingSpeaker) {
+      const action = resolver.feed(keyName);
+      const entry = speakerEntry;
+      const count = Math.max(1, Math.min(20, entry?.speakers ?? 1));
+      switch (action) {
+        case 'back':
+          setPickingSpeaker(false);
+          return;
+        case 'move_cursor_down':
+          setSpeakerCursor((c) => Math.min(count - 1, c + 1));
+          return;
+        case 'move_cursor_up':
+          setSpeakerCursor((c) => Math.max(0, c - 1));
+          return;
+        case 'select': {
+          if (!entry) return;
+          setDraft((d) => ({ ...d, voice: `${entry.id}#${speakerCursor}` }));
+          closeVoicePicker();
           return;
         }
         default:
@@ -278,27 +332,26 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
       const action = resolver.feed(keyName);
       switch (action) {
         case 'back':
-          setPickingVoice(false);
-          setVoiceFilter('');
+          // Во время установки Esc отменяет скачивание, а не закрывает пикер.
+          if (installAbortRef.current) {
+            installAbortRef.current.abort();
+            return;
+          }
+          closeVoicePicker();
           return;
         case 'move_cursor_down':
-          setVoiceCursor((c) => Math.min(filteredVoices.length - 1, c + 1));
+          setVoiceCursor((c) => Math.max(0, Math.min(filteredVoices.length - 1, c + 1)));
           return;
         case 'move_cursor_up':
           setVoiceCursor((c) => Math.max(0, c - 1));
           return;
         case 'select': {
           const v = filteredVoices[voiceCursor];
-          if (!v) return;
-          if (v.installed) {
-            // Уже скачан — просто выбираем. В конфиг идёт piper-имя модели
-            // (basename без .onnx): именно его piper ищет в каталогах моделей.
-            setDraft((d) => ({ ...d, voice: piperVoiceName(v) }));
-            setPickingVoice(false);
-            setVoiceFilter('');
-          } else if (!downloading) {
-            // Скачиваем, потом выбираем.
-            void downloadVoice(v);
+          if (!v || installAbortRef.current) return;
+          if (isInstalled(v)) {
+            chooseVoice(v);
+          } else {
+            void installVoice(v);
           }
           return;
         }
@@ -339,6 +392,66 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
     }
   };
 
+  function closeVoicePicker(): void {
+    setPickingVoice(false);
+    setPickingSpeaker(false);
+    setSpeakerEntry(null);
+    setVoiceFilter('');
+    setVoiceError(null);
+    setVoiceWarning(null);
+    setInstallProgress(null);
+  }
+
+  function chooseVoice(v: TtsVoiceEntry): void {
+    if ((v.speakers ?? 1) > 1) {
+      setSpeakerEntry(v);
+      setSpeakerCursor(0);
+      setPickingSpeaker(true);
+      return;
+    }
+    setDraft((d) => ({ ...d, voice: entryConfigVoice(v) }));
+    closeVoicePicker();
+  }
+
+  async function installVoice(v: TtsVoiceEntry): Promise<void> {
+    const backend = ttsManager?.resolveBackend(draftRef.current.engine);
+    const install = backend?.installVoice;
+    if (!backend || !install) {
+      setVoiceError(`No installer for ${backend?.label ?? draftRef.current.engine}`);
+      return;
+    }
+    const ctl = new AbortController();
+    installAbortRef.current = ctl;
+    setInstalling(v.id);
+    setVoiceError(null);
+    setInstallProgress({ phase: 'download' });
+    try {
+      const cfgVoice = await install.call(backend, v.id, (p) => setInstallProgress(p), ctl.signal);
+      // Метка installed уезжает в кеш каталога только после refresh;
+      // обновляем локальный список, чтобы галочка появилась сразу.
+      setVoices(
+        (prev) => prev?.map((x) => (x.id === v.id ? { ...x, installed: true } : x)) ?? prev,
+      );
+      setInstallProgress(null);
+      setInstalling(null);
+      if ((v.speakers ?? 1) > 1) {
+        setSpeakerEntry({ ...v, installed: true });
+        setSpeakerCursor(0);
+        setPickingSpeaker(true);
+      } else {
+        setDraft((d) => ({ ...d, voice: cfgVoice }));
+        closeVoicePicker();
+      }
+    } catch (e: unknown) {
+      // Отмена — не ошибка: список остаётся открытым, запись снова «○».
+      setInstallProgress(null);
+      setInstalling(null);
+      setVoiceError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (installAbortRef.current === ctl) installAbortRef.current = null;
+    }
+  }
+
   function activateRow(row: Row): void {
     switch (row.kind) {
       case 'engine':
@@ -358,15 +471,14 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
       case 'follow':
         setDraft((d) => ({ ...d, follow: !d.follow }));
         return;
-      case 'download':
-        // Скачивание голосов из UI есть только у piper (индекс HuggingFace).
-        // Для остальных движков показываем список движков, а не пустой пикер.
-        if (draftRef.current.engine !== 'piper') {
-          setPickingEngine(true);
-          return;
-        }
-        setPickingVoice(true);
+      case 'download': {
+        // Каталог есть только у движков с онлайн-голосами (piper, vosk);
+        // у sherpa/espeak строка ведёт в список движков, а не в пустой пикер.
+        const backend = ttsManager?.resolveBackend(draftRef.current.engine);
+        if (backend?.voiceCatalog) setPickingVoice(true);
+        else setPickingEngine(true);
         return;
+      }
       case 'apply':
         cbRef.current.onApply(draftRef.current);
         return;
@@ -378,37 +490,15 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
     }
   }
 
-  async function downloadVoice(v: PiperVoice): Promise<void> {
-    setDownloading(v.id);
-    setDownloadPct(0);
-    try {
-      await voiceMgr.downloadVoice(v.id, (done, total) => {
-        setDownloadPct(total ? Math.round((done / total) * 100) : 0);
-      });
-      // Метка installed уезжает в кеш voiceIndex только после refresh;
-      // обновляем локальный список, чтобы галочка появилась сразу.
-      setVoices(
-        (prev) => prev?.map((x) => (x.id === v.id ? { ...x, installed: true } : x)) ?? prev,
-      );
-      setDraft((d) => ({ ...d, voice: piperVoiceName(v) }));
-      setPickingVoice(false);
-      setVoiceFilter('');
-    } catch (e: unknown) {
-      setVoiceError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDownloading(null);
-      setDownloadPct(0);
-    }
-  }
-
   // --- рендер ---
 
   if (pickingEngine) {
     const items = engines.map((e) => {
       const problem = engineAvail[e.id];
-      const hint = problem === undefined || problem === null ? null : installHintFor(e.id);
-      // Только первое окно — пока модуль открывается, для остальных
-      // строк мешает явный параметр ошибки, а не список повторенных подсказовок.
+      const hint =
+        problem === undefined || problem === null
+          ? null
+          : (ttsManager?.resolveBackend(e.id)?.installHint?.() ?? null);
       const detail =
         problem === undefined
           ? 'checking…'
@@ -417,14 +507,15 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
             : (hint?.install ?? hint?.package ?? 'not installed');
       return {
         id: e.id,
-        label: `${e.id}${problem === null ? ' ✓' : ''}`,
+        label: `${e.id} — ${e.label}${problem === null ? ' ✓' : ''}`,
         detail,
         accent: e.id === draft.engine,
       };
     });
     const current = engines[engineCursor];
     const problem = current ? engineAvail[current.id] : undefined;
-    const hint = current && problem ? installHintFor(current.id) : null;
+    const hint =
+      current && problem ? (ttsManager?.resolveBackend(current.id)?.installHint?.() ?? null) : null;
     return (
       <ListModal
         theme={theme}
@@ -443,6 +534,26 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
     );
   }
 
+  if (pickingSpeaker && speakerEntry) {
+    const count = Math.max(1, Math.min(20, speakerEntry.speakers ?? 1));
+    const items = Array.from({ length: count }, (_, i) => ({
+      id: `${speakerEntry.id}#${i}`,
+      label: `speaker ${i}`,
+      detail: draft.voice === `${speakerEntry.id}#${i}` ? 'current' : '',
+      accent: i === speakerCursor,
+    }));
+    return (
+      <ListModal
+        theme={theme}
+        title={`TTS · ${speakerEntry.label} · speaker`}
+        items={items}
+        cursor={speakerCursor}
+        height={Math.min(16, Math.max(items.length, 6))}
+        footer="enter select · j/k move · esc back"
+      />
+    );
+  }
+
   if (pickingVoice) {
     const items =
       voices === null
@@ -451,25 +562,28 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
           ? [{ id: 'empty', label: voiceFilter ? 'No matches' : 'No voices available' }]
           : filteredVoices.map((v) => ({
               id: v.id,
-              label: `${v.installed ? '✓' : '○'} ${v.id}`,
-              detail: v.installed
-                ? v.languageName
-                : `${v.languageName} · ${formatBytes(v.size ?? 0)}`,
-              accent: v.id === draft.voice,
+              label: `${isInstalled(v) ? '✓' : '○'} ${v.label}`,
+              detail: voiceDetail(v),
+              accent: voiceMatches(v, draft.voice),
             }));
+    const voiceBackend = ttsManager?.resolveBackend(activeEngine);
     return (
       <ListModal
         theme={theme}
-        title={`Piper voices ${voiceFilter ? `· filter: ${voiceFilter}` : ''}`}
+        title={`${voiceBackend?.label ?? activeEngine} voices ${
+          voiceFilter ? `· filter: ${voiceFilter}` : ''
+        }`}
         items={items}
         cursor={voiceCursor}
         height={Math.min(16, Math.max(items.length, 6))}
         footer={
-          downloading
-            ? `⬇ ${downloading} — ${downloadPct}% … esc back`
+          installing
+            ? `${progressText(installing, installProgress)} … esc cancel`
             : voiceError
               ? `error: ${voiceError}`
-              : 'enter select/download · j/k move · esc back'
+              : voiceWarning
+                ? `${voiceWarning} · enter select · esc back`
+                : 'enter select/download · j/k move · esc back'
         }
       />
     );
@@ -490,41 +604,6 @@ export function TtsConfigModal(props: TtsConfigModalProps): React.JSX.Element {
       footer="enter change · h/l adjust rate·pitch · esc cancel"
     />
   );
-}
-
-/**
- * Подсказка по установке для выбранного движка: можно возвать дефолт
- * звука движка или первый локально найденный модель (напр. више каталог
- * моделей). Голос предыдуществует папка `piper` — она единственный
- * в конфиге для всех движков и не валиден для отдельных серий.
- */
-function defaultVoiceFor(
-  engineId: string,
-  engines: Record<string, { model: string }> | undefined,
-): string {
-  const fromConfig = engines?.[engineId]?.model;
-  if (fromConfig) return fromConfig;
-  if (engineId === 'piper') return 'ru_RU-irina-medium';
-  // У espeak голос — это код языка, а не имя голоса piper'а.
-  if (engineId === 'espeak') return 'ru';
-  return '';
-}
-
-/** Подсказка по установке для недоступного движка. */
-function installHintFor(engineId: string): TtsInstallHint | null {
-  switch (engineId) {
-    case 'piper':
-      return { install: 'yay -S piper-tts', notes: 'or: pipx install piper-tts' };
-    case 'sherpa':
-      return {
-        install: 'yay -S sherpa-onnx',
-        notes: 'then unpack a model and set [tts.engines.sherpa].model',
-      };
-    case 'espeak':
-      return { install: 'sudo pacman -S espeak-ng', notes: 'apt install espeak-ng' };
-    default:
-      return null;
-  }
 }
 
 function clamp(v: number, min: number, max: number): number {

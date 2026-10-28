@@ -213,6 +213,9 @@ export function App(props: AppProps): React.JSX.Element {
   useEffect(
     () => () => {
       imageLayer.stop();
+      // Долгоживущие дочерние процессы TTS (Vosk worker) тоже держат event
+      // loop; без dispose приложение не завершится после Ink exit().
+      ttsManager.dispose();
       try {
         // TTY writes are synchronous; a queued write would be dropped when
         // the event loop drains after Ink's exit() (which never calls

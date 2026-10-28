@@ -18,6 +18,7 @@ export {
   PiperBackend,
   EspeakBackend,
   SherpaBackend,
+  VoskBackend,
   commandAvailable,
 } from './tts/index.js';
 export type {
@@ -25,6 +26,8 @@ export type {
   AudioPlayer,
   WavSource,
   TtsVoiceEntry,
+  TtsVoiceInstallPhase,
+  TtsVoiceInstallProgress,
   TtsInstallHint,
   TtsEnginePaths,
   TtsChunk,

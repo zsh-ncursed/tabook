@@ -3,9 +3,11 @@
  * Использует нативный fetch + File System WriteStream — без тяжёлых библиотек.
  */
 
-import { createWriteStream, unlinkSync } from 'node:fs';
-import { mkdirSync } from 'node:fs';
+import { createWriteStream, mkdirSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 
 export interface DownloadOptions {
   /** Куда сохранить. */
@@ -39,13 +41,7 @@ export async function downloadFile(opts: DownloadOptions): Promise<DownloadResul
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  const combinedSignal = signal
-    ? (() => {
-        const s = signal;
-        s.addEventListener('abort', () => controller.abort());
-        return controller.signal;
-      })()
-    : controller.signal;
+  const combinedSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
 
   let totalBytes = expectedSize ?? 0;
   let doneBytes = 0;
@@ -66,34 +62,24 @@ export async function downloadFile(opts: DownloadOptions): Promise<DownloadResul
 
     if (!res.body) throw new Error('No response body');
 
-    const writeStream = createWriteStream(dest);
-    const reader = res.body.getReader();
-
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        doneBytes += value.length;
-        writeStream.write(value);
+    // pipeline (а не ручной цикл write/destroy) сам уничтожает поток при
+    // отмене и доводит 'error' до промиса: ручной destroy() ронял процесс
+    // с ERR_STREAM_DESTROYED, если запись уже была в полёте.
+    const counter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        doneBytes += chunk.length;
         onProgress?.(doneBytes, totalBytes || undefined);
-      }
-      writeStream.end();
-    } catch (writeErr) {
-      writeStream.destroy();
-      reader.cancel().catch(() => {});
-      throw writeErr;
-    }
-
-    // Дождаться finish
-    await new Promise<void>((resolve, reject) => {
-      writeStream.on('finish', resolve);
-      writeStream.on('error', reject);
+        callback(null, chunk);
+      },
     });
+    await pipeline(
+      Readable.fromWeb(res.body as WebReadableStream<Uint8Array>),
+      counter,
+      createWriteStream(dest),
+    );
 
-    clearTimeout(timeout);
     return { path: dest, size: doneBytes };
   } catch (err) {
-    clearTimeout(timeout);
     // Удалить partial file
     try {
       unlinkSync(dest);
@@ -104,6 +90,8 @@ export async function downloadFile(opts: DownloadOptions): Promise<DownloadResul
       throw new Error('Download cancelled');
     }
     throw err;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

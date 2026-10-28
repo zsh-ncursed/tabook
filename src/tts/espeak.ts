@@ -29,6 +29,11 @@ export class EspeakBackend implements TtsBackend {
     };
   }
 
+  /** У espeak голос — код языка. */
+  defaultVoice(): string {
+    return 'ru';
+  }
+
   async check(): Promise<string | null> {
     if (!commandAvailable('espeak-ng')) {
       return [

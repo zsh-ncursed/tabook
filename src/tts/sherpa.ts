@@ -12,6 +12,12 @@ import type {
 } from './backend.js';
 import type { TtsChunk, TtsVoiceOptions } from './types.js';
 import { commandAvailable, expandPath, modelSearchDirs } from './modelPaths.js';
+import { sanitizeForCli } from './cliText.js';
+import { summarizeEngineStderr } from './stderr.js';
+
+// Публичные имена сохранены для тестов/сторонних бэкендов; реализация общая.
+export { sanitizeForCli };
+export { summarizeEngineStderr as summarizeSherpaStderr };
 
 /**
  * Бэкенд sherpa-onnx (https://github.com/k2-fsa/sherpa-onnx).
@@ -124,6 +130,11 @@ export class SherpaBackend implements TtsBackend {
         'Then unpack a model into ~/.local/share/sherpa-onnx (e.g. vits-mms-rus) ' +
         'and set [tts.engines.sherpa].model = "vits-mms-rus"',
     };
+  }
+
+  /** Модель из конфига; пусто — модалка оставит выбор пользователю. */
+  defaultVoice(): string {
+    return this.model;
   }
 
   /** Голоса = распакованные каталоги моделей (model.onnx / *.onnx + tokens.txt). */
@@ -322,19 +333,6 @@ function findOnnxIn(dir: string): string | null {
   return null;
 }
 
-/**
- * Подготовить текст для позиционного аргумента CLI: вырезать управляющие
- * символы (NUL роняет C++-парсер) и не дать строке начаться с «-», иначе
- * sherpa посчитает её флагом и выведет usage вместо синтеза.
- */
-export function sanitizeForCli(text: string): string {
-  const clean = text
-    .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return clean.startsWith('-') ? `…${clean}` : clean;
-}
-
 function rand(): string {
   return Math.random().toString(36).slice(2);
 }
@@ -356,35 +354,10 @@ function runSherpa(bin: string, args: string[]): Promise<void> {
     });
     child.on('close', (code) => {
       if (code !== 0) {
-        rej(new Error(`sherpa-onnx failed (${code}): ${summarizeSherpaStderr(err)}`));
+        rej(new Error(`sherpa-onnx failed (${code}): ${summarizeEngineStderr(err)}`));
         return;
       }
       res();
     });
   });
-}
-
-/**
- * Сжать stderr до одной строки. sherpa печатает в stderr usage (десятки строк
- * с переносами) при любой ошибке конфигурации — в TUI это разорвёт экран,
- * поэтому оставляем только последнюю содержательную строку.
- */
-export function summarizeSherpaStderr(raw: string): string {
-  const lines = raw
-    .replace(/\x1b\[[0-9;]*m/g, '')
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0)
-    // sherpa печатает адрес исходника вместо сообщения
-    // ('file.cc:Func:38 ...'): путь неполезен, а сама причина нужна.
-    .map((l) => l.replace(/^\S+\.(?:cc|h):[A-Za-z_]*:?\d*\s*/, ''))
-    .filter((l) => l.length > 0)
-    // Убираем usage: в TUI такой вывод рыхал бы экран.
-    .filter((l) => !/^Usage:|^\s+--|^Please read/i.test(l));
-  // Конкретная причина важнее общего «Errors in config!», которое sherpa
-  // печатает последним при любой проблеме конфигурации.
-  const specific = lines.filter((l) => /does not exist|no such|not found|cannot|unable/i.test(l));
-  const generic = lines.filter((l) => /error|fail|invalid/i.test(l));
-  const line = specific[specific.length - 1] ?? generic[generic.length - 1] ?? lines[0] ?? '';
-  return line.slice(0, 200);
 }

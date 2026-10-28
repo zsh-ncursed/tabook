@@ -133,6 +133,16 @@ describe('PiperBackend config auto-repair', () => {
   });
 });
 
+describe('PiperBackend defaults', () => {
+  it('uses the configured model, otherwise the Russian medium voice', async () => {
+    const { PiperBackend } = await import('./piper.js');
+    const configured = new PiperBackend();
+    configured.configure({ command: '', modelsDir: '', model: 'en_US-amy-low' });
+    expect(configured.defaultVoice()).toBe('en_US-amy-low');
+    expect(new PiperBackend().defaultVoice()).toBe('ru_RU-irina-medium');
+  });
+});
+
 describe('PiperBackend.check', () => {
   // piper не входит в depends пакета — check() обязан объяснить, что ставить.
   it('tells the user to install piper-tts from AUR when no binary is found', async () => {

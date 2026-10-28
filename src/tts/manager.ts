@@ -221,12 +221,23 @@ export class TtsManager {
     this.setStatus({ state: 'idle' });
   }
 
-  /** Убить плеер/процессы и снять подписки (при выходе из ридера). */
+  /** Убить плеер/процессы и снять подписки (при выходе из приложения). */
   dispose(): void {
+    this.gen++;
     clearTimeout(this.errorTimer);
     this.errorTimer = undefined;
     this.player.stop();
     this.player.dispose();
+    // Бэкенды держат долгоживущие дочерние процессы (Vosk worker); без их
+    // остановки event loop не опустеет после Ink exit(), и приложение зависнет.
+    for (const backend of this.backends.values()) {
+      try {
+        backend.dispose();
+      } catch {
+        // падение dispose одного движка не должно мешать остальным
+      }
+    }
+    this.backends.clear();
     this.statusListeners.clear();
     this.advanceListeners.clear();
     this.chunks = [];

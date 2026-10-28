@@ -221,18 +221,18 @@ Text-to-speech (reading books aloud). Off by default — no processes are spawne
 unless you start playback. See [docs/TTS.md](TTS.md) for the full design and
 how to add new voices/engines.
 
-| Key                    | Default                | Meaning                                                                                  |
-| ---------------------- | ---------------------- | ---------------------------------------------------------------------------------------- |
-| `mode`                 | `"disabled"`           | `"active"` to enable; `"disabled"` does nothing                                          |
-| `engine`               | `"piper"`              | Backend id: `piper` (neural), `sherpa` (ONNX, no Python), `espeak` (system fallback)     |
-| `voice`                | `"ru_RU-irina-medium"` | Voice inside the engine (piper: a `.onnx` voice name or path)                            |
-| `rate`                 | `1.0`                  | Playback rate, clamped to `[0.25, 4]`                                                    |
-| `unit`                 | `"paragraph"`          | Chunk boundary: `paragraph` \| `page` \| `chapter`                                       |
-| `max_chunk_chars`      | `2000`                 | Max chunk length; long paragraphs split at sentence boundaries (clamped `[200, 20000]`)  |
-| `follow`               | `true`                 | Follow the voice while reading (auto-scroll) — see TTS.md                                |
-| `command`              | `""`                   | Full path to the engine binary when auto-detection can't find it                         |
-| `inter_chunk_pause_ms` | `0`                    | Pause (ms) between chunks; `0` enables seamless prefetch (audio continues without delay) |
-| `engines`              | `{}`                   | Per-engine overrides, see `[tts.engines.<id>]` below                                     |
+| Key                    | Default                | Meaning                                                                                                      |
+| ---------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `mode`                 | `"disabled"`           | `"active"` to enable; `"disabled"` does nothing                                                              |
+| `engine`               | `"piper"`              | Backend id: `piper` (neural), `sherpa` (ONNX, no Python), `vosk` (ONNX, Russian), `espeak` (system fallback) |
+| `voice`                | `"ru_RU-irina-medium"` | Voice inside the engine (piper: a `.onnx` voice; vosk: `model#speaker`)                                      |
+| `rate`                 | `1.0`                  | Playback rate, clamped to `[0.25, 4]`                                                                        |
+| `unit`                 | `"paragraph"`          | Chunk boundary: `paragraph` \| `page` \| `chapter`                                                           |
+| `max_chunk_chars`      | `2000`                 | Max chunk length; long paragraphs split at sentence boundaries (clamped `[200, 20000]`)                      |
+| `follow`               | `true`                 | Follow the voice while reading (auto-scroll) — see TTS.md                                                    |
+| `command`              | `""`                   | Full path to the engine binary when auto-detection can't find it                                             |
+| `inter_chunk_pause_ms` | `0`                    | Pause (ms) between chunks; `0` enables seamless prefetch (audio continues without delay)                     |
+| `engines`              | `{}`                   | Per-engine overrides, see `[tts.engines.<id>]` below                                                         |
 
 Quick start (local, offline, no quality compromises):
 
@@ -254,7 +254,21 @@ are expanded.
 command    = "~/.local/sherpa/bin/sherpa-onnx-offline-tts"
 models_dir = "~/.local/share/sherpa-onnx"
 model      = "vits-mms-rus"
+
+[tts.engines.vosk]
+command    = ""                              # empty = find vosk-tts automatically
+models_dir = "~/.local/share/vosk"
+model      = "vosk-model-tts-ru-0.4-irina"
 ```
+
+Vosk is installed with `pipx install vosk-tts` (it is not in AUR). Models come
+from alphacephei.com and are downloaded from **:tts config → Voice**; the
+`voice` value is `model` or `model#speaker` for multi-speaker models, e.g.
+`vosk-model-tts-ru-0.9-multi#2`. tabook runs vosk-tts through a persistent
+Python worker and finds the interpreter from the `vosk-tts` shebang (pipx venv);
+set `VOSK_TTS_PYTHON` if the engine lives in a non-standard environment. The
+0.1 models are not offered: their dictionaries are incompatible with
+`vosk-tts` 0.3.61 (see TTS.md §4.3).
 
 | Key          | Meaning                                                           |
 | ------------ | ----------------------------------------------------------------- |
@@ -268,11 +282,12 @@ engine ids are preserved, so you can describe an engine before tabook ships it.
 Then open a book and press `v` (or `:tts`). Playback pauses/resumes with `v`,
 stops with `V`; `:tts continue` resumes from the last saved reading position.
 
-**Prerequisites.** Install the engine and a voice yourself — tabook never
-downloads anything. The engine is an optional dependency of the package
-(AUR: `yay -S piper-tts`); without it `:tts` prints these install hints
-instead of failing silently, and `espeak-ng` remains available as a
-system fallback.
+**Prerequisites.** Install the engine yourself — tabook never installs engines
+on its own. Voices/models are downloaded only by an explicit user action in
+`:tts config` (or manually); nothing is fetched in the background. The engine is
+an optional dependency of the package (AUR: `yay -S piper-tts`); without it
+`:tts` prints these install hints instead of failing silently, and `espeak-ng`
+remains available as a system fallback.
 
 ```sh
 pipx install piper-tts                    # engine (provides the `piper` binary)

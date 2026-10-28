@@ -50,9 +50,9 @@ export interface AudioPlayer {
 }
 
 /**
- * Один голос, найденный бэкендом на диске (для списка в модалке настроек).
- * Бэкенды без `listVoices()` (espeak) просто не показывают голоса — там голос
- * задаётся кодом языка.
+ * Один голос/модель, найденный на диске или в онлайн-каталоге (для списка в
+ * модалке настроек). Бэкенды без `listVoices()`/`voiceCatalog()` (espeak)
+ * просто не показывают голоса — там голос задаётся кодом языка.
  */
 export interface TtsVoiceEntry {
   /** Идентификатор для `TtsVoiceOptions.voice` (напр. путь к .onnx или имя). */
@@ -61,6 +61,33 @@ export interface TtsVoiceEntry {
   label: string;
   /** Язык, если бэкенд его знает (для группировки/подсказки). */
   language?: string;
+  /**
+   * Установлен ли голос/модель. Для `listVoices()` по умолчанию true
+   * (голос найден на диске), для каталога вычисляется бэкендом.
+   */
+  installed?: boolean;
+  /** Размер архива/файла в байтах (для каталога). */
+  size?: number;
+  /** Число спикеров; > 1 включает пикер спикера. */
+  speakers?: number;
+  /**
+   * Значение для `tts.voice`, если пикер спикера не нужен.
+   * По умолчанию равен id (piper: basename .onnx без расширения).
+   */
+  configVoice?: string;
+}
+
+/** Этап установки голоса — для прогресса в футере пикера. */
+export type TtsVoiceInstallPhase = 'download' | 'verify' | 'extract' | 'validate';
+
+/** Прогресс установки голоса/модели. */
+export interface TtsVoiceInstallProgress {
+  phase: TtsVoiceInstallPhase;
+  /** Для phase='download' — байты. */
+  done?: number;
+  total?: number;
+  /** Готовая строка для футера (необязательно). */
+  message?: string;
 }
 
 /**
@@ -118,6 +145,32 @@ export interface TtsBackend {
    * модалка показывала локальные голоса, а не только скачивание из сети.
    */
   listVoices?(): Promise<TtsVoiceEntry[]>;
+
+  /**
+   * Онлайн-каталог голосов/моделей (может ходить в сеть). Если метод есть,
+   * модалка показывает его вместо `listVoices()` и разрешает установку через
+   * `installVoice()`. `check()` и `listVoices()` при этом сеть не трогают.
+   */
+  voiceCatalog?(signal?: AbortSignal): Promise<TtsVoiceEntry[]>;
+
+  /**
+   * Предупреждение последнего `voiceCatalog()` (например, каталог не
+   * ответил и отдан просроченный кеш). Модалка показывает его в футере.
+   */
+  readonly catalogWarning?: string | null;
+
+  /**
+   * Установить голос/модель по id из каталога. Возвращает значение для
+   * `tts.voice` (напр. basename .onnx или `model#0`).
+   */
+  installVoice?(
+    voiceId: string,
+    onProgress: (p: TtsVoiceInstallProgress) => void,
+    signal?: AbortSignal,
+  ): Promise<string>;
+
+  /** Голос по умолчанию для нового движка (синхронно, без I/O). */
+  defaultVoice?(): string;
 
   /** Подсказка «как поставить», если движок не найден (показывается в UI). */
   installHint?(): TtsInstallHint | null;
