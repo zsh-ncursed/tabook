@@ -17,12 +17,16 @@ export {
   buildChunks,
   PiperBackend,
   EspeakBackend,
+  SherpaBackend,
   commandAvailable,
 } from './tts/index.js';
 export type {
   TtsBackend,
   AudioPlayer,
   WavSource,
+  TtsVoiceEntry,
+  TtsInstallHint,
+  TtsEnginePaths,
   TtsChunk,
   TtsStatus,
   TtsCapabilities,

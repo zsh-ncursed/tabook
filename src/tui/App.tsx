@@ -79,6 +79,7 @@ export function App(props: AppProps): React.JSX.Element {
     createDefaultTtsManager({
       command: liveConfig.tts.command,
       interChunkPauseMs: liveConfig.tts.interChunkPauseMs,
+      engines: liveConfig.tts.engines ?? {},
     }),
   );
 
@@ -133,6 +134,12 @@ export function App(props: AppProps): React.JSX.Element {
       },
       check() {
         return ttsManager.check(liveConfig.tts.engine);
+      },
+      // Список движков для `:tts engines` и модалки — тот же реестр менеджера,
+      // чтобы добавленный бекенд появился сам без правки UI.
+      engines: ttsManager.engines,
+      checkEngine(id: string) {
+        return ttsManager.check(id);
       },
     }),
     [session, liveConfig.tts, ttsManager],
@@ -627,6 +634,7 @@ export function App(props: AppProps): React.JSX.Element {
         themePickerOpen={themePickerOpen}
         promptOpenPath={promptOpenPath}
         ttsConfigOpen={ttsConfigOpen}
+        ttsManager={ttsManager}
         paletteBooks={paletteBooks}
         onRunCommand={runCommand}
         onOpenPaletteBook={(record) => {

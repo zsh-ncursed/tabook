@@ -18,6 +18,8 @@ optdepends=(
   'zenity: graphical file picker for the `o` open-file dialog'
   'kdialog: graphical file picker (KDE alternative to zenity)'
   'piper-tts: local neural TTS engine for :tts command (AUR: yay -S piper-tts)'
+  'sherpa-onnx: ONNX TTS engine for :tts — no Python, covers Russian VITS/MMS models'
+  'espeak-ng: compact system TTS fallback for :tts'
 )
 # Prebuilt per-arch release tarballs (single-file JS bundle + Rust native
 # module, which also owns the SQLite DB via rusqlite), produced by

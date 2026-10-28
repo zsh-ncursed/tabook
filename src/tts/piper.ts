@@ -1,12 +1,24 @@
 import { spawn } from 'node:child_process';
 import { tmpdir, homedir } from 'node:os';
-import { existsSync, readdirSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
-import type { TtsBackend, WavSource } from './backend.js';
+import { existsSync } from 'node:fs';
+import { basename, dirname, join, relative, resolve } from 'node:path';
+import type {
+  TtsBackend,
+  TtsEnginePaths,
+  TtsInstallHint,
+  TtsVoiceEntry,
+  WavSource,
+} from './backend.js';
 import type { TtsChunk, TtsVoiceOptions } from './types.js';
-import { commandAvailable } from './bincheck.js';
 import { downloadFile } from './download.js';
 import { HF_RESOLVE } from './hf.js';
+import {
+  commandAvailable,
+  expandPath,
+  findModelFile,
+  listModelFiles,
+  modelSearchDirs,
+} from './modelPaths.js';
 
 /**
  * Бэкенд Piper (https://github.com/rhasspy/piper).
@@ -28,27 +40,60 @@ export class PiperBackend implements TtsBackend {
   } as const;
 
   private bin: string;
+  /** Явный голос из конфига (пусто = дефолт бэкенда). */
+  private model = '';
+
   constructor(command = '') {
     this.bin = command;
   }
 
+  /** Пути из `[tts.engines.piper]` — бинарник и каталог с .onnx. */
+  configure(paths: TtsEnginePaths): void {
+    if (paths.command) this.bin = paths.command;
+    currentModelsDir = paths.modelsDir;
+    if (paths.model) this.model = paths.model;
+  }
+
+  installHint(): TtsInstallHint {
+    return {
+      package: 'piper-tts',
+      install: 'yay -S piper-tts   (or: pipx install piper-tts)',
+      notes: 'Then pick a voice: :tts config → Voice (e.g. ru_RU-irina-medium)',
+    };
+  }
+
+  /** Локальные голоса: .onnx-файлы из каталогов моделей. */
+  async listVoices(): Promise<TtsVoiceEntry[]> {
+    // modelDirs(), а не пустой список: он уже учитывает models_dir из конфига,
+    // PIPER_MODELS_DIR и стандартные каталоги (~/.local/share/piper и др.).
+    return listModelFiles(modelDirs(), {
+      depth: 4,
+      filter: (f) => f.endsWith('.onnx'),
+    }).map((f) => ({
+      // В конфиг идёт basename без .onnx: именно это имя piper ищет в каталогах.
+      id: basename(f, '.onnx'),
+      label: basename(f),
+    }));
+  }
+
   async check(): Promise<string | null> {
-    if (!this.bin && !commandAvailable('piper') && !commandAvailable('piper-speak')) {
+    // resolvePiperBin возвращает пустую строку, если движок не найден.
+    if (!resolvePiperBin(this.bin)) {
+      const hint = this.installHint();
       return [
         'piper not found — TTS engine not installed.',
         '',
         'Install piper-tts:',
-        '  AUR:  yay -S piper-tts',
-        '  pipx: pipx install piper-tts',
+        `  ${hint.install ?? ''}`,
         '',
-        'Then download a voice: :tts config → Voice → pick one (e.g. ru_RU-irina-medium)',
+        `Then download a voice: ${hint.notes ?? ':tts config → Voice'}`,
       ].join('\n');
     }
     return null;
   }
 
   async synthesize(chunk: TtsChunk, opts: TtsVoiceOptions): Promise<WavSource> {
-    const voice = opts.voice ?? 'ru_RU-irina-medium';
+    const voice = opts.voice ?? this.model ?? 'ru_RU-irina-medium';
     const out = join(
       tmpdir(),
       `tabook-piper-${process.pid}-${Math.random().toString(36).slice(2)}.wav`,
@@ -56,7 +101,8 @@ export class PiperBackend implements TtsBackend {
     const rate =
       opts.rate && opts.rate !== 1 ? [`--length_scale=${(1 / opts.rate).toFixed(2)}`] : [];
     const model = await ensureOnnx(voice);
-    const bin = resolvePiperBin(this.bin);
+    // Если движок не найден — spawn даст понятный ENOENT.
+    const bin = resolvePiperBin(this.bin) || 'piper';
     await pipeTextToWav(bin, model, rate, sanitizeTtsText(chunk.text), out);
     return { kind: 'file', path: out };
   }
@@ -106,8 +152,10 @@ export function sanitizeTtsText(text: string): string {
 
 /** Какой бинарник запускать: явный [tts] command, иначе piper/piper-speak из PATH. */
 function resolvePiperBin(command: string): string {
-  if (command) return command;
-  if (process.env.TABOOK_TTS_COMMAND) return process.env.TABOOK_TTS_COMMAND;
+  const explicit = expandPath(command);
+  if (explicit && existsSync(explicit)) return explicit;
+  const fromEnv = expandPath(process.env.TABOOK_TTS_COMMAND ?? '');
+  if (fromEnv && existsSync(fromEnv)) return fromEnv;
   if (commandAvailable('piper')) return 'piper';
   if (commandAvailable('piper-speak')) return 'piper-speak';
   // Автообнаружение в типичных местах установки piper-tts (pipx/pip venv),
@@ -115,9 +163,9 @@ function resolvePiperBin(command: string): string {
   for (const candidate of autoPiperCandidates()) {
     if (existsSync(candidate)) return candidate;
   }
-  // Ничего нет — отдаём 'piper'; spawn выведет понятную ошибку ENOENT,
-  // которую менеджер покажет пользователю.
-  return 'piper';
+  // Ничего не найдено: возвращаем пустую строку, чтобы вызываемое check()
+  // сообщало 'piper not found', а не 'установлён'.
+  return '';
 }
 
 /**
@@ -209,7 +257,7 @@ function piperVoiceRoot(): string {
 /** Каталоги, где piper-голоса обычно лежат (плюс piper --data-dir по умолчанию). */
 function modelDirs(): string[] {
   const home = process.env.HOME ?? '~';
-  const dirs = [
+  const dirs: string[] = [
     join(home, '.local/share/piper'),
     join(home, '.local/share/piper/voices'),
     join(home, '.config/piper'),
@@ -217,39 +265,32 @@ function modelDirs(): string[] {
     join(home, 'tts-models'),
     join(home, '.local/share/piper/models'),
   ];
-  if (process.env.PIPER_MODELS_DIR) dirs.unshift(process.env.PIPER_MODELS_DIR);
-  // Модели рядом с найденным бинарем или корнем пакета (dev/тестовые окружения).
+  // Модели рядом с найденным бинарем (dev/тестовые окружения).
   const bin = resolvePiperBin('');
   if (bin.includes('/')) {
     const binDir = dirname(resolve(bin));
     dirs.unshift(join(binDir, '..', 'models'), join(binDir, '..', '.tts-models'));
   }
-  const start = process.argv[1] ? resolve(process.argv[1]) : resolve(process.cwd());
-  let dir: string | null = dirname(start);
-  for (let i = 0; i < 6 && dir; i++) {
-    dirs.unshift(join(dir, '.tts-models'), join(dir, 'tts-models'));
-    const parent = dirname(dir);
-    dir = parent === dir ? null : parent;
-  }
-  return dirs.filter((d) => existsSync(d));
+  // modelSearchDirs() добавляет models_dir из конфига, PIPER_MODELS_DIR и
+  // стандартные каталоги (включая подъём вверх по дереву
+  // проекта от запуска tabook) и отсеивает несуществующие.
+  return modelSearchDirs({
+    modelsDir: currentModelsDir,
+    envVars: ['PIPER_MODELS_DIR'],
+    standardDirs: dirs,
+  });
 }
 
+/**
+ * Каталог голосов из конфига (`[tts.engines.piper].models_dir`).
+ * Хранится на уровне модуля: `ensureOnnx()`/`modelDirs()` — функции без
+ * доступа к экземпляру бэкенда, а менять путь нужно из `configure()`.
+ */
+let currentModelsDir = '';
+
 /** Рекурсивно найти голос по имени в каталогах моделей (глубина 4). */
-function findModel(base: string, dir?: string, depth = 4): string | null {
-  const dirs = dir === undefined ? modelDirs() : [dir];
-  for (const d of dirs) {
-    const direct = join(d, base);
-    if (existsSync(direct)) return direct;
-    if (depth > 0) {
-      for (const sub of readdirSync(d, { withFileTypes: true })) {
-        if (sub.isDirectory()) {
-          const hit = findModel(base, join(d, sub.name), depth - 1);
-          if (hit) return hit;
-        }
-      }
-    }
-  }
-  return null;
+function findModel(base: string): string | null {
+  return findModelFile(base, modelDirs(), { depth: 4 });
 }
 
 /**

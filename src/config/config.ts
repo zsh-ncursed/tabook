@@ -188,10 +188,33 @@ export function parseTomlConfig(text: string, base: Config, warnings: string[]):
     if (typeof t.command === 'string' && t.command.trim() !== '') tts.command = t.command.trim();
     if (typeof t.inter_chunk_pause_ms === 'number' && t.inter_chunk_pause_ms >= 0)
       tts.interChunkPauseMs = Math.floor(t.inter_chunk_pause_ms);
+    // [tts.engines.<id>] — пути к конкретным движкам (бинарник, каталог
+    // моделей, модель по умолчанию). Неизвестные движки не отбрасываем:
+    // пользователь может описать движок раньше, чем мы его добавим.
+    if (t.engines && typeof t.engines === 'object') {
+      for (const [id, raw] of Object.entries(t.engines as Record<string, unknown>)) {
+        if (!raw || typeof raw !== 'object') {
+          warnings.push(`Ignoring tts.engines.${id}: expected a table of settings`);
+          continue;
+        }
+        const e = raw as Record<string, unknown>;
+        const prev = tts.engines[id] ?? { command: '', modelsDir: '', model: '' };
+        tts.engines[id] = {
+          command: str(e.command) ?? prev.command,
+          modelsDir: str(e.models_dir) ?? str(e.modelsDir) ?? prev.modelsDir,
+          model: str(e.model) ?? prev.model,
+        };
+      }
+    }
     config.tts = tts;
   }
 
   return config;
+}
+
+/** Непустая строка из TOML-значения (иначе undefined). */
+function str(v: unknown): string | undefined {
+  return typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined;
 }
 
 function clampTtsNumber(
@@ -267,14 +290,10 @@ export function serializeConfig(config: Config): string {
   for (const [key, action] of Object.entries(config.keybindings)) {
     keybindings[key] = action;
   }
-  const out: {
-    [key: string]:
-      | boolean
-      | number
-      | string
-      | Array<string>
-      | { [key: string]: boolean | number | string | Array<string> };
-  } = {
+  // Вложенные секции нужны для [tts.engines.<id>] (пути к движкам), поэтому
+  // тип значения рекурсивный: smol-toml сам разложит их в под-секции.
+  type TomlValue = boolean | number | string | Array<string> | { [key: string]: TomlValue };
+  const out: { [key: string]: TomlValue } = {
     theme: config.theme,
     db_path: config.dbPath,
     auto_theme: config.autoTheme,
@@ -309,6 +328,20 @@ export function serializeConfig(config: Config): string {
       follow: config.tts.follow,
       command: config.tts.command,
       inter_chunk_pause_ms: config.tts.interChunkPauseMs,
+      // Пустые движки не сериализуем: лишние пустые секции в config.toml
+      // только шумят. Непустые пишем как [tts.engines.<id>] с models_dir.
+      engines: Object.fromEntries(
+        Object.entries(config.tts.engines ?? {})
+          .filter(([, v]) => v && (v.command || v.modelsDir || v.model))
+          .map(([id, v]) => [
+            id,
+            {
+              ...(v.command ? { command: v.command } : {}),
+              ...(v.modelsDir ? { models_dir: v.modelsDir } : {}),
+              ...(v.model ? { model: v.model } : {}),
+            },
+          ]),
+      ),
     },
   };
   return stringifyTomlLib(out);

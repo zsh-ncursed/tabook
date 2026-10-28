@@ -11,6 +11,7 @@ import { OpenPathPrompt } from './OpenPathPrompt.js';
 import { CommandPalette } from './CommandPalette.js';
 import { TtsConfigModal } from './TtsConfigModal.js';
 import type { BookRecord } from '../../db/db.js';
+import type { TtsManager } from '../../tts/manager.js';
 
 export interface AppOverlaysProps {
   theme: Theme;
@@ -27,6 +28,11 @@ export interface AppOverlaysProps {
   paletteBooks?: BookRecord[];
   /** Открыта ли модалка настроек TTS. */
   ttsConfigOpen: boolean;
+  /**
+   * Менеджер TTS — источник списка движков для модалки. Модалка
+   * берёт список движков из реестра, а не из списка в коде.
+   */
+  ttsManager?: TtsManager;
   onRunCommand: (text: string) => void;
   /** Open a book selected in the command palette. */
   onOpenPaletteBook?: (record: BookRecord) => void;
@@ -61,6 +67,7 @@ export function AppOverlays(props: AppOverlaysProps): React.JSX.Element {
     themePickerOpen,
     promptOpenPath,
     ttsConfigOpen,
+    ttsManager,
     paletteBooks,
     onRunCommand,
     onOpenPaletteBook,
@@ -122,6 +129,7 @@ export function AppOverlays(props: AppOverlaysProps): React.JSX.Element {
           config={config}
           tts={config.tts}
           isActive={ttsConfigOpen}
+          ttsManager={ttsManager}
           onApply={onApplyTts}
           onClose={onCancelTts}
         />

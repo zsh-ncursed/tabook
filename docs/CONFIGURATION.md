@@ -224,7 +224,7 @@ how to add new voices/engines.
 | Key                    | Default                | Meaning                                                                                  |
 | ---------------------- | ---------------------- | ---------------------------------------------------------------------------------------- |
 | `mode`                 | `"disabled"`           | `"active"` to enable; `"disabled"` does nothing                                          |
-| `engine`               | `"piper"`              | Backend id: `piper` (neural, offline), `espeak` (system fallback)                        |
+| `engine`               | `"piper"`              | Backend id: `piper` (neural), `sherpa` (ONNX, no Python), `espeak` (system fallback)     |
 | `voice`                | `"ru_RU-irina-medium"` | Voice inside the engine (piper: a `.onnx` voice name or path)                            |
 | `rate`                 | `1.0`                  | Playback rate, clamped to `[0.25, 4]`                                                    |
 | `unit`                 | `"paragraph"`          | Chunk boundary: `paragraph` \| `page` \| `chapter`                                       |
@@ -232,6 +232,7 @@ how to add new voices/engines.
 | `follow`               | `true`                 | Follow the voice while reading (auto-scroll) — see TTS.md                                |
 | `command`              | `""`                   | Full path to the engine binary when auto-detection can't find it                         |
 | `inter_chunk_pause_ms` | `0`                    | Pause (ms) between chunks; `0` enables seamless prefetch (audio continues without delay) |
+| `engines`              | `{}`                   | Per-engine overrides, see `[tts.engines.<id>]` below                                     |
 
 Quick start (local, offline, no quality compromises):
 
@@ -241,6 +242,28 @@ mode = "active"
 engine = "piper"
 voice = "ru_RU-irina-medium"
 ```
+
+#### `[tts.engines.<id>]`
+
+Point tabook at an engine that isn't in `PATH` (a venv, an unpacked archive, an
+AUR package with a non-standard prefix) and at its voice models. `~` and `$VAR`
+are expanded.
+
+```toml
+[tts.engines.sherpa]
+command    = "~/.local/sherpa/bin/sherpa-onnx-offline-tts"
+models_dir = "~/.local/share/sherpa-onnx"
+model      = "vits-mms-rus"
+```
+
+| Key          | Meaning                                                           |
+| ------------ | ----------------------------------------------------------------- |
+| `command`    | Full path to the engine binary (empty = auto-detect)              |
+| `models_dir` | Directory holding voice models (empty = the usual locations)      |
+| `model`      | Default voice/model for this engine (empty = the backend default) |
+
+Pick the engine in `:tts config` (**Engine** row) or set `engine` above. Unknown
+engine ids are preserved, so you can describe an engine before tabook ships it.
 
 Then open a book and press `v` (or `:tts`). Playback pauses/resumes with `v`,
 stops with `V`; `:tts continue` resumes from the last saved reading position.

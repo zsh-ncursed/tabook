@@ -46,6 +46,14 @@ export interface ReaderTtsController {
   toggleFollow(): boolean;
   /** Pre-flight проверка движка TTS. Возвращает текст проблемы или null. */
   check(): Promise<string | null>;
+  /**
+   * Зарегистрированные движки и проверка конкретного. Источник для
+   * `:tts engines` и модалки выбора — чтобы новый бекенд появился сам,
+   * без правки списка движков в UI.
+   */
+  engines?: { id: string; label: string }[];
+  /** Pre-flight проверка конкретного движка. */
+  checkEngine?(id: string): Promise<string | null>;
 }
 
 // Reading-mode action handling, extracted from the component so it can be

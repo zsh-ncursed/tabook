@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { TtsBackend, WavSource } from './backend.js';
+import type { TtsBackend, TtsInstallHint, WavSource } from './backend.js';
 import type { TtsChunk, TtsVoiceOptions } from './types.js';
 import { commandAvailable } from './bincheck.js';
 
@@ -19,6 +19,15 @@ export class EspeakBackend implements TtsBackend {
     rateControl: false,
     pitchControl: true,
   } as const;
+
+  /** Подсказка по установке: espeak-ng есть в репозиториях Arch. */
+  installHint(): TtsInstallHint {
+    return {
+      package: 'espeak-ng',
+      install: 'sudo pacman -S espeak-ng',
+      notes: 'Debian/Ubuntu: apt install espeak-ng',
+    };
+  }
 
   async check(): Promise<string | null> {
     if (!commandAvailable('espeak-ng')) {

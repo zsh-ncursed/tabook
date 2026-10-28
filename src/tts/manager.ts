@@ -147,7 +147,11 @@ export class TtsManager {
     if (!engine) {
       this.setStatus({
         state: 'error',
-        message: `TTS engine "${this.engine ?? 'auto'}" not registered. Run :tts config to pick one (piper or espeak)`,
+        // Список доступных берём у самого менеджера: когда добавляется
+        // новый бекенд, указание списка не растёт.
+        message: `TTS engine "${this.engine ?? 'auto'}" not registered. Available: ${
+          this.engines.map((e) => e.id).join(', ') || 'none'
+        }. Run :tts config to pick one.`,
       });
       return;
     }

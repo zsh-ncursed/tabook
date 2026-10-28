@@ -198,6 +198,20 @@ export interface Config {
   tts: TtsConfig;
 }
 
+/**
+ * Пути к конкретному движку TTS — секция `[tts.engines.<id>]`.
+ * Нужна, чтобы указать движок, установленный не в PATH (venv, распакованный
+ * архив, нестандартный префикс AUR-пакета).
+ */
+export interface TtsEngineConfig {
+  /** Полный путь к бинарнику движка (пусто = автопоиск). */
+  command: string;
+  /** Каталог с голосами/моделями (пусто = стандартные места). */
+  modelsDir: string;
+  /** Голос/модель по умолчанию для этого движка (пусто = дефолт бэкенда). */
+  model: string;
+}
+
 /** Конфигурация озвучки текста (TTS). */
 export interface TtsConfig {
   /** 'disabled' | 'active' — по умолчанию выключено (никаких процессов). */
@@ -220,6 +234,12 @@ export interface TtsConfig {
   command: string;
   /** Пауза (мс) между чанками, когда prefetch следующего не успел (0 = бесшовно). */
   interChunkPauseMs: number;
+  /**
+   * Пути к отдельным движкам: `[tts.engines.piper]`, `[tts.engines.sherpa]`.
+   * Перекрывают автопоиск для конкретного движка; `command` выше остаётся
+   * общим переопределением (используется, если для движка ничего не задано).
+   */
+  engines: Record<string, TtsEngineConfig>;
 }
 
 export function defaultConfig(): Config {
@@ -258,6 +278,7 @@ export function defaultConfig(): Config {
       follow: true,
       command: '',
       interChunkPauseMs: 0,
+      engines: {},
     },
   };
 }

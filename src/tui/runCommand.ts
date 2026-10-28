@@ -202,9 +202,22 @@ export function runCommand(text: string, ctx: CommandContext): void {
           }
         }
       } else if (sub === 'engines') {
-        notify(
-          'TTS engines: piper (local) · espeak (system fallback) — switch with :tts voice <engine>/<voice>',
-        );
+        // Список берёмся из реестра менеджера, а не захардковенная
+        // строка: добавить новый бекенд — и она сразу появится в модалке.
+        // runCommand синхронный (его вызывают менеджеры), поэтому проверка делается асинхронно.
+        const engines = tts?.engines ?? [];
+        if (engines.length === 0) {
+          notify('No TTS engines registered');
+          return;
+        }
+        const describe = async (id: string, label: string): Promise<string> => {
+          const problem = tts?.checkEngine ? await tts.checkEngine(id) : null;
+          return problem === null ? `${id} — ${label} (ready)` : `${id} — ${label}`;
+        };
+        void Promise.all(engines.map((e) => describe(e.id, e.label))).then((lines) => {
+          notify(`TTS engines: ${lines.join(' · ')}`);
+        });
+        return;
       } else if (sub === 'voice') {
         const spec = args[1];
         if (!spec) {

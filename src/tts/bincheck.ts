@@ -1,14 +1,9 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-
-/** Проверить, доступна ли команда в PATH (без запуска — только поиск файла). */
-export function commandAvailable(cmd: string): boolean {
-  const dirs = (process.env.PATH ?? '').split(':').filter(Boolean);
-  const exts = process.platform === 'win32' ? ['', '.exe', '.cmd'] : [''];
-  for (const dir of dirs) {
-    for (const ext of exts) {
-      if (existsSync(join(dir, cmd + ext))) return true;
-    }
-  }
-  return false;
-}
+/**
+ * Совместимость: `commandAvailable` живёт в `modelPaths.ts` рядом с остальными
+ * помощниками поиска движков. Этот модуль оставлен как реэкспорт, потому что
+ * он был публичной точкой входа (`src/index.ts` и сторонние бэкенды из пакета).
+ *
+ * Дублировать реализацию нельзя: piper/espeak/sherpa должны искать бинарники
+ * одинаково, иначе один движок «найдётся», а другой нет.
+ */
+export { commandAvailable } from './modelPaths.js';

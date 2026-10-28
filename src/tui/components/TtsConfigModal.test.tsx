@@ -4,6 +4,8 @@ import { TtsConfigModal } from './TtsConfigModal.js';
 import { THEMES } from '../../themes/themes.js';
 import { defaultConfig } from '../../config/defaults.js';
 import type { TtsConfig } from '../../config/defaults.js';
+import { TtsManager } from '../../tts/manager.js';
+import type { TtsBackend, AudioPlayer } from '../../tts/backend.js';
 
 const config = defaultConfig();
 const baseTts: TtsConfig = config.tts;
@@ -22,6 +24,42 @@ function makeProps(overrides: Partial<Parameters<typeof TtsConfigModal>[0]> = {}
 
 async function settle(ms = 100): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Мок менеджера с тремя движками: модалка должна брать список движков
+ * из реестра (а не заширтое пару движков), но проверка должна стать бестой.
+ */
+function fakeManager(): TtsManager {
+  const mgr = new TtsManager({ player: silentPlayer() });
+  mgr.register(makeBackend('piper', 'Piper'));
+  mgr.register(makeBackend('sherpa', 'sherpa-onnx'));
+  mgr.register(makeBackend('espeak', 'eSpeak NG'));
+  return mgr;
+}
+
+function makeBackend(id: string, label: string): TtsBackend {
+  return {
+    id,
+    label,
+    capabilities: { languages: ['ru'], offline: true, rateControl: false, pitchControl: false },
+    check: async () => null,
+    listVoices: async () => [{ id: `${id}-voice`, label: `${id} voice` }],
+    synthesize: async () => ({ kind: 'buffer', buffer: Buffer.alloc(0) }),
+    dispose: () => {},
+  };
+}
+
+/** Плеер-заглушка: тесты не должны попадать в звук. */
+function silentPlayer(): AudioPlayer {
+  return {
+    play: () => {},
+    pause: () => {},
+    resume: () => {},
+    stop: () => {},
+    onCallbacks: () => {},
+    dispose: () => {},
+  };
 }
 
 describe('TtsConfigModal', () => {
@@ -109,17 +147,40 @@ describe('TtsConfigModal', () => {
     expect(applied.pitch).toBe(0.9);
   });
 
-  it('cycles engine with enter on the Engine row', async () => {
-    const onApply = vi.fn();
-    const { stdin } = render(<TtsConfigModal {...makeProps({ onApply })} />);
+  // Раньше Engine циклил пару движков piper/espeak; теперь там список движков
+  // берётся из реестра менеджера, поэтому любой движок появился бы в списке.
+  it('opens an engine picker listing every registered engine', async () => {
+    const { stdin, lastFrame } = render(
+      <TtsConfigModal {...makeProps({ ttsManager: fakeManager() })} />,
+    );
     await settle();
     stdin.write('\r'); // engine row is first (index 0)
     await settle();
-    stdin.write('jjjjjj'); // to Apply (index 6)
+    await settle(300); // let the availability checks settle
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('TTS engine');
+    expect(frame).toContain('piper');
+    expect(frame).toContain('sherpa');
+    expect(frame).toContain('espeak');
+  });
+
+  it('applies the engine chosen in the picker', async () => {
+    const onApply = vi.fn();
+    const { stdin } = render(
+      <TtsConfigModal {...makeProps({ onApply, ttsManager: fakeManager() })} />,
+    );
+    await settle();
+    stdin.write('\r'); // open engine list
+    await settle();
+    stdin.write('j'); // piper -> sherpa
+    await settle();
+    stdin.write('\r'); // pick sherpa
+    await settle();
+    stdin.write('jjjjjj'); // back to the settings list, to Apply (index 6)
     await settle();
     stdin.write('\r');
     await settle();
     const applied = onApply.mock.calls[0]![0] as TtsConfig;
-    expect(applied.engine).toBe('espeak');
+    expect(applied.engine).toBe('sherpa');
   });
 });

@@ -248,6 +248,75 @@ describe('serializeConfig', () => {
   });
 });
 
+describe('[tts.engines] per-engine paths', () => {
+  it('parses command, models_dir and model for an engine', () => {
+    const warnings: string[] = [];
+    const config = parseTomlConfig(
+      [
+        '[tts]',
+        'engine = "sherpa"',
+        '',
+        '[tts.engines.sherpa]',
+        'command = "/opt/sherpa/bin/sherpa-onnx-offline-tts"',
+        'models_dir = "~/.local/share/sherpa-onnx"',
+        'model = "vits-mms-rus"',
+      ].join('\n'),
+      defaultConfig(),
+      warnings,
+    );
+    expect(warnings).toEqual([]);
+    expect(config.tts.engines.sherpa).toEqual({
+      command: '/opt/sherpa/bin/sherpa-onnx-offline-tts',
+      modelsDir: '~/.local/share/sherpa-onnx',
+      model: 'vits-mms-rus',
+    });
+  });
+
+  it('keeps unknown engine ids — a user may describe an engine before we add it', () => {
+    const config = parseTomlConfig(
+      ['[tts.engines.my-engine]', 'command = "/usr/bin/my-tts"'].join('\n'),
+      defaultConfig(),
+      [],
+    );
+    expect(config.tts.engines['my-engine']?.command).toBe('/usr/bin/my-tts');
+  });
+
+  it('warns and skips a non-table engine entry instead of throwing', () => {
+    const warnings: string[] = [];
+    // engines.broken is a plain string here, not a table of settings
+    const config = parseTomlConfig(
+      '[tts]\nengines = { broken = "/usr/bin/some-binary" }',
+      defaultConfig(),
+      warnings,
+    );
+    expect(config.tts.engines.broken).toBeUndefined();
+    expect(warnings.some((w) => w.includes('tts.engines.broken'))).toBe(true);
+  });
+
+  it('round-trips engine paths through serializeConfig', () => {
+    const config = defaultConfig();
+    config.tts.engine = 'sherpa';
+    config.tts.engines = {
+      sherpa: { command: '/usr/bin/sherpa-onnx-offline-tts', modelsDir: '', model: 'vits-mms-rus' },
+    };
+    const reparsed = parseTomlConfig(serializeConfig(config), defaultConfig(), []);
+    expect(reparsed.tts.engine).toBe('sherpa');
+    expect(reparsed.tts.engines.sherpa?.model).toBe('vits-mms-rus');
+    expect(reparsed.tts.engines.sherpa?.command).toBe('/usr/bin/sherpa-onnx-offline-tts');
+  });
+
+  it('omits empty engine sections so config.toml stays clean', () => {
+    const config = defaultConfig();
+    config.tts.engines = { piper: { command: '', modelsDir: '', model: '' } };
+    const text = serializeConfig(config);
+    expect(text).not.toContain('[tts.engines.piper]');
+  });
+
+  it('defaults to no engine overrides', () => {
+    expect(defaultConfig().tts.engines).toEqual({});
+  });
+});
+
 describe('KEY_ACTIONS', () => {
   it('contains all default bindings', () => {
     const actions = Object.values(defaultConfig().keybindings);
