@@ -26,6 +26,8 @@ export interface ReaderActionContext {
   forceTick: () => void;
   openBookmarks: () => void;
   openToc: () => void;
+  /** Выполнить командную строку (например, ':css') — тот же путь, что и у `:`. */
+  runCommand: (text: string) => void;
   /**
    * Контроллер озвучки (TTS). Необязателен: если не передан, TTS-хоткеи
    * превращаются в подсказку об отключённом TTS.
@@ -75,6 +77,7 @@ export function dispatchReaderAction(
     forceTick,
     openBookmarks,
     openToc,
+    runCommand,
     tts,
   } = ctx;
   switch (action) {
@@ -198,7 +201,7 @@ export function dispatchReaderAction(
       notify(`Simplified mode: ${session.isSimplified ? 'on' : 'off'}`);
       break;
     case 'toggle_respect_css':
-      notify('Publisher CSS is not implemented yet; no setting was changed');
+      runCommand(':css');
       break;
     case 'toggle_justify':
       clearSelection();

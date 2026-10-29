@@ -160,6 +160,7 @@ export function ReaderView(props: ReaderViewProps): React.JSX.Element {
       forceTick,
       openBookmarks: tocBm.openBookmarks,
       openToc: tocBm.openToc,
+      runCommand,
       tts: ttsController,
     });
   };

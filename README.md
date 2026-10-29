@@ -220,6 +220,7 @@ the output of `--completion` into your shell's completion directory.
 | `:group`                      | Toggle group-by-series in the library                    |
 | `:goto <page>`                | Jump to a page number (`:goto 10%` also works)           |
 | `:simplified`                 | Toggle simplified reading mode                           |
+| `:css` [`on`/`off`]           | Toggle or set the publisher-CSS preference (persisted)   |
 | `:tts`                        | Read aloud — play / pause from the current position      |
 | `:tts continue`               | Resume reading aloud from the last saved position        |
 | `:tts stop`                   | Stop reading aloud                                       |
@@ -269,7 +270,7 @@ hyphenation = false     # hyphenate long words at line breaks
 
 [display]
 simplified_mode = false
-respect_publisher_css = true
+respect_publisher_css = true   # stored by :css; takes effect once the CSS engine lands
 
 [statusbar]
 left = ["title"]                 # sections on the left: title

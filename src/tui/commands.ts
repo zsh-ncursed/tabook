@@ -62,7 +62,19 @@ export const COMMANDS: CommandDef[] = [
   {
     names: ['css'],
     usage: ':css',
-    desc: 'Respect publisher CSS (engine arrives later)',
+    desc: 'Toggle respect-publisher-CSS (stored; engine pending)',
+    screens: ['reader'],
+  },
+  {
+    names: ['css'],
+    usage: ':css on',
+    desc: 'Respect publisher CSS from EPUBs (engine pending)',
+    screens: ['reader'],
+  },
+  {
+    names: ['css'],
+    usage: ':css off',
+    desc: 'Ignore publisher CSS from EPUBs',
     screens: ['reader'],
   },
   {
@@ -299,29 +311,34 @@ export function fuzzyMatchBooks(query: string, books: BookRecord[], limit = 25):
   return out.slice(0, limit);
 }
 
-export const OPDS_SUBS = ['add', 'remove', 'list'] as const;
-export const LIBRARY_SUBS = ['add', 'remove', 'list', 'scan'] as const;
-export const TTS_SUBS = [
-  'stop',
-  'continue',
-  'engines',
-  'voice',
-  'rate',
-  'follow',
-  'config',
-] as const;
+// Субкоманды выводятся из самого реестра: второй литеральный токен
+// usage-строки (':opds add <name>' → 'add'). Единственный источник правды
+// держит :help, tab-дополнение и подсветку ввода в согласии друг с другом.
+const SUBCOMMANDS: Map<string, string[]> = (() => {
+  const map = new Map<string, string[]>();
+  for (const def of COMMANDS) {
+    const second = def.usage.replace(/^:/, '').split(' ')[1];
+    if (!second || !/^[a-z][a-z0-9_-]*$/i.test(second)) continue;
+    for (const name of def.names) {
+      const list = map.get(name) ?? [];
+      if (!list.includes(second)) list.push(second);
+      map.set(name, list);
+    }
+  }
+  return map;
+})();
 
-/**
- * Returns the length of the command-name prefix that matches a valid command.
- * e.g. ":opd" → 3 (matches "opds"), ":opdf" → 3 (only "opd" matches, "f" is
- * the invalid tail), ":opds" → 4. Only the first token (before the first
- * space) is validated; subcommands and arguments are not checked here.
- */
-export function validCommandPrefixLength(input: string): number {
-  const trimmed = input.replace(/^:/, '').trimStart();
-  if (!trimmed) return 0;
-  const parts = shellSplit(trimmed);
-  const cmd = (parts[0] ?? '').toLowerCase();
+/** Известные субкоманды команды, по её полному имени ('tts' → ['stop', …]). */
+export function commandSubs(cmd: string): string[] {
+  return SUBCOMMANDS.get(cmd.toLowerCase()) ?? [];
+}
+
+export const OPDS_SUBS = commandSubs('opds');
+export const LIBRARY_SUBS = commandSubs('library');
+export const TTS_SUBS = commandSubs('tts');
+
+/** Длина префикса первого токена, который ещё может стать командой. */
+function validCommandNameLength(cmd: string): number {
   if (!cmd) return 0;
   const matches = COMMAND_NAMES.filter((c) => c.startsWith(cmd));
   if (matches.length === 0) {
@@ -333,6 +350,33 @@ export function validCommandPrefixLength(input: string): number {
     return 0;
   }
   return cmd.length;
+}
+
+/**
+ * Returns the length of the typed command prefix that is still valid.
+ * e.g. ":opd" → 3 (matches "opds"), ":opdf" → 3 (only "opd" matches, "f" is
+ * the invalid tail), ":opds" → 4. A known subcommand extends the valid prefix
+ * (":opds add" → 8, ":tts conf" → 8), an unknown one stops it before the
+ * subcommand (":tts xyz" → 3). Commands whose second token is an argument
+ * placeholder (":theme <name>", ":goto <page>") cannot be validated further,
+ * so only their name counts.
+ */
+export function validCommandPrefixLength(input: string): number {
+  const trimmed = input.replace(/^:/, '').trimStart();
+  if (!trimmed) return 0;
+  const parts = shellSplit(trimmed);
+  const rawCmd = parts[0] ?? '';
+  const cmd = rawCmd.toLowerCase();
+  const firstLen = validCommandNameLength(cmd);
+  if (firstLen === 0) return 0;
+  // Субкоманда осмысленна только после полного имени команды.
+  if (!COMMAND_NAMES.includes(cmd)) return firstLen;
+  const subs = commandSubs(cmd);
+  if (subs.length === 0) return firstLen;
+  const sub = (parts[1] ?? '').toLowerCase();
+  if (!sub) return firstLen;
+  if (!subs.some((s) => s.startsWith(sub))) return firstLen;
+  return rawCmd.length + 1 + sub.length;
 }
 
 /**
@@ -350,20 +394,11 @@ export function completeCommand(value: string, themeNames: () => string[]): stri
     const matches = COMMAND_NAMES.filter((c) => c.startsWith(cmd));
     if (matches.length === 1) return `:${matches[0]} `;
   }
-  if (cmd === 'opds' && parts.length === 2) {
+  const subs = commandSubs(cmd);
+  if (subs.length > 0 && parts.length === 2) {
     const sub = (parts[1] ?? '').toLowerCase();
-    const subs = OPDS_SUBS.filter((s) => s.startsWith(sub));
-    if (subs.length === 1) return `:opds ${subs[0]} `;
-  }
-  if (cmd === 'library' && parts.length === 2) {
-    const sub = (parts[1] ?? '').toLowerCase();
-    const subs = LIBRARY_SUBS.filter((s) => s.startsWith(sub));
-    if (subs.length === 1) return `:library ${subs[0]} `;
-  }
-  if (cmd === 'tts' && parts.length === 2) {
-    const sub = (parts[1] ?? '').toLowerCase();
-    const subs = TTS_SUBS.filter((s) => s.startsWith(sub));
-    if (subs.length === 1) return `:tts ${subs[0]} `;
+    const matches = subs.filter((s) => s.startsWith(sub));
+    if (matches.length === 1) return `:${cmd} ${matches[0]} `;
   }
   if (cmd === 'theme' && parts.length === 2) {
     const prefix = (parts[1] ?? '').toLowerCase();

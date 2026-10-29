@@ -37,6 +37,11 @@ export interface CommandContext {
   setThemePickerOpen: (open: boolean) => void;
   setFolderRemoveConfirm: (v: { path: string; count: number } | null) => void;
   persistConfig: (theme: string) => void;
+  /**
+   * Применить и сохранить display.respect_publisher_css. Без аргумента —
+   * переключить; возвращает итоговое значение.
+   */
+  setRespectPublisherCss: (on?: boolean) => boolean;
   setLibraryRefresh: (fn: (c: number) => number) => void;
   setCmdVersion: (fn: (v: number) => number) => void;
   setLiveConfig: (c: Config) => void;
@@ -69,6 +74,7 @@ export function runCommand(text: string, ctx: CommandContext): void {
     themeOverride,
     configPath,
     persistConfig,
+    setRespectPublisherCss,
     attachLibraryFolder,
     runLibraryScan,
     setScreen,
@@ -162,9 +168,20 @@ export function runCommand(text: string, ctx: CommandContext): void {
         notify(`Simplified mode: ${session.isSimplified ? 'on' : 'off'}`);
       }
       break;
-    case 'css':
-      notify('Respect publisher CSS is stored in config; the CSS engine arrives in a later stage');
+    case 'css': {
+      const arg = args[0]?.toLowerCase();
+      if (arg && arg !== 'on' && arg !== 'off') {
+        notify('Usage: :css [on|off]');
+        break;
+      }
+      const on = setRespectPublisherCss(arg ? arg === 'on' : undefined);
+      notify(
+        on
+          ? 'Respect publisher CSS: on — no effect until the CSS engine lands'
+          : 'Respect publisher CSS: off',
+      );
       break;
+    }
     case 'tts': {
       if (!tts) {
         notify('TTS disabled — set [tts] mode = "active" in config');

@@ -24,6 +24,7 @@ function makeCtx(overrides: Partial<CommandContext> = {}): CommandContext {
     setThemePickerOpen: vi.fn(),
     setFolderRemoveConfirm: vi.fn(),
     persistConfig: vi.fn(),
+    setRespectPublisherCss: vi.fn(() => true),
     setLibraryRefresh: vi.fn(),
     setCmdVersion: vi.fn(),
     setLiveConfig: vi.fn(),
@@ -226,5 +227,42 @@ describe('runCommand', () => {
 
     expect(tts.stop).toHaveBeenCalledTimes(1);
     expect(tts.play).not.toHaveBeenCalled();
+  });
+
+  it(':css on stores the preference and says the engine is still pending', () => {
+    const setCss = vi.fn(() => true);
+    const ctx = makeCtx({ setRespectPublisherCss: setCss });
+    runCommand(':css on', ctx);
+    expect(setCss).toHaveBeenCalledWith(true);
+    expect(ctx.notify).toHaveBeenCalledWith(
+      'Respect publisher CSS: on — no effect until the CSS engine lands',
+    );
+  });
+
+  it(':css off stores the preference without a warning', () => {
+    const setCss = vi.fn(() => false);
+    const ctx = makeCtx({ setRespectPublisherCss: setCss });
+    runCommand(':css off', ctx);
+    expect(setCss).toHaveBeenCalledWith(false);
+    expect(ctx.notify).toHaveBeenCalledWith('Respect publisher CSS: off');
+  });
+
+  it(':css without an argument flips the stored value', () => {
+    const setCss = vi.fn(() => true);
+    const ctx = makeCtx({ setRespectPublisherCss: setCss });
+    runCommand(':css', ctx);
+    // undefined = «переключи сам»; состояние сообщает то, что вернул сеттер.
+    expect(setCss).toHaveBeenCalledWith(undefined);
+    expect(ctx.notify).toHaveBeenCalledWith(
+      'Respect publisher CSS: on — no effect until the CSS engine lands',
+    );
+  });
+
+  it(':css with an unknown argument prints usage and changes nothing', () => {
+    const setCss = vi.fn(() => true);
+    const ctx = makeCtx({ setRespectPublisherCss: setCss });
+    runCommand(':css maybe', ctx);
+    expect(setCss).not.toHaveBeenCalled();
+    expect(ctx.notify).toHaveBeenCalledWith('Usage: :css [on|off]');
   });
 });

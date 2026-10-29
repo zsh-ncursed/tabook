@@ -50,7 +50,7 @@ justify = false         # justify text to the full measure
 
 [display]
 simplified_mode = false      # flatten lists/poems/tables into paragraphs
-respect_publisher_css = true # honor publisher CSS from EPUBs
+respect_publisher_css = true # stored by :css; takes effect once the CSS engine lands
 
 [statusbar]
 left = ["title"]                 # status bar sections on the left
@@ -182,10 +182,10 @@ are ignored with a warning.
 
 ### `[display]`
 
-| Key                     | Default | Meaning                                          |
-| ----------------------- | ------- | ------------------------------------------------ |
-| `simplified_mode`       | `false` | Flatten lists/poems/tables into plain paragraphs |
-| `respect_publisher_css` | `true`  | Honor publisher CSS from EPUB documents          |
+| Key                     | Default | Meaning                                                      |
+| ----------------------- | ------- | ------------------------------------------------------------ |
+| `simplified_mode`       | `false` | Flatten lists/poems/tables into plain paragraphs             |
+| `respect_publisher_css` | `true`  | Publisher-CSS preference, written by `:css` (engine pending) |
 
 ### `[statusbar]`
 
@@ -329,6 +329,8 @@ highlights it (karaoke mode); toggle live with `F`.
 | `:group`                 | Toggle group-by-series in the library               |
 | `:goto <page>`           | Jump to a page number in the reader                 |
 | `:simplified`            | Toggle simplified reading mode                      |
+| `:css`                   | Toggle publisher-CSS preference (persisted)         |
+| `:css on` / `:css off`   | Respect / ignore publisher CSS from EPUBs           |
 | `:search <query>`        | Search the current book                             |
 | `:config edit`           | Open the config file in `$EDITOR` and reload        |
 | `:library add <path>`    | Attach a local folder as a library (recursive scan) |
@@ -337,7 +339,13 @@ highlights it (karaoke mode); toggle live with `F`.
 | `:library scan`          | Rescan all attached folders                         |
 | `:q` / `:quit`           | Quit                                                |
 
-`Tab` completes commands, theme names and `:library` subcommands in the prompt.
+`Tab` completes command names and every subcommand listed above (the completion
+comes from the same registry as `:help`). The typed command name and a known
+subcommand are highlighted; an unknown subcommand stays in the normal text color.
+
+`:css` writes `display.respect_publisher_css` into the config file. Nothing is
+re-rendered yet: the EPUB CSS engine is not implemented, so the preference is
+stored for it.
 
 ## Local folder libraries
 

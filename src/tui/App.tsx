@@ -276,6 +276,29 @@ export function App(props: AppProps): React.JSX.Element {
     [liveConfig],
   );
 
+  // display.respect_publisher_css — тот же порядок, что у tts.follow:
+  // состояние живёт в liveConfig, файл перечитывается best-effort.
+  const setRespectPublisherCss = useCallback(
+    (on?: boolean): boolean => {
+      const next = on ?? !liveConfig.display.respectPublisherCss;
+      const updated: Config = {
+        ...liveConfig,
+        display: { ...liveConfig.display, respectPublisherCss: next },
+      };
+      setLiveConfig(updated);
+      const p = configPathRef.current;
+      if (p) {
+        try {
+          fs.writeFileSync(p, serializeConfig(updated), 'utf8');
+        } catch {
+          // ponytail: persist is best-effort; if file isn't writable, skip silently
+        }
+      }
+      return next;
+    },
+    [liveConfig],
+  );
+
   useEffect(() => {
     if (!message) return undefined;
     const timer = setTimeout(() => setMessage(null), 3500);
@@ -419,6 +442,7 @@ export function App(props: AppProps): React.JSX.Element {
     attachLibraryFolder,
     runLibraryScan,
     persistConfig,
+    setRespectPublisherCss,
     setScreen,
     setHelpOpen,
     setThemeName,

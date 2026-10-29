@@ -25,6 +25,7 @@ export interface UseAppCommandsParams {
   attachLibraryFolder: (rawPath: string) => void;
   runLibraryScan: (folderOnly?: string | string[], silentWhenEmpty?: boolean) => Promise<void>;
   persistConfig: (theme: string) => void;
+  setRespectPublisherCss: (on?: boolean) => boolean;
   setScreen: (s: AppScreen) => void;
   setHelpOpen: (open: boolean) => void;
   setThemeName: (name: string) => void;
@@ -59,6 +60,7 @@ export function useAppCommands(params: UseAppCommandsParams): {
     attachLibraryFolder,
     runLibraryScan,
     persistConfig,
+    setRespectPublisherCss,
     setScreen,
     setHelpOpen,
     setThemeName,
@@ -94,6 +96,7 @@ export function useAppCommands(params: UseAppCommandsParams): {
         setThemePickerOpen,
         setFolderRemoveConfirm,
         persistConfig,
+        setRespectPublisherCss,
         setLibraryRefresh,
         setCmdVersion,
         setLiveConfig,
@@ -122,6 +125,7 @@ export function useAppCommands(params: UseAppCommandsParams): {
       attachLibraryFolder,
       runLibraryScan,
       persistConfig,
+      setRespectPublisherCss,
       libraryCmdRef,
     ],
   );

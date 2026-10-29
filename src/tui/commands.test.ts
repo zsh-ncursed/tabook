@@ -75,10 +75,37 @@ describe('validCommandPrefixLength', () => {
     expect(validCommandPrefixLength('opdf')).toBe(3);
   });
 
-  it('ignores trailing arguments (only validates first token)', () => {
-    expect(validCommandPrefixLength(':opds add')).toBe(4);
-    expect(validCommandPrefixLength(':theme dracula')).toBe(5);
+  it('validates a known subcommand and includes it in the valid prefix', () => {
+    expect(validCommandPrefixLength(':opds add')).toBe(8);
+    expect(validCommandPrefixLength(':tts config')).toBe(10);
+    expect(validCommandPrefixLength(':library scan')).toBe(12);
+    expect(validCommandPrefixLength(':config init')).toBe(11);
+  });
+
+  it('accepts a partially typed subcommand that still matches one option', () => {
+    expect(validCommandPrefixLength(':tts conf')).toBe(8);
+    expect(validCommandPrefixLength(':css o')).toBe(5);
+  });
+
+  it('stops the valid prefix before an unknown subcommand', () => {
+    expect(validCommandPrefixLength(':tts xyz')).toBe(3);
     expect(validCommandPrefixLength(':opds xyz')).toBe(4);
+    expect(validCommandPrefixLength(':css maybe')).toBe(3);
+  });
+
+  it('ignores free-form arguments, which cannot be validated', () => {
+    expect(validCommandPrefixLength(':theme dracula')).toBe(5);
+    expect(validCommandPrefixLength(':goto 42')).toBe(4);
+    expect(validCommandPrefixLength(':search word')).toBe(6);
+    expect(validCommandPrefixLength(':open book.fb2')).toBe(4);
+  });
+
+  it('does not validate a subcommand after an incomplete command name', () => {
+    expect(validCommandPrefixLength(':opd add')).toBe(3);
+  });
+
+  it('counts a trailing space after a valid subcommand', () => {
+    expect(validCommandPrefixLength(':opds add ')).toBe(8);
   });
 
   it('returns 0 for a command that matches no known command', () => {
@@ -270,6 +297,18 @@ describe('completeCommand', () => {
 
   it('completes theme names', () => {
     expect(completeCommand(':theme dra', themeNames)).toBe(':theme dracula');
+  });
+
+  it('completes css subcommands', () => {
+    expect(completeCommand(':css on', themeNames)).toBe(':css on ');
+    expect(completeCommand(':css of', themeNames)).toBe(':css off ');
+    // "o" is a prefix of both on and off — ambiguous, nothing to insert.
+    expect(completeCommand(':css o', themeNames)).toBeNull();
+  });
+
+  it('completes subcommands of every registered command, not a hardcoded list', () => {
+    expect(completeCommand(':config in', themeNames)).toBe(':config init ');
+    expect(completeCommand(':config ed', themeNames)).toBe(':config edit ');
   });
 
   it('returns null for empty or unknown input', () => {

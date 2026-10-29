@@ -57,6 +57,7 @@ function setup() {
     forceTick: vi.fn(),
     openBookmarks: vi.fn(),
     openToc: vi.fn(),
+    runCommand: vi.fn(),
   };
   return { session, ctx };
 }
@@ -224,12 +225,10 @@ describe('dispatchReaderAction — toggles & no-ops', () => {
     expect(ctx.notify).toHaveBeenNthCalledWith(2, 'Wide screen: on');
   });
 
-  it('toggle_respect_css explains that CSS is not implemented', () => {
+  it('toggle_respect_css runs :css so the key and the command share one path', () => {
     const { ctx } = setup();
     dispatchReaderAction('toggle_respect_css', ctx);
-    expect(ctx.notify).toHaveBeenCalledWith(
-      'Publisher CSS is not implemented yet; no setting was changed',
-    );
+    expect(ctx.runCommand).toHaveBeenCalledWith(':css');
   });
 
   it('horizontal moves and unrelated actions are no-ops', () => {
