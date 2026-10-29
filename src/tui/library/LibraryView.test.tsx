@@ -93,8 +93,11 @@ describe('LibraryView grouping and cursor', () => {
     await settle();
     // Move down several times: the cursor must never land on a header row.
     for (let i = 0; i < 6; i++) {
-      stdin.write('j');
+      stdin.write('G');
       await settle();
+      stdin.write('G');
+      await settle();
+      console.log('AFTER2:\n' + (lastFrame() ?? ''));
       const frame = lastFrame() ?? '';
       // Selected rows are marked with '▸'. Headers never carry the marker.
       const selLine = frame.split('\n').find((l) => l.includes('▸'));
@@ -116,6 +119,49 @@ describe('LibraryView grouping and cursor', () => {
     const selLine = frame.split('\n').find((l) => l.includes('▸'));
     expect(selLine).toBeDefined();
     expect(selLine).toContain('Beta');
+  });
+
+  it('marks the book the cursor is on while the grouped list scrolls', async () => {
+    // 20 grouped books overflow the viewport, so the window scrolls while the
+    // cursor walks: the marked card and the footer must stay the same book.
+    for (let i = 1; i <= 20; i++) {
+      addBook(db, `/tmp/b${i}.fb2`, `Book${String(i).padStart(2, '0')}`, 'Series', i);
+    }
+    const props = makeProps({ cmdBus: { group: true }, cmdVersion: 1 });
+    const captured = render(<LibraryView {...props} />);
+    await settle();
+    for (let step = 1; step <= 14; step++) {
+      captured.stdin.write('j');
+      await settle();
+      const frame = captured.lastFrame() ?? '';
+      const lines = frame.split('\n');
+      const markedAt = lines.findIndex((l) => l.includes('▸'));
+      expect(markedAt).toBeGreaterThan(-1);
+      // A selected card is a contiguous 3-line block: title, authors, series.
+      expect(lines[markedAt + 1]).toContain('B A');
+      expect(lines[markedAt + 2]).toContain('Series');
+      // The marked card must be the one the footer reports as selected.
+      const footer = lines.find((l) => l.startsWith(' tabook'))?.split(' · ')[1];
+      expect(lines[markedAt]).toContain(footer);
+    }
+  });
+
+  it('keeps the last grouped row marked and visible after go-to-end', async () => {
+    // bugs.md #3: with group headers the cursor indexes `rows` (21 = 2 headers
+    // + 20 books), so the end of the list must stay both marked and on screen.
+    for (let i = 1; i <= 10; i++) {
+      addBook(db, `/tmp/b${i}.fb2`, `Book${i}`, i <= 5 ? 'Trilogy' : 'Sextet', i);
+    }
+    const captured = render(
+      <LibraryView {...makeProps({ cmdBus: { group: true }, cmdVersion: 1 })} />,
+    );
+    await settle();
+    captured.stdin.write('G');
+    await settle();
+    const marked = (captured.lastFrame() ?? '').split('\n').filter((l) => l.includes('▸'));
+    expect(marked).toHaveLength(1);
+    // Groups sort by name (Sextet, Trilogy), volumes by number: Book5 is last.
+    expect(marked[0]).toContain('Book5');
   });
 
   it('toggles the continue-reading view with C', async () => {
