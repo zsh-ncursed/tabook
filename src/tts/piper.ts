@@ -47,7 +47,10 @@ export class PiperBackend implements TtsBackend {
   /** Явный голос из конфига (пусто = дефолт бэкенда). */
   private model = '';
 
-  constructor(command = '') {
+  constructor(
+    command = '',
+    private readonly searchRoot = process.cwd(),
+  ) {
     this.bin = command;
   }
 
@@ -121,7 +124,7 @@ export class PiperBackend implements TtsBackend {
 
   async check(): Promise<string | null> {
     // resolvePiperBin возвращает пустую строку, если движок не найден.
-    if (!resolvePiperBin(this.bin)) {
+    if (!resolvePiperBin(this.bin, this.searchRoot)) {
       const hint = this.installHint();
       return [
         'piper not found — TTS engine not installed.',
@@ -194,7 +197,7 @@ export function sanitizeTtsText(text: string): string {
 }
 
 /** Какой бинарник запускать: явный [tts] command, иначе piper/piper-speak из PATH. */
-function resolvePiperBin(command: string): string {
+function resolvePiperBin(command: string, searchRoot = process.cwd()): string {
   const explicit = expandPath(command);
   if (explicit && existsSync(explicit)) return explicit;
   const fromEnv = expandPath(process.env.TABOOK_TTS_COMMAND ?? '');
@@ -203,7 +206,7 @@ function resolvePiperBin(command: string): string {
   if (commandAvailable('piper-speak')) return 'piper-speak';
   // Автообнаружение в типичных местах установки piper-tts (pipx/pip venv),
   // чтобы не требовать ручной настройки.
-  for (const candidate of autoPiperCandidates()) {
+  for (const candidate of autoPiperCandidates(searchRoot)) {
     if (existsSync(candidate)) return candidate;
   }
   // Ничего не найдено: возвращаем пустую строку, чтобы вызываемое check()
@@ -215,12 +218,14 @@ function resolvePiperBin(command: string): string {
  * Список путей-кандидатов для автопоиска бинаря piper. Экспортирован для
  * тестов (проверяем, что актуальные места установки не потеряны).
  */
-export function piperBinCandidates(): string[] {
-  return autoPiperCandidates();
+export function piperBinCandidates(searchRoot = process.cwd()): string[] {
+  return autoPiperCandidates(searchRoot);
 }
 
-/** Типичные пути, куда pipx/pip ставит piper-tts. */
-function autoPiperCandidates(): string[] {
+/** Типичные пути, куда pipx/pip ставит piper-tts. `searchRoot` — пакет, рядом
+ * с которым лежит dev-venv; тесты задают его явно, чтобы не находиться venv'ом
+ * в корне репозитория. */
+function autoPiperCandidates(searchRoot = process.cwd()): string[] {
   const home = process.env.HOME ?? '';
   const out: string[] = [];
   const push = (p: string): void => {
@@ -238,16 +243,11 @@ function autoPiperCandidates(): string[] {
   push(join(home, '.local', 'share', 'piper-tts', 'piper', 'piper'));
   push(join(home, '.venv', 'bin', 'piper'));
   push(join(home, '.tts-venv', 'bin', 'piper'));
-  // venv рядом с табуком (dev/тестовые окружения): поднимаемся от запускаемого
-  // файла к корню пакета и ищем .tts-venv/bin/piper на каждом уровне.
-  const start = process.argv[1] ? resolve(process.argv[1]) : resolve(process.cwd());
-  let dir: string | null = dirname(start);
-  for (let i = 0; i < 6 && dir; i++) {
-    push(join(dir, '.tts-venv', 'bin', 'piper'));
-    push(join(dir, 'venv', 'bin', 'piper'));
-    const parent = dirname(dir);
-    dir = parent === dir ? null : parent;
-  }
+  // venv рядом с самим пакетом (dev/тестовые окружения). Только в searchRoot:
+  // подъём к '/' подхватывал чужие venv'ы в /tmp и выше, а системные установки
+  // уже покрыты PATH (п. commandAvailable) и домашними кандидатами.
+  push(join(searchRoot, '.tts-venv', 'bin', 'piper'));
+  push(join(searchRoot, 'venv', 'bin', 'piper'));
   return out;
 }
 

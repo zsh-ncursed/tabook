@@ -74,6 +74,20 @@ describe('piperBinCandidates', () => {
       path.join(home, '.local', 'share', 'piper-tts', 'piper', 'piper'),
     );
   });
+  it('does not look for engines above the package or outside HOME', () => {
+    // Обход вверх уходил к '/' и находил venv'ы в /tmp и HOME пользователя:
+    // движок обязан лежать либо в системе (PATH/домашние кандидаты), либо
+    // рядом с самим пакетом.
+    const root = testTmpdir('piper-cands');
+    const home = process.env.HOME ?? '';
+    const cands = piperBinCandidates(root);
+    const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+    const outside = cands.filter(
+      (c) => c.startsWith('/') && !c.startsWith(prefix) && !c.startsWith(`${home}/`),
+    );
+    expect(outside).toEqual([]);
+    expect(cands).toContain(path.join(root, '.tts-venv', 'bin', 'piper'));
+  });
 });
 
 describe('PiperBackend config auto-repair', () => {
@@ -155,7 +169,10 @@ describe('PiperBackend.check', () => {
     fs.mkdirSync(process.env.HOME, { recursive: true });
     try {
       const { PiperBackend } = await import('./piper.js');
-      const problem = await new PiperBackend('').check();
+      // Поиск venv рядом с пакетом идёт от searchRoot; без него тест находил
+      // .tts-venv в корне репозитория и check() молчал (зеленел только на
+      // машинах без такого venv).
+      const problem = await new PiperBackend('', testTmpdir('tts-check-root')).check();
       expect(problem).toContain('yay -S piper-tts');
       expect(problem).toContain('pipx install piper-tts');
     } finally {
@@ -164,10 +181,28 @@ describe('PiperBackend.check', () => {
     }
   });
 
+  it('still finds a user-level engine install (~/.tts-venv) via HOME candidates', async () => {
+    // Ограничение поиска каталогом пакета не должно трогать системный поиск:
+    // установка в HOME пользователя обязана находиться как раньше.
+    const origPath = process.env.PATH;
+    const origHome = process.env.HOME;
+    const home = testTmpdir('piper-home');
+    const bin = path.join(home, '.tts-venv', 'bin', 'piper');
+    fs.mkdirSync(path.dirname(bin), { recursive: true });
+    fs.writeFileSync(bin, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    process.env.PATH = testTmpdir('piper-home-path');
+    process.env.HOME = home;
+    try {
+      const { PiperBackend } = await import('./piper.js');
+      expect(await new PiperBackend('', testTmpdir('piper-home-root')).check()).toBeNull();
+    } finally {
+      process.env.PATH = origPath;
+      process.env.HOME = origHome;
+    }
+  });
+
   it('stays silent when the binary is available', async () => {
     const { PiperBackend } = await import('./piper.js');
-    // Только явный путь к существующему файлу: хосту CI не обязательно иметь
-    // piper в PATH (иначе тест проходил лишь на машине с установленным piper).
     const bin = path.join(testTmpdir('tts-check-bin'), 'piper');
     fs.writeFileSync(bin, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     expect(await new PiperBackend(bin).check()).toBeNull();
