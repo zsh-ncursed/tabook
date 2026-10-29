@@ -34,8 +34,8 @@ beforeEach(() => {
     genres: [],
     coverKey: 'cover.jpg',
     annotation: '',
-    addedAt: '2026-01-01T00:00:00Z',
-    updatedAt: '2026-01-01T00:00:00Z',
+    addedAt: '2026-01-01 00:00:00',
+    updatedAt: '2026-01-01 00:00:00',
     progressPercent: null,
     lastOpenedAt: null,
     progressPosition: null,
@@ -81,6 +81,24 @@ describe('BookDetail cover vs App-level overlays', () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(updateSpy).not.toHaveBeenCalled();
     expect(clearSpy).toHaveBeenCalled();
+  });
+});
+
+describe('BookDetail timestamp display', () => {
+  it('renders addedAt converted to the requested time zone', async () => {
+    // Real rows carry SQLite's datetime('now') — "YYYY-MM-DD HH:MM:SS" in UTC.
+    // A fixed-offset zone keeps the expected local time host-independent.
+    book.addedAt = '2026-01-01 12:00:00';
+    const rendered = render(<BookDetail {...makeProps({ timeZone: 'Asia/Karachi' })} />);
+    await new Promise((r) => setTimeout(r, 100));
+    // The narrow test terminal soft-wraps the meta line between the date and
+    // the time, so assert each half; both hold only for a correct +05:00
+    // conversion (raw passthrough, naive local parsing and other offsets fail).
+    const frame = rendered.lastFrame()!;
+    expect(frame).toContain('Added: 2026-01-01');
+    expect(frame).toContain('17:00:00');
+    expect(frame).not.toContain('2026-01-01 12:00:00');
+    expect(frame).not.toContain('07:00:00');
   });
 });
 

@@ -6,7 +6,7 @@ import type { Config } from '../../config/defaults.js';
 import type { BookRecord } from '../../db/db.js';
 import { Modal } from '../components/Modal.js';
 import { createActionResolver, resolveKeyName } from '../keymap.js';
-import { formatBytes, truncateW, wrapText } from '../../utils/text.js';
+import { formatBytes, formatLocalTimestamp, truncateW, wrapText } from '../../utils/text.js';
 import { useImageLayer } from '../imageLayer.js';
 import { forceRedraw } from '../screenRefresh.js';
 import { extractCoverBytes } from '../../formats/cover.js';
@@ -18,6 +18,8 @@ export interface BookDetailProps {
   onRead: () => void;
   onClose: () => void;
   onHelp?: () => void;
+  /** Time zone for displayed SQLite UTC timestamps; defaults to the local one. */
+  timeZone?: string;
   /** True while an App-level overlay (help, palette, …) is open above the
    * modal; the cover image is dropped then so it can't cover the overlay. */
   inputDisabled?: boolean;
@@ -28,7 +30,7 @@ export interface BookDetailProps {
 const MODAL_CHROME = 8;
 
 export function BookDetail(props: BookDetailProps): React.JSX.Element {
-  const { book, config, theme, onRead, onClose, onHelp, inputDisabled = false } = props;
+  const { book, config, theme, onRead, onClose, onHelp, timeZone, inputDisabled = false } = props;
   const { stdout } = useStdout();
   const [termWidth] = useTerminalSize();
   const modalWidth = Math.min(termWidth - 2, 80);
@@ -85,7 +87,8 @@ export function BookDetail(props: BookDetailProps): React.JSX.Element {
   if (book.lang) extras.push(`Language: ${book.lang}`);
   if (extras.length > 0) metaLines.push(extras.join(' · '));
   metaLines.push(
-    `Format: ${book.format.toUpperCase()} · Size: ${formatBytes(book.size)} · Added: ${book.addedAt}`,
+    `Format: ${book.format.toUpperCase()} · Size: ${formatBytes(book.size)} · ` +
+      `Added: ${formatLocalTimestamp(book.addedAt, timeZone)}`,
   );
   if (book.progressPercent !== null) {
     metaLines.push(`Progress: ${book.progressPercent}%`);
